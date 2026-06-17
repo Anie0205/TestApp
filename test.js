@@ -1,13 +1,22 @@
 /*global window, widget, define */
 
-define('xCityLiveVesselApp', [
+define('xCityLiveSTARApp',
+[
     'UWA/Core',
     'UWA/Promise',
+    'UWA/String',
     'DS/WAFData/WAFData',
     'DS/PlatformAPI/PlatformAPI',
+    'DS/UIKIT/Toggler',
+    'DS/UIKIT/Autocomplete',
+    'DS/UIKIT/Input/Button',
+    'DS/UIKIT/Scroller',
     'css!DS/UIKIT/UIKIT.css'
-], function (UWA, Promise, WAFData, PlatformAPI) {
-    'use strict';
+],
+
+function (UWA, Promise, String, WAFData, PlatformAPI) {
+
+'use strict';
 
     var CONFIG = {
         CSV_URL: widget.getValue('csvUrl') || './jnpa_vessel_timeseries.csv',
