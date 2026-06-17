@@ -1,6 +1,6 @@
 /*global window, widget, define*/
 
-define('xCityLiveSTARApp',
+define('VesselInfo',
 [
     'UWA/Core',
     'UWA/Promise',

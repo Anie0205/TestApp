@@ -1,6 +1,6 @@
 /*global window, widget, define */
 
-define('xCityLiveSTARApp',
+define('VesselMovement',
 [
     'UWA/Core',
     'UWA/Promise',
@@ -19,7 +19,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 'use strict';
 
     var CONFIG = {
-        CSV_URL: 'https://test-app-lyart-six.vercel.app/jnpa_vessel_timeseries.csv',
+        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselMovement/jnpa_vessel_timeseries.csv',
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
