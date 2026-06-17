@@ -19,7 +19,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 'use strict';
 
     var CONFIG = {
-        CSV_URL: widget.getValue('csvUrl') || './jnpa_vessel_timeseries.csv',
+        CSV_URL: widget.getValue('csvUrl') || 'jnpa_vessel_timeseries.csv',
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
