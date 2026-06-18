@@ -20,10 +20,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
     var CONFIG = {
         CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
-        
-        // 🚀 Point this directly to your newly uploaded .wrl file!
+        // Make sure this matches your exact filename on Vercel
         CUSTOM_3D_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/ship.wrl', 
-        
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
@@ -123,7 +121,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     // ===============================================
-    // 🚢 CUSTOM 3D VRML MODEL LOGIC
+    // 🚢 CUSTOM 3D VRML MODEL LOGIC (Updated API Syntax)
     // ===============================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
@@ -136,18 +134,18 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             position: { 
                 x: ship.longitude, 
                 y: ship.latitude, 
-                z: 0 // Set on the water level
+                z: 0 
             },
             layer: {
                 id: markerId,
                 name: ship.vessel_name
             },
             render: {
-                style: 'model',               // API flag for 3D objects
-                url: CONFIG.CUSTOM_3D_URL,    // Path to your .wrl file
-                heading: ship.heading_deg || 0, // Rotates the .wrl to face the direction of travel!
-                color: stage.color,           // Attempts to apply a material tint to the .wrl
-                scale: 1.0                    // IMPORTANT: If your ship looks huge or tiny, adjust this (e.g., 0.01 or 100)
+                style: 'model',                     // API flag for 3D objects
+                model: CONFIG.CUSTOM_3D_URL,        // THE FIX: using 'model' instead of 'url'
+                heading: ship.heading_deg || 0,     // Rotates the ship
+                color: stage.color,                 // Tints the model
+                scale: { x: 1, y: 1, z: 1 }         // XYZ Scale matrix as per documentation
             },
             options: {
                 projection: { from: 'WGS84' }
