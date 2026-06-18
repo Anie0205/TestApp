@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:widget="http://www.netvibes.com/ns/">
+
+<head>
+    <title>City Live STAR</title>
+
+    <meta name="author" content="Dassault Systemes - Globe Apps team" />
+    <meta name="description" content="City Live STAR widget application" />
+    <meta name="autoRefresh" content="0" />
+
+    <!-- DEV: Disable cache -->
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="cache-control" content="no-cache" />
+    <meta http-equiv="expires" content="0" />
+
+    <!-- UWA CSS -->
+    <link rel="stylesheet" type="text/css"
+          href="../c/UWA/assets/css/standalone.css" />
+
+    <!-- AMD Loader -->
+    <script type="text/javascript" src="../AmdLoader/AmdLoader.js"></script>
+
+    <!-- UWA Runtime -->
+    <script type="text/javascript"
+            src="../c/UWA/js/UWA_Standalone_Alone.js"></script>
+
+    <!-- 🔥 CONFIG: Map your module to HTTPS -->
+    <script type="text/javascript">
+        require.config({
+            paths: {
+                'vesselSystem':
+                    'https://test-app-lyart-six.vercel.app/static/vesselSystem/vesselSystem'
+            }
+        });
+    </script>
+
+    <!-- 🚀 LOAD YOUR APP -->
+    <script type="text/javascript">
+        require(['vesselSystem']);
+    </script>
+
+</head>
+
+<body>
+</body>
+
+</html>

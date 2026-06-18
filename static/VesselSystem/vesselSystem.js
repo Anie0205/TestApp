@@ -1,0 +1,435 @@
+/*global window, widget, define*/
+
+define('VesselUnifiedApp',
+[
+    'UWA/Core',
+    'UWA/Promise',
+    'UWA/String',
+    'DS/WAFData/WAFData',
+    'DS/PlatformAPI/PlatformAPI',
+    'DS/UIKIT/Toggler',
+    'DS/UIKIT/Autocomplete',
+    'DS/UIKIT/Input/Button',
+    'DS/UIKIT/Scroller',
+    'css!DS/UIKIT/UIKIT.css'
+],
+
+function (UWA, Promise, String, WAFData, PlatformAPI) {
+
+    'use strict';
+
+    var CONFIG = {
+        PLAYBACK_INTERVAL_MS: 3000,
+        TRAIL_LENGTH: 10,
+        MARKER_PREFIX: 'VESSEL_',
+        TRAIL_PREFIX: 'TRAIL_'
+    };
+
+    // ================================
+    // ⚓ EMBEDDED UPDATED CSV DATA
+    // ================================
+    var CSV_DATA = `timestamp_utc,vessel_id,vessel_name,imo,mmsi,vessel_type,latitude,longitude,speed_knots,heading_deg,route_segment,berth_assignment,destination,alert_state,remarks
+2026-06-17T10:00:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.984000,72.892000,6,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.982942,72.893675,7,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.981884,72.895351,8,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.980825,72.897026,6,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.979767,72.898702,7,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.978709,72.900377,8,122,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.977659,72.902058,6,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.976626,72.903749,7,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.975592,72.905440,8,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.974559,72.907131,6,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.973526,72.908821,7,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.972492,72.910512,8,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.971373,72.912147,6,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.970254,72.913783,7,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.969135,72.915418,8,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.968016,72.917054,6,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.966897,72.918689,7,124,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.965798,72.920337,8,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.964778,72.922037,6,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V001,MSC SENA,9456781,419001111,Container Vessel,18.963759,72.923736,7,121,Approach Channel,BMCT01,JNPA,Normal,Time-series playback step 20
+2026-06-17T10:00:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.973917,72.906125,8,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.973254,72.907119,9,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.972591,72.908113,10,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.971928,72.909107,8,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.971266,72.910102,9,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.970603,72.911096,10,124,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.969944,72.912093,8,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.969330,72.913117,9,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.968715,72.914142,10,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.968100,72.915167,8,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.967485,72.916191,9,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.966870,72.917216,10,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.966256,72.918241,8,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.965641,72.919265,9,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.965026,72.920290,10,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.964411,72.921315,8,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.963796,72.922339,9,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.963182,72.923364,10,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.962567,72.924388,8,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V002,MAERSK NERA,9456782,419001112,Container Vessel,18.961952,72.925413,9,121,Pilot Boarding Zone,BMCT02,JNPA,Normal,Time-series playback step 20
+2026-06-17T10:00:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.948246,72.936262,10,108,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.947789,72.937634,11,108,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.947331,72.939006,12,108,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.947153,72.940368,10,67,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.947710,72.941704,11,67,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.948266,72.943039,12,67,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.948823,72.944374,10,67,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.949379,72.945709,11,67,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.950534,72.945540,12,336,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.951856,72.944953,10,336,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.953178,72.944365,11,336,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.954101,72.943463,12,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.954367,72.942041,10,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.954634,72.940619,11,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.954900,72.939197,12,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.955167,72.937776,10,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.955434,72.936354,11,281,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.955065,72.935005,12,246,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.954485,72.933680,10,246,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V003,CMA CGM VERDE,9456783,419001113,Container Vessel,18.953905,72.932354,11,246,Turning Basin,NSICT01,JNPA,Normal,Time-series playback step 20
+2026-06-17T10:00:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.955369,72.945526,12,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.955089,72.946642,13,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.954810,72.947759,14,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.954531,72.948875,12,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.954252,72.949991,13,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.953973,72.951108,14,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.953694,72.952224,12,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.953415,72.953340,13,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.953136,72.954457,14,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.952857,72.955573,12,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.952578,72.956690,13,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.952299,72.957806,14,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.952019,72.958922,12,104,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.951803,72.960052,13,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.951591,72.961183,14,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.951379,72.962314,12,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.951166,72.963445,13,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.950954,72.964576,14,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.950742,72.965707,12,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V004,EVER LUMINA,9456784,419001114,Container Vessel,18.950530,72.966838,13,101,Inner Harbor,NSIGT01,JNPA,Normal,Time-series playback step 20
+2026-06-17T10:00:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.947630,72.929480,6,104,Anchorage,GTI01,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.946566,72.928755,7,233,Anchorage,GTI01,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.945310,72.927080,8,233,Anchorage,GTI01,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.944054,72.925405,6,233,Anchorage,GTI01,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.943037,72.923665,7,276,Anchorage,GTI01,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.943268,72.921585,8,276,Anchorage,GTI01,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.943500,72.919504,6,276,Anchorage,GTI01,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.943731,72.917424,7,276,Anchorage,GTI01,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.943962,72.915343,8,276,Anchorage,GTI01,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.945385,72.913934,6,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.947045,72.912658,7,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.948704,72.911382,8,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.950363,72.910105,6,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.952022,72.908829,7,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.953682,72.907553,8,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.955341,72.906276,6,322,Anchorage,GTI01,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.957000,72.905000,7,117,Anchorage,GTI01,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.956064,72.906872,8,117,Anchorage,GTI01,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.955128,72.908745,6,117,Anchorage,GTI01,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V005,APL CORONA,9456785,419001115,Container Vessel,18.954192,72.910617,7,117,Anchorage,GTI01,JNPA,Normal,Time-series playback step 20
+2026-06-17T10:00:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948905,72.959144,8,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 1
+2026-06-17T10:01:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948834,72.959989,9,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 2
+2026-06-17T10:02:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948764,72.960833,10,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 3
+2026-06-17T10:03:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948694,72.961677,8,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 4
+2026-06-17T10:04:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948623,72.962522,9,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 5
+2026-06-17T10:05:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948553,72.963366,10,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 6
+2026-06-17T10:06:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948482,72.964210,8,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 7
+2026-06-17T10:07:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948412,72.965055,9,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 8
+2026-06-17T10:08:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948342,72.965899,10,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 9
+2026-06-17T10:09:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948271,72.966743,8,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 10
+2026-06-17T10:10:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948201,72.967588,9,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 11
+2026-06-17T10:11:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948131,72.968432,10,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 12
+2026-06-17T10:12:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.948060,72.969276,8,95,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 13
+2026-06-17T10:13:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950980,72.946119,9,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 14
+2026-06-17T10:14:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950841,72.946955,10,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 15
+2026-06-17T10:15:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950702,72.947791,8,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 16
+2026-06-17T10:16:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950562,72.948627,9,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 17
+2026-06-17T10:17:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950423,72.949462,10,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 18
+2026-06-17T10:18:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950284,72.950298,8,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 19
+2026-06-17T10:19:00Z,V006,OOCL SHANGHAI,9456786,419001116,Container Vessel,18.950144,72.951134,9,99,Berth Pocket,GTI02,JNPA,Normal,Time-series playback step 20`;
+
+    var app = {
+        frames: [],
+        frameIndex: 0,
+        byVessel: {},
+        activeMarkerIds: [],
+        activeTrailIds: [],
+        selectedShipId: null,
+        playbackHandle: null,
+        container: null,
+        statusBar: null,
+        trails: {}
+    };
+
+    function safe(v) { return (v === undefined || v === null || v === '') ? '-' : String(v); }
+
+    function esc(s) {
+        return safe(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // -----------------------------------------------------
+    // Helper dynamically extracted from vesselInfo.js
+    // -----------------------------------------------------
+    function formatKey(key) {
+        key = key.replace(/_/g, ' ');
+        return key.charAt(0).toUpperCase() + key.slice(1);
+    }
+
+    function parseCsv(text) {
+        var lines = text.replace(/\r/g, '').trim().split('\n');
+        if (!lines.length) { return []; }
+        var headers = lines[0].split(',').map(function (h) { return h.trim(); });
+        return lines.slice(1).map(function (line) {
+            var parts = line.split(',');
+            var obj = {};
+            headers.forEach(function (h, idx) { obj[h] = (parts[idx] || '').trim(); });
+            obj.latitude = parseFloat(obj.latitude);
+            obj.longitude = parseFloat(obj.longitude);
+            return obj;
+        });
+    }
+
+    function groupFrames(rows) {
+        var bucket = {};
+        rows.forEach(function (r) {
+            var ts = r.timestamp_utc;
+            if (!bucket[ts]) { bucket[ts] = []; }
+            bucket[ts].push(r);
+        });
+        return Object.keys(bucket).sort().map(function (ts) {
+            return { timestamp: ts, vessels: bucket[ts] };
+        });
+    }
+
+    function removeContent(id) {
+        if (!id) { return; }
+        PlatformAPI.publish('3DEXPERIENCity.RemoveContent', id);
+    }
+
+    function clearMapObjects() {
+        app.activeMarkerIds.forEach(removeContent);
+        app.activeMarkerIds = [];
+        app.activeTrailIds.forEach(removeContent);
+        app.activeTrailIds = [];
+    }
+
+    function addMarker(ship) {
+        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+        app.activeMarkerIds.push(markerId);
+        
+        // -----------------------------------------------------
+        // SEAMLESS INTEGRATION: Removed 'description' from layer
+        // This ensures attributes DO NOT pop up on the 3D screen
+        // -----------------------------------------------------
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: { x: ship.longitude, y: ship.latitude },
+            layer: {
+                id: markerId,
+                name: ship.vessel_name
+            },
+            render: {
+                style: 'icon',
+                color: '#D5E8F2',
+                iconName: 'transportation-boat'
+            },
+            options: {
+                projection: { from: 'WGS84' }
+            }
+        });
+    }
+
+    function addTrail(ship) {
+        if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
+            return;
+        }
+        var trailId = CONFIG.TRAIL_PREFIX + ship.vessel_id;
+        app.activeTrailIds.push(trailId);
+        PlatformAPI.publish('3DEXPERIENCity.AddLine', {
+            json: [{
+                type: 'LineString',
+                properties: { STRID: ship.vessel_id },
+                coordinates: app.trails[ship.vessel_id].map(function (p) { return [p.lon, p.lat]; })
+            }],
+            layer: {
+                id: trailId,
+                name: trailId,
+                attributeMapping: { STRID: 'id' }
+            },
+            render: {
+                color: '#4A90E2',
+                lineWidth: 2
+            },
+            options: {
+                projection: { from: 'WGS84' }
+            }
+        });
+    }
+
+    // -----------------------------------------------------
+    // Blended info generation logic from vesselInfo.js
+    // dynamically renders all keys of the CSV
+    // -----------------------------------------------------
+    function renderDetail(ship) {
+        app.container.empty();
+        
+        var wrapper = UWA.createElement('div', {
+            styles: { fontFamily: 'Arial,sans-serif' }
+        }).inject(app.container);
+        
+        UWA.createElement('h2', {
+            text: ship.vessel_name || 'Vessel Information',
+            styles: { margin: '0 0 8px 0', color: '#0B5CAB' }
+        }).inject(wrapper);
+
+        var grid = UWA.createElement('div', {
+            styles: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }
+        }).inject(wrapper);
+
+        Object.keys(ship).forEach(function (key) {
+            if (key !== 'vessel_name') {
+                UWA.createElement('div', {
+                    html: '<b>' + formatKey(key) + ':</b> ' + esc(ship[key])
+                }).inject(grid);
+            }
+        });
+        
+        UWA.createElement('div', {
+            text: 'Movement is driven by time-series CSV playback, not simulated route generation.',
+            styles: { marginTop: '15px', color: '#666', fontStyle: 'italic' }
+        }).inject(wrapper);
+    }
+
+    function renderDefault() {
+        app.container.empty();
+        UWA.createElement('div', {
+            text: 'Time-series playback active. Click a vessel marker to view current frame details directly in this panel.',
+            styles: { color: '#666', padding: '6px 0', fontFamily: 'Arial,sans-serif' }
+        }).inject(app.container);
+    }
+
+    function renderFrame(frame) {
+        clearMapObjects();
+        frame.vessels.forEach(function (ship) {
+            if (!app.trails[ship.vessel_id]) { app.trails[ship.vessel_id] = []; }
+            app.trails[ship.vessel_id].push({ lon: ship.longitude, lat: ship.latitude });
+            if (app.trails[ship.vessel_id].length > CONFIG.TRAIL_LENGTH) {
+                app.trails[ship.vessel_id].shift();
+            }
+            app.byVessel[ship.vessel_id] = ship;
+            addMarker(ship);
+            addTrail(ship);
+        });
+
+        app.statusBar.setText('Playback time: ' + frame.timestamp + ' | Frame ' + (app.frameIndex + 1) + ' of ' + app.frames.length);
+
+        if (app.selectedShipId && app.byVessel[app.selectedShipId]) {
+            renderDetail(app.byVessel[app.selectedShipId]);
+        }
+    }
+
+    function startPlayback() {
+        if (app.playbackHandle) { window.clearInterval(app.playbackHandle); }
+        app.playbackHandle = window.setInterval(function () {
+            app.frameIndex = (app.frameIndex + 1) % app.frames.length;
+            renderFrame(app.frames[app.frameIndex]);
+        }, CONFIG.PLAYBACK_INTERVAL_MS);
+    }
+
+    function subscribeSelection() {
+        PlatformAPI.subscribe('3DEXPERIENCity.OnItemSelect', function () {
+            Promise.resolve().then(function () {
+                return new Promise(function (resolve) {
+                    PlatformAPI.publish('3DEXPERIENCity.GetSelectedItems');
+                    PlatformAPI.subscribe('3DEXPERIENCity.GetSelectedItemsReturn', function (infos) {
+                        PlatformAPI.unsubscribe('3DEXPERIENCity.GetSelectedItemsReturn');
+                        resolve(infos);
+                    });
+                });
+            }).then(function (infos) {
+                if (!infos || !infos.length) { return; }
+                
+                var selected;
+                if (infos.data && infos.data.length > 0) {
+                    selected = infos.data[infos.data.length - 1];
+                } else if (infos.length > 0) {
+                    selected = infos[0];
+                }
+                
+                if (!selected) return;
+                
+                var props = selected.properties || selected || {};
+                var id = String(props.id || props.STRID || '').replace(CONFIG.MARKER_PREFIX, '');
+                
+                // Fallback check matching logic for flexible integration
+                if (!app.byVessel[id]) {
+                    var foundShip = null;
+                    Object.keys(app.byVessel).forEach(function(vid) {
+                        if (app.byVessel[vid].vessel_name === id || app.byVessel[vid].vessel_id === id) {
+                            foundShip = app.byVessel[vid];
+                        }
+                    });
+                    if (foundShip) id = foundShip.vessel_id;
+                }
+
+                if (app.byVessel[id]) {
+                    app.selectedShipId = id;
+                    renderDetail(app.byVessel[id]);
+                }
+            });
+        });
+        
+        PlatformAPI.subscribe('3DEXPERIENCity.OnItemDeselect', function () {
+            app.selectedShipId = null;
+            renderDefault();
+        });
+    }
+
+    function initUi() {
+        widget.body.empty();
+        var wrap = UWA.createElement('div', {
+            styles: { padding: '12px', fontFamily: 'Arial,sans-serif' }
+        }).inject(widget.body);
+
+        UWA.createElement('h1', {
+            text: 'JNPA Integrated Vessel Tracking',
+            styles: { color: '#0B5CAB', fontSize: '20px', margin: '0 0 8px 0' }
+        }).inject(wrap);
+
+        app.statusBar = UWA.createElement('div', {
+            text: 'Initializing...',
+            styles: { color: '#666', marginBottom: '10px' }
+        }).inject(wrap);
+
+        app.container = UWA.createElement('div').inject(wrap);
+    }
+
+    function onLoad() {
+        initUi();
+        subscribeSelection();
+        
+        try {
+            var rows = parseCsv(CSV_DATA);
+            app.frames = groupFrames(rows);
+            app.frameIndex = 0;
+            app.byVessel = {};
+            app.trails = {};
+            renderDefault();
+            
+            if (app.frames.length > 0) {
+                renderFrame(app.frames[0]);
+                startPlayback();
+            } else {
+                app.statusBar.setText('No valid data found in CSV.');
+            }
+        } catch (err) {
+            app.statusBar.setText('Error initializing data');
+            app.statusBar.setStyle('color', '#C0392B');
+        }
+    }
+
+    widget.addEvent('onLoad', onLoad);
+    return app;
+});
