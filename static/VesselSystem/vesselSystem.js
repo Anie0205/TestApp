@@ -132,15 +132,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
-    // ==========================================
-    // 📌 UPDATED: addMarker WITH SVG PICTURE
-    // ==========================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
         var stage = getVesselStage(ship);
 
+        // We use the 'arrow' style which is native, trusted, and pointy like your reference image
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
             position: { 
@@ -153,20 +151,18 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 name: ship.vessel_name
             },
             render: {
-                style: 'picture',
-                url: getBoatIconUrl(stage.color), // Pass our dynamically colored SVG here
-                width: 24,  // Adjust size if needed
-                height: 32,
-                heading: ship.heading_deg || 0 // Rotates the bow to point forward!
+                style: 'arrow',          // This is the native shape that looks like your reference image
+                color: stage.color,      // Dynamically colored by your route logic
+                heading: ship.heading_deg || 0, // Ships will now point in the direction of travel
+                size: { length: 350 }    // Adjust this to get the size exactly like the reference
             },
             options: {
                 projection: { from: 'WGS84' },
-                stem: false, // Removes the map pin stem
-                altitudeMode: 'clampToGround' // Keeps the boat flat against the water
+                stem: false,              // No floating lines
+                altitudeMode: 'clampToGround' 
             }
         });
     }
-
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
