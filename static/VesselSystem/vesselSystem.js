@@ -20,8 +20,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
     var CONFIG = {
         CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
-        // Update this URL to exactly match the name of the PNG you upload to Vercel!
-        CUSTOM_ICON_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png', 
+        
+        // 🚀 Point this directly to your newly uploaded .wrl file!
+        CUSTOM_3D_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/ship.wrl', 
+        
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
@@ -53,7 +55,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
 
-    // Dynamic Color Logic
     function getVesselStage(ship) {
         var text = ((ship.remarks || '') + ' ' + (ship.route_segment || '')).toLowerCase();
 
@@ -121,46 +122,39 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
-    function resolveMarkerStyle(ship) {
-        var style = ICON_STYLE[ship.icon_key] || ICON_STYLE[ship.vessel_type] || ICON_STYLE.Default;
-        return {
-            iconName: style.iconName || CONFIG.DEFAULT_ICON_NAME,
-            color: style.color || '#0EA5E9'
-        };
-    }
-    
+    // ===============================================
+    // 🚢 CUSTOM 3D VRML MODEL LOGIC
+    // ===============================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
-        var markerStyle = resolveMarkerStyle(ship);
         app.activeMarkerIds.push(markerId);
+        
+        var stage = getVesselStage(ship);
+
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { x: ship.longitude, y: ship.latitude },
+            position: { 
+                x: ship.longitude, 
+                y: ship.latitude, 
+                z: 0 // Set on the water level
+            },
             layer: {
                 id: markerId,
-                name: ship.vessel_name,
-                description:
-                    '<b>Vessel:</b> ' + esc(ship.vessel_name) + '<br>' +
-                    '<b>MMSI:</b> ' + esc(ship.mmsi) + '<br>' +
-                    '<b>IMO:</b> ' + esc(ship.imo) + '<br>' +
-                    '<b>Type:</b> ' + esc(ship.vessel_type) + '<br>' +
-                    '<b>Icon Class:</b> ' + esc(ship.icon_key || ship.vessel_type || 'Default') + '<br>' +
-                    '<b>Time:</b> ' + esc(ship.timestamp_utc) + '<br>' +
-                    '<b>Speed:</b> ' + esc(ship.speed_knots) + ' kn<br>' +
-                    '<b>Heading:</b> ' + esc(ship.heading_deg) + '°<br>' +
-                    '<b>Route Segment:</b> ' + esc(ship.route_segment) + '<br>' +
-                    '<b>Berth:</b> ' + esc(ship.berth_assignment)
+                name: ship.vessel_name
             },
             render: {
-                style: 'icon',
-                color: markerStyle.color,
-                iconName: markerStyle.iconName
+                style: 'model',               // API flag for 3D objects
+                url: CONFIG.CUSTOM_3D_URL,    // Path to your .wrl file
+                heading: ship.heading_deg || 0, // Rotates the .wrl to face the direction of travel!
+                color: stage.color,           // Attempts to apply a material tint to the .wrl
+                scale: 1.0                    // IMPORTANT: If your ship looks huge or tiny, adjust this (e.g., 0.01 or 100)
             },
             options: {
                 projection: { from: 'WGS84' }
             }
         });
     }
+
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
