@@ -39,9 +39,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         trails: {}
     };
 
-    // ==========================================
-    // UTILITY FUNCTIONS
-    // ==========================================
     function safe(v) { return (v === undefined || v === null || v === '') ? '-' : String(v); }
 
     function esc(s) {
@@ -54,59 +51,35 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
 
-    // ==========================================
-    // 🎨 DYNAMIC ROUTE STAGE COLORING
-    // ==========================================
     function getVesselStage(ship) {
         var text = ((ship.remarks || '') + ' ' + (ship.route_segment || '')).toLowerCase();
 
         if (text.indexOf('moor') !== -1 || text.indexOf('secure') !== -1 || text.indexOf('adjust') !== -1 || text.indexOf('berth') !== -1) {
-            return { label: 'Berthing / Moored', color: '#3498DB' }; // Blue
+            return { label: 'Berthing / Moored', color: '#3498DB' }; 
         }
         if (text.indexOf('outbound') !== -1 || text.indexOf('depart') !== -1 || text.indexOf('leave') !== -1) {
-            return { label: 'Departing / Outbound', color: '#E67E22' }; // Orange
+            return { label: 'Departing / Outbound', color: '#E67E22' }; 
         }
         if (text.indexOf('inbound') !== -1 || text.indexOf('enter') !== -1 || text.indexOf('approach') !== -1) {
-            return { label: 'Arriving / Inbound', color: '#2ECC71' }; // Green
+            return { label: 'Arriving / Inbound', color: '#2ECC71' }; 
         }
-        return { label: 'In Transit', color: '#9B59B6' }; // Purple
+        return { label: 'In Transit', color: '#9B59B6' }; 
     }
 
     // ==========================================
-    // 🟢 DYNAMIC 3D SHAPE CHOOSER (Speed-Based)
+    // ⛵ NEW: INLINE SVG GENERATOR
     // ==========================================
-    function getDynamicShape(ship, stageColor) {
-        var speed = parseFloat(ship.speed_knots) || 0;
-
-        if (speed > 8) {
-            // Fast ships render as a 3D Arrow pointing forward
-            return {
-                style: 'arrow',
-                color: stageColor,
-                size: { length: 300 } // Adjust length depending on your zoom scale
-            };
-        } 
-        else if (speed <= 2) {
-            // Mooring/Stopped ships render as a 3D Sphere
-            return {
-                style: 'sphere',
-                color: stageColor,
-                size: { radius: 100 } // Adjust radius depending on your zoom scale
-            };
-        } 
-        else {
-            // Normal transit uses the reliable native 3D Boat icon
-            return {
-                style: 'icon',
-                color: stageColor,
-                iconName: 'transportation-boat'
-            };
-        }
+    // This creates a traditional 2D AIS vessel shape in memory, completely bypassing CORS!
+    function getBoatIconUrl(color) {
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">' +
+                  '' +
+                  '<path d="M15 2 L26 12 L24 38 L6 38 L4 12 Z" fill="' + color + '" stroke="#ffffff" stroke-width="2"/>' +
+                  '</svg>';
+        
+        // Convert to a Data URI that the 3DEXPERIENCE map engine can read natively
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
 
-    // ==========================================
-    // DATA FETCHING & PARSING
-    // ==========================================
     function apiGetText(url) {
         return new Promise(function (resolve, reject) {
             WAFData.proxifiedRequest(url, {
@@ -147,9 +120,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    // ==========================================
-    // MAP RENDERING LOGIC
-    // ==========================================
     function removeContent(id) {
         if (!id) { return; }
         PlatformAPI.publish('3DEXPERIENCity.RemoveContent', id);
@@ -162,12 +132,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
+    // ==========================================
+    // 📌 UPDATED: addMarker WITH SVG PICTURE
+    // ==========================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
         var stage = getVesselStage(ship);
-        var dynamicRenderProps = getDynamicShape(ship, stage.color);
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
@@ -180,9 +152,17 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 id: markerId,
                 name: ship.vessel_name
             },
-            render: dynamicRenderProps, 
+            render: {
+                style: 'picture',
+                url: getBoatIconUrl(stage.color), // Pass our dynamically colored SVG here
+                width: 24,  // Adjust size if needed
+                height: 32,
+                heading: ship.heading_deg || 0 // Rotates the bow to point forward!
+            },
             options: {
-                projection: { from: 'WGS84' }
+                projection: { from: 'WGS84' },
+                stem: false, // Removes the map pin stem
+                altitudeMode: 'clampToGround' // Keeps the boat flat against the water
             }
         });
     }
@@ -217,43 +197,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    function renderFrame(frame) {
-        clearMapObjects();
-        frame.vessels.forEach(function (ship) {
-            // Manage trail history
-            if (!app.trails[ship.vessel_id]) { app.trails[ship.vessel_id] = []; }
-            app.trails[ship.vessel_id].push({ lon: ship.longitude, lat: ship.latitude });
-            if (app.trails[ship.vessel_id].length > CONFIG.TRAIL_LENGTH) {
-                app.trails[ship.vessel_id].shift();
-            }
-            
-            // Store current state
-            app.byVessel[ship.vessel_id] = ship; 
-            
-            // Draw objects
-            addMarker(ship);
-            addTrail(ship);
-        });
-
-        app.statusBar.setText('Playback time: ' + frame.timestamp + ' | Frame ' + (app.frameIndex + 1) + ' of ' + app.frames.length);
-
-        // Update detail panel if a ship is currently selected
-        if (app.selectedShipId && app.byVessel[app.selectedShipId]) {
-            renderDetail(app.byVessel[app.selectedShipId]);
-        }
-    }
-
-    function startPlayback() {
-        if (app.playbackHandle) { window.clearInterval(app.playbackHandle); }
-        app.playbackHandle = window.setInterval(function () {
-            app.frameIndex = (app.frameIndex + 1) % app.frames.length;
-            renderFrame(app.frames[app.frameIndex]);
-        }, CONFIG.PLAYBACK_INTERVAL_MS);
-    }
-
-    // ==========================================
-    // UIKIT WIDGET PANEL LOGIC
-    // ==========================================
     function renderDetail(ship) {
         app.container.empty();
         
@@ -308,9 +251,36 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }).inject(defaultWrap);
     }
 
-    // ==========================================
-    // INTERACTIVITY & INITIALIZATION
-    // ==========================================
+    function renderFrame(frame) {
+        clearMapObjects();
+        frame.vessels.forEach(function (ship) {
+            if (!app.trails[ship.vessel_id]) { app.trails[ship.vessel_id] = []; }
+            app.trails[ship.vessel_id].push({ lon: ship.longitude, lat: ship.latitude });
+            if (app.trails[ship.vessel_id].length > CONFIG.TRAIL_LENGTH) {
+                app.trails[ship.vessel_id].shift();
+            }
+            
+            app.byVessel[ship.vessel_id] = ship; 
+            
+            addMarker(ship);
+            addTrail(ship);
+        });
+
+        app.statusBar.setText('Playback time: ' + frame.timestamp + ' | Frame ' + (app.frameIndex + 1) + ' of ' + app.frames.length);
+
+        if (app.selectedShipId && app.byVessel[app.selectedShipId]) {
+            renderDetail(app.byVessel[app.selectedShipId]);
+        }
+    }
+
+    function startPlayback() {
+        if (app.playbackHandle) { window.clearInterval(app.playbackHandle); }
+        app.playbackHandle = window.setInterval(function () {
+            app.frameIndex = (app.frameIndex + 1) % app.frames.length;
+            renderFrame(app.frames[app.frameIndex]);
+        }, CONFIG.PLAYBACK_INTERVAL_MS);
+    }
+
     function subscribeSelection() {
         PlatformAPI.subscribe('3DEXPERIENCity.OnItemSelect', function () {
             Promise.resolve().then(function () {
