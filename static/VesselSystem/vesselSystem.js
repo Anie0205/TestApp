@@ -168,6 +168,21 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }
     });
 }
+    function updateMarker(ship) {
+    var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+
+    // Update the marker's position and rotation
+    PlatformAPI.publish('3DEXPERIENCity.UpdatePictureMarker', {
+        widgetID: widget.id,
+        markerId: markerId,
+        position: {
+            x: ship.longitude,
+            y: ship.latitude,
+            z: 0
+        },
+        rotation: ship.heading_deg || 0
+    });
+}
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
