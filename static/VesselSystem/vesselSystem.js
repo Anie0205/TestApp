@@ -123,12 +123,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeMarkerIds.push(markerId);
         
         var stage = getVesselStage(ship);
-
-        // Fallback logic: Use the 3D model if cad_model_id exists, otherwise use the 2D icon
         var hasModel = !!ship.cad_model_id && ship.cad_model_id !== '-';
+        
+        // Updated 3DEXPERIENCity render configuration
         var renderConfig = hasModel ? {
-            style: 'model',
-            modelId: ship.cad_model_id,
+            style: 'model', 
+            assetId: ship.cad_model_id, // We will pass the Physical ID here
+            cspace: 'City Content',     // Telling it exactly where to look
+            tenant: widget.getValue ? widget.getValue('x3dPlatformId') : '',
             color: stage.color, 
             heading: ship.heading_deg || 0,
             scale: 1.0 
@@ -140,18 +142,16 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { 
-                x: ship.longitude, 
-                y: ship.latitude,
-                z: 0 // Explicitly set Z to 0 so the hull meets the water
-            },
+            position: { x: ship.longitude, y: ship.latitude, z: 0 },
             layer: {
                 id: markerId,
                 name: ship.vessel_name
             },
             render: renderConfig,
             options: {
-                projection: { from: 'WGS84' }
+                projection: { from: 'WGS84' },
+                stem: false,                 // Removes the floating vertical line
+                altitudeMode: 'clampToGround' // Forces the model to sit on the water surface
             }
         });
     }
