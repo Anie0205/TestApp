@@ -20,7 +20,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
     var CONFIG = {
         // Restored original CSV path
-        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/vesselSystem/jnpa_vessel_timeseries.csv',
+        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
