@@ -46,24 +46,26 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function formatKey(key) {
-        if (!key) return '';
         key = key.replace(/_/g, ' ');
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
 
+    // ==========================================
+    // 🎨 NEW: Dynamic Color Categorization Logic
+    // ==========================================
     function getVesselStage(ship) {
         var text = ((ship.remarks || '') + ' ' + (ship.route_segment || '')).toLowerCase();
 
         if (text.indexOf('moor') !== -1 || text.indexOf('secure') !== -1 || text.indexOf('adjust') !== -1 || text.indexOf('berth') !== -1) {
-            return { label: 'Berthing / Moored', color: '#3498DB' }; 
+            return { label: 'Berthing / Moored', color: '#3498DB' }; // Blue
         }
         if (text.indexOf('outbound') !== -1 || text.indexOf('depart') !== -1 || text.indexOf('leave') !== -1) {
-            return { label: 'Departing / Outbound', color: '#E67E22' }; 
+            return { label: 'Departing / Outbound', color: '#E67E22' }; // Orange
         }
         if (text.indexOf('inbound') !== -1 || text.indexOf('enter') !== -1 || text.indexOf('approach') !== -1) {
-            return { label: 'Arriving / Inbound', color: '#2ECC71' }; 
+            return { label: 'Arriving / Inbound', color: '#2ECC71' }; // Green
         }
-        return { label: 'In Transit', color: '#9B59B6' }; 
+        return { label: 'In Transit', color: '#9B59B6' }; // Purple
     }
 
     function apiGetText(url) {
@@ -88,7 +90,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             headers.forEach(function (h, idx) { obj[h] = (parts[idx] || '').trim(); });
             obj.latitude = parseFloat(obj.latitude);
             obj.longitude = parseFloat(obj.longitude);
-            if (obj.heading_deg) obj.heading_deg = parseFloat(obj.heading_deg);
             return obj;
         }).filter(function(obj) { return obj && !isNaN(obj.latitude); });
     }
@@ -122,36 +123,23 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
+        // Grab the dynamic color for this specific frame
         var stage = getVesselStage(ship);
-        var hasModel = !!ship.cad_model_id && ship.cad_model_id !== '-';
-        
-        // Updated 3DEXPERIENCity render configuration
-        var renderConfig = hasModel ? {
-            style: 'model', 
-            assetId: ship.cad_model_id, // We will pass the Physical ID here
-            cspace: 'City Content',     // Telling it exactly where to look
-            tenant: widget.getValue ? widget.getValue('x3dPlatformId') : '',
-            color: stage.color, 
-            heading: ship.heading_deg || 0,
-            scale: 1.0 
-        } : {
-            style: 'icon',
-            color: stage.color, 
-            iconName: 'transportation-boat'
-        };
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { x: ship.longitude, y: ship.latitude, z: 0 },
+            position: { x: ship.longitude, y: ship.latitude },
             layer: {
                 id: markerId,
                 name: ship.vessel_name
             },
-            render: renderConfig,
+            render: {
+                style: 'icon',
+                color: stage.color, // Apply dynamic color
+                iconName: 'transportation-boat'
+            },
             options: {
-                projection: { from: 'WGS84' },
-                stem: false,                 // Removes the floating vertical line
-                altitudeMode: 'clampToGround' // Forces the model to sit on the water surface
+                projection: { from: 'WGS84' }
             }
         });
     }
@@ -177,7 +165,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 attributeMapping: { STRID: 'id' }
             },
             render: {
-                color: stage.color,
+                color: stage.color, // Trails will match the ship's current color!
                 lineWidth: 2
             },
             options: {
@@ -195,11 +183,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         
         var stage = getVesselStage(ship);
 
+        // Vessel Name
         UWA.createElement('h2', {
             text: ship.vessel_name || 'Vessel Information',
             styles: { margin: '0 0 5px 0', color: '#0B5CAB' }
         }).inject(wrapper);
 
+        // Dynamic Status Badge
         UWA.createElement('div', {
             html: '<span style="background-color:' + stage.color + '; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 12px;">' + stage.label + '</span>'
         }).inject(wrapper);
@@ -209,8 +199,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }).inject(wrapper);
 
         Object.keys(ship).forEach(function (key) {
-            // Hide some backend properties from the detail pane
-            if (key !== 'vessel_name' && key !== 'cad_model_id' && ship[key] !== undefined) {
+            if (key !== 'vessel_name' && ship[key] !== undefined) {
                 UWA.createElement('div', {
                     html: '<b>' + formatKey(key) + ':</b> ' + esc(ship[key])
                 }).inject(grid);
@@ -229,6 +218,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             styles: { color: '#666', padding: '6px 0 12px 0' }
         }).inject(defaultWrap);
 
+        // Map Legend
         UWA.createElement('div', {
             html: '<b>Status Legend:</b><br/>' +
                   '<div style="margin-top: 5px; line-height: 1.6;">' +
@@ -332,7 +322,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }).inject(wrap);
 
         app.statusBar = UWA.createElement('div', {
-            text: 'Loading CAD Assets & Data...',
+            text: 'Initializing...',
             styles: { color: '#666', marginBottom: '10px', fontSize: '12px' }
         }).inject(wrap);
 
