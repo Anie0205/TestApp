@@ -1,6 +1,6 @@
 /*global window, widget, define*/
 
-define('vesselSystem',
+define('VesselSystem',
 [
     'UWA/Core',
     'UWA/Promise',
@@ -19,7 +19,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     'use strict';
 
     var CONFIG = {
-        // Restored original CSV path
         CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
@@ -30,7 +29,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     var app = {
         frames: [],
         frameIndex: 0,
-        byVessel: {},
+        byVessel: {}, // Only holds the 6 moving ships
         activeMarkerIds: [],
         activeTrailIds: [],
         selectedShipId: null,
@@ -46,17 +45,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return safe(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    // -----------------------------------------------------
-    // Helper dynamically extracted from vesselInfo.js
-    // -----------------------------------------------------
     function formatKey(key) {
         key = key.replace(/_/g, ' ');
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
 
-    // -----------------------------------------------------
-    // Network Fetcher from vesselSystem.js
-    // -----------------------------------------------------
     function apiGetText(url) {
         return new Promise(function (resolve, reject) {
             WAFData.proxifiedRequest(url, {
@@ -73,19 +66,21 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         if (!lines.length) { return []; }
         var headers = lines[0].split(',').map(function (h) { return h.trim(); });
         return lines.slice(1).map(function (line) {
+            if (!line.trim()) return null;
             var parts = line.split(',');
             var obj = {};
             headers.forEach(function (h, idx) { obj[h] = (parts[idx] || '').trim(); });
             obj.latitude = parseFloat(obj.latitude);
             obj.longitude = parseFloat(obj.longitude);
             return obj;
-        });
+        }).filter(function(obj) { return obj && !isNaN(obj.latitude); });
     }
 
     function groupFrames(rows) {
         var bucket = {};
         rows.forEach(function (r) {
             var ts = r.timestamp_utc;
+            if (!ts) return;
             if (!bucket[ts]) { bucket[ts] = []; }
             bucket[ts].push(r);
         });
@@ -107,13 +102,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function addMarker(ship) {
-        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id; // e.g., VESSEL_V001
         app.activeMarkerIds.push(markerId);
         
-        // -----------------------------------------------------
-        // SEAMLESS INTEGRATION: No 'description' attribute 
-        // ensures attributes DO NOT pop up on the 3D screen
-        // -----------------------------------------------------
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
             position: { x: ship.longitude, y: ship.latitude },
@@ -159,10 +150,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    // -----------------------------------------------------
-    // Blended info generation logic from vesselInfo.js
-    // dynamically renders all keys of the CSV
-    // -----------------------------------------------------
     function renderDetail(ship) {
         app.container.empty();
         
@@ -179,24 +166,20 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             styles: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }
         }).inject(wrapper);
 
+        // Dynamically build info layout
         Object.keys(ship).forEach(function (key) {
-            if (key !== 'vessel_name') {
+            if (key !== 'vessel_name' && ship[key] !== undefined) {
                 UWA.createElement('div', {
                     html: '<b>' + formatKey(key) + ':</b> ' + esc(ship[key])
                 }).inject(grid);
             }
         });
-        
-        UWA.createElement('div', {
-            text: 'Movement is driven by time-series CSV playback, not simulated route generation.',
-            styles: { marginTop: '15px', color: '#666', fontStyle: 'italic' }
-        }).inject(wrapper);
     }
 
     function renderDefault() {
         app.container.empty();
         UWA.createElement('div', {
-            text: 'Time-series playback active. Click a vessel marker to view current frame details directly in this panel.',
+            text: 'Playback active. Click any moving vessel to view its details directly in this panel.',
             styles: { color: '#666', padding: '6px 0', fontFamily: 'Arial,sans-serif' }
         }).inject(app.container);
     }
@@ -209,13 +192,17 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             if (app.trails[ship.vessel_id].length > CONFIG.TRAIL_LENGTH) {
                 app.trails[ship.vessel_id].shift();
             }
-            app.byVessel[ship.vessel_id] = ship;
+            
+            // Keep the data dictionary constantly updated with current frame data
+            app.byVessel[ship.vessel_id] = ship; 
+            
             addMarker(ship);
             addTrail(ship);
         });
 
         app.statusBar.setText('Playback time: ' + frame.timestamp + ' | Frame ' + (app.frameIndex + 1) + ' of ' + app.frames.length);
 
+        // If a ship is currently selected, refresh its side panel data automatically
         if (app.selectedShipId && app.byVessel[app.selectedShipId]) {
             renderDetail(app.byVessel[app.selectedShipId]);
         }
@@ -240,34 +227,40 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     });
                 });
             }).then(function (infos) {
-                if (!infos || !infos.length) { return; }
+                if (!infos) return;
                 
+                // Extract selected object based on various return structures
                 var selected;
                 if (infos.data && infos.data.length > 0) {
                     selected = infos.data[infos.data.length - 1];
-                } else if (infos.length > 0) {
-                    selected = infos[0];
+                } else if (Array.isArray(infos) && infos.length > 0) {
+                    selected = infos[infos.length - 1];
+                } else {
+                    selected = infos;
                 }
-                
                 if (!selected) return;
+
+                // Grab the raw string ID
+                var rawId = String(selected.id || (selected.properties && selected.properties.id) || selected.STRID || '');
                 
-                var props = selected.properties || selected || {};
-                var id = String(props.id || props.STRID || '').replace(CONFIG.MARKER_PREFIX, '');
+                // Clean the ID (e.g., changes "VESSEL_V001" back to "V001")
+                var cleanId = rawId.replace(CONFIG.MARKER_PREFIX, '').replace(CONFIG.TRAIL_PREFIX, '');
+
+                var ship = app.byVessel[cleanId];
                 
-                // Fallback check matching logic for flexible integration
-                if (!app.byVessel[id]) {
-                    var foundShip = null;
-                    Object.keys(app.byVessel).forEach(function(vid) {
-                        if (app.byVessel[vid].vessel_name === id || app.byVessel[vid].vessel_id === id) {
-                            foundShip = app.byVessel[vid];
+                // Fallback check against the vessel name just in case
+                if (!ship) {
+                    Object.keys(app.byVessel).forEach(function(key) {
+                        if (app.byVessel[key].vessel_name === rawId) {
+                            ship = app.byVessel[key];
                         }
                     });
-                    if (foundShip) id = foundShip.vessel_id;
                 }
 
-                if (app.byVessel[id]) {
-                    app.selectedShipId = id;
-                    renderDetail(app.byVessel[id]);
+                // Push to UI if matched
+                if (ship) {
+                    app.selectedShipId = ship.vessel_id;
+                    renderDetail(ship);
                 }
             });
         });
@@ -285,7 +278,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }).inject(widget.body);
 
         UWA.createElement('h1', {
-            text: 'JNPA Integrated Vessel Tracking',
+            text: 'Dynamic Vessel Tracking',
             styles: { color: '#0B5CAB', fontSize: '20px', margin: '0 0 8px 0' }
         }).inject(wrap);
 
@@ -301,7 +294,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         initUi();
         subscribeSelection();
         
-        // Restored network fetch chain
         apiGetText(CONFIG.CSV_URL)
             .then(parseCsv)
             .then(groupFrames)
