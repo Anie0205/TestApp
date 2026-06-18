@@ -138,28 +138,25 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         
         var stage = getVesselStage(ship);
 
-        // We use the 'arrow' style which is native, trusted, and pointy like your reference image
+        // We use the native trusted boat icon which the platform allows and respects
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { 
-                x: ship.longitude, 
-                y: ship.latitude, 
-                z: 0 
-            },
+            position: { x: ship.longitude, y: ship.latitude, z: 0 },
             layer: {
                 id: markerId,
                 name: ship.vessel_name
             },
             render: {
-                style: 'arrow',          // This is the native shape that looks like your reference image
-                color: stage.color,      // Dynamically colored by your route logic
-                heading: ship.heading_deg || 0, // Ships will now point in the direction of travel
-                size: { length: 350 }    // Adjust this to get the size exactly like the reference
+                style: 'icon',
+                iconName: 'transportation-boat', // This is a system-trusted icon
+                color: stage.color, 
+                heading: ship.heading_deg || 0, // This natively rotates the icon!
+                size: { width: 32, height: 32 }
             },
             options: {
                 projection: { from: 'WGS84' },
-                stem: false,              // No floating lines
-                altitudeMode: 'clampToGround' 
+                stem: false, 
+                altitudeMode: 'clampToGround'
             }
         });
     }
