@@ -20,6 +20,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
     var CONFIG = {
         CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
+        // Update this URL to exactly match the name of the PNG you upload to Vercel!
+        CUSTOM_ICON_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png', 
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
@@ -46,26 +48,25 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function formatKey(key) {
+        if (!key) return '';
         key = key.replace(/_/g, ' ');
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
 
-    // ==========================================
-    // 🎨 NEW: Dynamic Color Categorization Logic
-    // ==========================================
+    // Dynamic Color Logic
     function getVesselStage(ship) {
         var text = ((ship.remarks || '') + ' ' + (ship.route_segment || '')).toLowerCase();
 
         if (text.indexOf('moor') !== -1 || text.indexOf('secure') !== -1 || text.indexOf('adjust') !== -1 || text.indexOf('berth') !== -1) {
-            return { label: 'Berthing / Moored', color: '#3498DB' }; // Blue
+            return { label: 'Berthing / Moored', color: '#3498DB' }; 
         }
         if (text.indexOf('outbound') !== -1 || text.indexOf('depart') !== -1 || text.indexOf('leave') !== -1) {
-            return { label: 'Departing / Outbound', color: '#E67E22' }; // Orange
+            return { label: 'Departing / Outbound', color: '#E67E22' }; 
         }
         if (text.indexOf('inbound') !== -1 || text.indexOf('enter') !== -1 || text.indexOf('approach') !== -1) {
-            return { label: 'Arriving / Inbound', color: '#2ECC71' }; // Green
+            return { label: 'Arriving / Inbound', color: '#2ECC71' }; 
         }
-        return { label: 'In Transit', color: '#9B59B6' }; // Purple
+        return { label: 'In Transit', color: '#9B59B6' }; 
     }
 
     function apiGetText(url) {
@@ -90,6 +91,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             headers.forEach(function (h, idx) { obj[h] = (parts[idx] || '').trim(); });
             obj.latitude = parseFloat(obj.latitude);
             obj.longitude = parseFloat(obj.longitude);
+            if (obj.heading_deg) obj.heading_deg = parseFloat(obj.heading_deg);
             return obj;
         }).filter(function(obj) { return obj && !isNaN(obj.latitude); });
     }
@@ -119,27 +121,33 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
+    // ===============================================
+    // 🖼️ CUSTOM PNG LOGIC
+    // ===============================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
-        // Grab the dynamic color for this specific frame
         var stage = getVesselStage(ship);
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { x: ship.longitude, y: ship.latitude },
+            position: { x: ship.longitude, y: ship.latitude, z: 0 },
             layer: {
                 id: markerId,
                 name: ship.vessel_name
             },
             render: {
-                style: 'icon',
-                color: stage.color, // Apply dynamic color
-                iconName: 'transportation-boat'
+                style: 'picture', // Tells the API to use an external image file
+                url: CONFIG.CUSTOM_ICON_URL,
+                width: 48,  // You can increase/decrease this to change icon size
+                height: 48,
+                color: stage.color // Depending on the map engine, this might dynamically tint a white PNG!
             },
             options: {
-                projection: { from: 'WGS84' }
+                projection: { from: 'WGS84' },
+                stem: false, // Removes the floating stick
+                altitudeMode: 'clampToGround' // Keeps the PNG glued to the water
             }
         });
     }
@@ -165,7 +173,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 attributeMapping: { STRID: 'id' }
             },
             render: {
-                color: stage.color, // Trails will match the ship's current color!
+                color: stage.color,
                 lineWidth: 2
             },
             options: {
@@ -183,13 +191,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         
         var stage = getVesselStage(ship);
 
-        // Vessel Name
         UWA.createElement('h2', {
             text: ship.vessel_name || 'Vessel Information',
             styles: { margin: '0 0 5px 0', color: '#0B5CAB' }
         }).inject(wrapper);
 
-        // Dynamic Status Badge
         UWA.createElement('div', {
             html: '<span style="background-color:' + stage.color + '; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 12px;">' + stage.label + '</span>'
         }).inject(wrapper);
@@ -199,7 +205,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }).inject(wrapper);
 
         Object.keys(ship).forEach(function (key) {
-            if (key !== 'vessel_name' && ship[key] !== undefined) {
+            if (key !== 'vessel_name' && key !== 'cad_model_id' && ship[key] !== undefined) {
                 UWA.createElement('div', {
                     html: '<b>' + formatKey(key) + ':</b> ' + esc(ship[key])
                 }).inject(grid);
@@ -218,7 +224,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             styles: { color: '#666', padding: '6px 0 12px 0' }
         }).inject(defaultWrap);
 
-        // Map Legend
         UWA.createElement('div', {
             html: '<b>Status Legend:</b><br/>' +
                   '<div style="margin-top: 5px; line-height: 1.6;">' +
