@@ -133,56 +133,32 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function addMarker(ship) {
-    // Generate a unique ID for the marker
-    var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
-    app.activeMarkerIds.push(markerId);
+        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+        app.activeMarkerIds.push(markerId);
+        
+        var stage = getVesselStage(ship);
 
-    // Get the vessel stage (for color or other properties)
-    var stage = getVesselStage(ship);
-
-    // Publish a command to create a picture marker
-    PlatformAPI.publish('3DEXPERIENCity.AddPictureMarker', {
-        widgetID: widget.id,
-        position: {
-            x: ship.longitude,
-            y: ship.latitude,
-            z: 0
-        },
-        layer: {
-            id: markerId,
-            name: ship.vessel_name
-        },
-        // Use your custom .png file
-        imageUrl: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png',
-        // Set the size of the marker
-        size: {
-            width: 32,
-            height: 32
-        },
-        // Rotate the marker based on the ship's heading
-        rotation: ship.heading_deg || 0,
-        options: {
-            projection: { from: 'WGS84' },
-            stem: false,
-            altitudeMode: 'clampToGround'
-        }
-    });
-}
-    function updateMarker(ship) {
-    var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
-
-    // Update the marker's position and rotation
-    PlatformAPI.publish('3DEXPERIENCity.UpdatePictureMarker', {
-        widgetID: widget.id,
-        markerId: markerId,
-        position: {
-            x: ship.longitude,
-            y: ship.latitude,
-            z: 0
-        },
-        rotation: ship.heading_deg || 0
-    });
-}
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: { x: ship.longitude, y: ship.latitude, z: 0 },
+            layer: {
+                id: markerId,
+                name: ship.vessel_name
+            },
+            render: {
+                style: 'picture',
+                url: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png', // MUST work in browser tab first!
+                width: 32,
+                height: 32,
+                heading: ship.heading_deg || 0
+            },
+            options: {
+                projection: { from: 'WGS84' },
+                stem: false,
+                altitudeMode: 'clampToGround'
+            }
+        });
+    }
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
