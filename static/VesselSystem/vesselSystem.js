@@ -1,6 +1,6 @@
 /*global window, widget, define*/
 
-define('VesselSystem',
+define('vesselSystem',
 [
     'UWA/Core',
     'UWA/Promise',
