@@ -126,26 +126,33 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // ===============================================
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+        var markerStyle = resolveMarkerStyle(ship);
         app.activeMarkerIds.push(markerId);
-        
-        // Get the dynamic color (Green/Orange/Blue/Purple)
-        var stage = getVesselStage(ship);
-
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: { x: ship.longitude, y: ship.latitude, z: 0 },
+            position: { x: ship.longitude, y: ship.latitude },
             layer: {
                 id: markerId,
-                name: ship.vessel_name
+                name: ship.vessel_name,
+                description:
+                    '<b>Vessel:</b> ' + esc(ship.vessel_name) + '<br>' +
+                    '<b>MMSI:</b> ' + esc(ship.mmsi) + '<br>' +
+                    '<b>IMO:</b> ' + esc(ship.imo) + '<br>' +
+                    '<b>Type:</b> ' + esc(ship.vessel_type) + '<br>' +
+                    '<b>Icon Class:</b> ' + esc(ship.icon_key || ship.vessel_type || 'Default') + '<br>' +
+                    '<b>Time:</b> ' + esc(ship.timestamp_utc) + '<br>' +
+                    '<b>Speed:</b> ' + esc(ship.speed_knots) + ' kn<br>' +
+                    '<b>Heading:</b> ' + esc(ship.heading_deg) + '°<br>' +
+                    '<b>Route Segment:</b> ' + esc(ship.route_segment) + '<br>' +
+                    '<b>Berth:</b> ' + esc(ship.berth_assignment)
             },
             render: {
-                style: 'icon', // Uses the native platform library (100% reliable)
-                color: stage.color, // Applies our dynamic status color
-                iconName: 'transportation-boat' // The exact icon name from your snippet
+                style: 'icon',
+                color: markerStyle.color,
+                iconName: markerStyle.iconName
             },
             options: {
                 projection: { from: 'WGS84' }
-                // Notice we omit 'stem' and 'clampToGround' here so the icon stands up natively
             }
         });
     }
