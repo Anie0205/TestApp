@@ -102,7 +102,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function addMarker(ship) {
-        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id; // e.g., VESSEL_V001
+        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
@@ -166,7 +166,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             styles: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }
         }).inject(wrapper);
 
-        // Dynamically build info layout
         Object.keys(ship).forEach(function (key) {
             if (key !== 'vessel_name' && ship[key] !== undefined) {
                 UWA.createElement('div', {
@@ -193,7 +192,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 app.trails[ship.vessel_id].shift();
             }
             
-            // Keep the data dictionary constantly updated with current frame data
             app.byVessel[ship.vessel_id] = ship; 
             
             addMarker(ship);
@@ -202,7 +200,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         app.statusBar.setText('Playback time: ' + frame.timestamp + ' | Frame ' + (app.frameIndex + 1) + ' of ' + app.frames.length);
 
-        // If a ship is currently selected, refresh its side panel data automatically
         if (app.selectedShipId && app.byVessel[app.selectedShipId]) {
             renderDetail(app.byVessel[app.selectedShipId]);
         }
@@ -229,7 +226,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             }).then(function (infos) {
                 if (!infos) return;
                 
-                // Extract selected object based on various return structures
                 var selected;
                 if (infos.data && infos.data.length > 0) {
                     selected = infos.data[infos.data.length - 1];
@@ -240,15 +236,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 }
                 if (!selected) return;
 
-                // Grab the raw string ID
                 var rawId = String(selected.id || (selected.properties && selected.properties.id) || selected.STRID || '');
-                
-                // Clean the ID (e.g., changes "VESSEL_V001" back to "V001")
                 var cleanId = rawId.replace(CONFIG.MARKER_PREFIX, '').replace(CONFIG.TRAIL_PREFIX, '');
 
                 var ship = app.byVessel[cleanId];
                 
-                // Fallback check against the vessel name just in case
                 if (!ship) {
                     Object.keys(app.byVessel).forEach(function(key) {
                         if (app.byVessel[key].vessel_name === rawId) {
@@ -257,7 +249,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     });
                 }
 
-                // Push to UI if matched
                 if (ship) {
                     app.selectedShipId = ship.vessel_id;
                     renderDetail(ship);
