@@ -133,33 +133,41 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     function addMarker(ship) {
-        var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
-        app.activeMarkerIds.push(markerId);
-        
-        var stage = getVesselStage(ship);
+    // Generate a unique ID for the marker
+    var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
+    app.activeMarkerIds.push(markerId);
 
-        // We use the native trusted boat icon which the platform allows and respects
-        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
-            widgetID: widget.id,
-            position: { x: ship.longitude, y: ship.latitude, z: 0 },
-            layer: {
-                id: markerId,
-                name: ship.vessel_name
-            },
-            render: {
-                style: 'icon',
-                iconName: 'transportation-boat', // This is a system-trusted icon
-                color: stage.color, 
-                heading: ship.heading_deg || 0, // This natively rotates the icon!
-                size: { width: 32, height: 32 }
-            },
-            options: {
-                projection: { from: 'WGS84' },
-                stem: false, 
-                altitudeMode: 'clampToGround'
-            }
-        });
-    }
+    // Get the vessel stage (for color or other properties)
+    var stage = getVesselStage(ship);
+
+    // Publish a command to create a picture marker
+    PlatformAPI.publish('3DEXPERIENCity.AddPictureMarker', {
+        widgetID: widget.id,
+        position: {
+            x: ship.longitude,
+            y: ship.latitude,
+            z: 0
+        },
+        layer: {
+            id: markerId,
+            name: ship.vessel_name
+        },
+        // Use your custom .png file
+        imageUrl: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png',
+        // Set the size of the marker
+        size: {
+            width: 32,
+            height: 32
+        },
+        // Rotate the marker based on the ship's heading
+        rotation: ship.heading_deg || 0,
+        options: {
+            projection: { from: 'WGS84' },
+            stem: false,
+            altitudeMode: 'clampToGround'
+        }
+    });
+}
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
