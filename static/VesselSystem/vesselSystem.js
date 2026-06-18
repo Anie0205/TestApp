@@ -138,20 +138,19 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 name: ship.vessel_name
             },
             render: {
-                style: 'picture', // Tells the API to use an external image file
+                // Using your Custom PNG!
+                style: 'picture',
                 url: CONFIG.CUSTOM_ICON_URL,
-                width: 48,  // You can increase/decrease this to change icon size
-                height: 48,
-                color: stage.color // Depending on the map engine, this might dynamically tint a white PNG!
+                width: 48,   // Adjust these numbers to make your boat bigger/smaller
+                height: 48
+                // Note: We removed 'color' here because it breaks picture rendering!
             },
             options: {
-                projection: { from: 'WGS84' },
-                stem: false, // Removes the floating stick
-                altitudeMode: 'clampToGround' // Keeps the PNG glued to the water
+                projection: { from: 'WGS84' }
+                // Removed 'clampToGround' and 'stem: false' so the icon stands up properly
             }
         });
     }
-
     function addTrail(ship) {
         if (!app.trails[ship.vessel_id] || app.trails[ship.vessel_id].length < 2) {
             return;
