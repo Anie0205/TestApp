@@ -121,9 +121,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
-    // ===============================================
-    // 🖼️ CUSTOM PNG LOGIC
-    // ===============================================
+    function resolveMarkerStyle(ship) {
+        var style = ICON_STYLE[ship.icon_key] || ICON_STYLE[ship.vessel_type] || ICON_STYLE.Default;
+        return {
+            iconName: style.iconName || CONFIG.DEFAULT_ICON_NAME,
+            color: style.color || '#0EA5E9'
+        };
+    }
+    
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         var markerStyle = resolveMarkerStyle(ship);
