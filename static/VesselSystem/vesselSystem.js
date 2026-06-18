@@ -132,6 +132,15 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.activeTrailIds = [];
     }
 
+    // ⛵ SVG Generator: Creates a high-fidelity ship icon in memory
+    function getShipIconUrl(color) {
+        // This SVG draws a clean, professional AIS vessel shape
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">' +
+                  '<path d="M15 2 L26 12 L24 38 L6 38 L4 12 Z" fill="' + color + '" stroke="#ffffff" stroke-width="2"/>' +
+                  '</svg>';
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+
     function addMarker(ship) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
@@ -147,10 +156,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             },
             render: {
                 style: 'picture',
-                url: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/custom_boat.png', // MUST work in browser tab first!
+                url: getShipIconUrl(stage.color), // Trusted, memory-based icon
                 width: 32,
                 height: 32,
-                heading: ship.heading_deg || 0
+                heading: ship.heading_deg || 0 // Rotates the shape based on your CSV
             },
             options: {
                 projection: { from: 'WGS84' },
