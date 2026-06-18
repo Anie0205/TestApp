@@ -128,6 +128,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
+        // Get the dynamic color (Green/Orange/Blue/Purple)
         var stage = getVesselStage(ship);
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
@@ -138,16 +139,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 name: ship.vessel_name
             },
             render: {
-                // Using your Custom PNG!
-                style: 'picture',
-                url: CONFIG.CUSTOM_ICON_URL,
-                width: 48,   // Adjust these numbers to make your boat bigger/smaller
-                height: 48
-                // Note: We removed 'color' here because it breaks picture rendering!
+                style: 'icon', // Uses the native platform library (100% reliable)
+                color: stage.color, // Applies our dynamic status color
+                iconName: 'transportation-boat' // The exact icon name from your snippet
             },
             options: {
                 projection: { from: 'WGS84' }
-                // Removed 'clampToGround' and 'stem: false' so the icon stands up properly
+                // Notice we omit 'stem' and 'clampToGround' here so the icon stands up natively
             }
         });
     }
