@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JNPA Digital Twin V3 - Light Operational Environment</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+html,body{margin:0;height:100%;font-family:Arial, sans-serif; background: #f4f5f7; color: #333;}
+#container{display:flex;height:calc(100vh - 70px)}
+#map{flex:3; background: #eef0f3; border-right: 1px solid #ddd;}
+#sidebar{flex:1;overflow:auto;background:#ffffff;border-left:1px solid #ccc; box-shadow: -2px 0 5px rgba(0,0,0,0.05);}
+.section{padding:14px;border-bottom:1px solid #eee}
+h3 {margin-top: 0; color: #004b87; font-size: 16px; border-bottom: 2px solid #0073cf; padding-bottom: 4px;}
+#controls{height:70px;padding:10px;background:#ffffff; display: flex; align-items: center; justify-content: space-around; border-top: 1px solid #ccc;}
+.shipIcon{font-size:20px;}
+.berthLabel{font-size:11px;font-weight:bold; color: #004b87; text-shadow: 1px 1px 1px #fff;}
+table{width:100%;border-collapse:collapse; margin-top: 8px;}
+td,th{border:1px solid #e0e0e0;padding:5px;font-size:11px;}
+th{background: #f7f9fa; color: #555; font-weight: bold;}
+.kpi{background:#f8f9fa;margin:6px 0;padding:10px;border-radius:4px; border-left: 4px solid #0073cf; font-size: 13px;}
+button {background: #0073cf; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;}
+.indicator-panel {display: flex; flex-direction: column; align-items: flex-start; min-width: 200px;}
+</style>
+</head>
+<body>
+<div id="container">
+<div id="map"></div>
+<div id="sidebar">
+<div class="section"><h3>Operational Core</h3><div id="kpis"></div></div>
+<div class="section"><h3>Active Fleet Positions</h3><div id="vessels"></div></div>
+</div>
+</div>
+<div id="controls">
+<button id="playBtn">Play Timeline</button>
+<select id="speed"><option value="350">Normal</option><option value="100">Fast</option></select>
+<input id="timeline" type="range" min="0" max="0" value="0" style="width:40%">
+<div class="indicator-panel">
+    <span id="currentTime" style="font-family: monospace; font-size: 13px; font-weight: bold; color: #004b87;"></span>
+    <span id="currentTideIndicator" style="font-family: Arial; font-size: 13px; font-weight: bold; color: #d62728; margin-top: 3px;">🌊 Current Tide: 3.0</span>
+</div>
+</div>
+
+<script>
+const map=L.map('map').setView([18.942,72.925],13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+
+const berths={
+B1:[18.935507,72.9294711], B2:[18.937334,72.9311121], B3:[18.940734,72.9342451],
+B4:[18.944334,72.9343691], B5:[18.946589,72.9365791], B6:[18.948527,72.9381561],
+B7:[18.954051,72.9424451], B8:[18.95607,72.9434641], B9:[18.957967,72.9443541], B10:[18.960057,72.9452341]
+};
+
+const ANCH=[18.888,72.885]; const CHANNEL=[18.918,72.905]; const SEA=[18.84,72.78];
+L.polygon([[18.895,72.87],[18.895,72.90],[18.875,72.90],[18.875,72.87]],{color:'#ff7f0e', weight:1, fillOpacity: 0.05}).addTo(map);
+
+let berthMarkers={};
+Object.entries(berths).forEach(([b,c])=>{
+berthMarkers[b]=L.rectangle([[c[0]-0.0006,c[1]-0.0004],[c[0]+0.0006,c[1]+0.0004]],{color:'#2ca02c',weight:2,fillOpacity:.12}).addTo(map);
+L.marker(c,{icon:L.divIcon({html:b,className:'berthLabel'})}).addTo(map);
+});
+
+let events=[],times=[],state={},ships=[],timer=null, currentTideValue="3.0";
+
+Papa.parse('vessel_lifecycle_simulation.csv',{
+download:true,
+header:true,
+complete:r=>{
+events=r.data.filter(x=>x.event_time);
+times=[...new Set(events.map(x=>x.event_time))].sort();
+document.getElementById('timeline').max=times.length-1;
+render(0);
+}
+});
+
+function pos(ev){
+if(ev.substage.includes('ANCHORAGE')) return ANCH;
+if(ev.stage==='INBOUND' || ev.stage==='BERTHING') return CHANNEL;
+if(ev.berth && (ev.stage==='CARGO'||ev.stage==='SERVICE'||ev.stage==='CLEARANCE'||ev.stage==='BERTHING'||ev.substage==='ALL_FAST')) return berths[ev.berth];
+return SEA;
+}
+
+function render(i){
+const t=times[i];
+document.getElementById('currentTime').innerText = "📅 " + t;
+const cur=events.filter(e=>e.event_time===t);
+
+if(cur.length > 0) {
+    currentTideValue = cur[0].tide_level;
+    document.getElementById('currentTideIndicator').innerText = "🌊 Current Tide: " + currentTideValue + " / 5.0";
+}
+
+cur.forEach(ev=>{
+const id=ev.vessel_id;
+if(!ships[id]){
+ships[id]=L.marker(SEA,{icon:L.divIcon({html:'🚢',className:'shipIcon'})}).addTo(map);
+}
+ships[id].setLatLng(pos(ev));
+ships[id].bindTooltip(`<b>${id}</b><br>Type: ${ev.container_type}<br>Stage: ${ev.substage}<br>Berth: ${ev.berth||'-'}`);
+state[id]={status:ev.substage,berth:ev.berth,line:ev.shipping_line,type:ev.container_type,tide:ev.tide_level,term:ev.terminal};
+});
+
+updateKPIs();
+updateGrid();
+updateBerths();
+}
+
+function updateKPIs(){
+let dry=0, reef=0;
+Object.values(state).forEach(v=>{
+    if(!v.status.includes('SAILED')){
+        if(v.type==='DRY_VAN') dry++;
+        if(v.type==='REEFER_CARGO') reef++;
+    }
+});
+document.getElementById('kpis').innerHTML=`
+<div class="kpi">🌊 Tide Gauge Height: <b>${currentTideValue}</b></div>
+<div class="kpi" style="border-left-color: #2ca02c">Active Dry Van Fleets (T1/T2): <b>${dry}</b></div>
+<div class="kpi" style="border-left-color: #ff7f0e">Active Reefer Container (T3/T4): <b>${reef}</b></div>`;
+}
+
+function updateGrid(){
+let h='<table><tr><th>Vessel</th><th>JNPA Box Class</th><th>Terminal</th><th>Berth</th><th>Status</th></tr>';
+Object.entries(state).slice(0,13).forEach(([k,v])=>{
+h+=`<tr><td><b>${k}</b></td><td>${v.type}</td><td>${v.term}</td><td><b style="color:#0073cf">${v.berth || '-'}</b></td><td>${v.status}</td></tr>`;
+});
+h+='</table>';
+document.getElementById('vessels').innerHTML=h;
+}
+
+function updateBerths(){
+Object.values(berthMarkers).forEach(b=>b.setStyle({color:'#2ca02c', fillOpacity: 0.1}));
+Object.values(state).forEach(v=>{
+if(v.berth && berthMarkers[v.berth] && !v.status.includes('SAILED') && !v.status.includes('UNBERTHED')){
+berthMarkers[v.berth].setStyle({color:'#d62728', fillOpacity: 0.35});
+}
+});
+}
+
+document.getElementById('timeline').oninput=e=>render(+e.target.value);
+document.getElementById('playBtn').onclick=function(){
+if(timer){clearInterval(timer);timer=null;this.innerText='Play Timeline';return;}
+this.innerText='Pause';
+let idx=+document.getElementById('timeline').value;
+timer=setInterval(()=>{
+idx++;if(idx>=times.length){clearInterval(timer);timer=null;document.getElementById('playBtn').innerText='Play Timeline';return;}
+document.getElementById('timeline').value=idx;render(idx);
+},+document.getElementById('speed').value);
+};
+</script>
+</body>
+</html>
