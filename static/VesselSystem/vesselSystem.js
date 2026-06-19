@@ -19,7 +19,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     'use strict';
 
     var CONFIG = {
-        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselSystem/jnpa_vessel_timeseries.csv',
+        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselMovement/jnpa_vessel_timeseries.csv',
         PLAYBACK_INTERVAL_MS: 3000,
         TRAIL_LENGTH: 10,
         MARKER_PREFIX: 'VESSEL_',
@@ -29,7 +29,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     var app = {
         frames: [],
         frameIndex: 0,
-        byVessel: {}, 
+        byVessel: {}, // Only holds the 6 moving ships
         activeMarkerIds: [],
         activeTrailIds: [],
         selectedShipId: null,
@@ -48,24 +48,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function formatKey(key) {
         key = key.replace(/_/g, ' ');
         return key.charAt(0).toUpperCase() + key.slice(1);
-    }
-
-    // ==========================================
-    // 🎨 NEW: Dynamic Color Categorization Logic
-    // ==========================================
-    function getVesselStage(ship) {
-        var text = ((ship.remarks || '') + ' ' + (ship.route_segment || '')).toLowerCase();
-
-        if (text.indexOf('moor') !== -1 || text.indexOf('secure') !== -1 || text.indexOf('adjust') !== -1 || text.indexOf('berth') !== -1) {
-            return { label: 'Berthing / Moored', color: '#3498DB' }; // Blue
-        }
-        if (text.indexOf('outbound') !== -1 || text.indexOf('depart') !== -1 || text.indexOf('leave') !== -1) {
-            return { label: 'Departing / Outbound', color: '#E67E22' }; // Orange
-        }
-        if (text.indexOf('inbound') !== -1 || text.indexOf('enter') !== -1 || text.indexOf('approach') !== -1) {
-            return { label: 'Arriving / Inbound', color: '#2ECC71' }; // Green
-        }
-        return { label: 'In Transit', color: '#9B59B6' }; // Purple
     }
 
     function apiGetText(url) {
@@ -123,9 +105,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.MARKER_PREFIX + ship.vessel_id;
         app.activeMarkerIds.push(markerId);
         
-        // Grab the dynamic color for this specific frame
-        var stage = getVesselStage(ship);
-
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
             position: { x: ship.longitude, y: ship.latitude },
@@ -135,7 +114,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             },
             render: {
                 style: 'icon',
-                color: stage.color, // Apply dynamic color
+                color: '#D5E8F2',
                 iconName: 'transportation-boat'
             },
             options: {
@@ -150,9 +129,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         }
         var trailId = CONFIG.TRAIL_PREFIX + ship.vessel_id;
         app.activeTrailIds.push(trailId);
-        
-        var stage = getVesselStage(ship);
-
         PlatformAPI.publish('3DEXPERIENCity.AddLine', {
             json: [{
                 type: 'LineString',
@@ -165,7 +141,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 attributeMapping: { STRID: 'id' }
             },
             render: {
-                color: stage.color, // Trails will match the ship's current color!
+                color: '#4A90E2',
                 lineWidth: 2
             },
             options: {
@@ -181,17 +157,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             styles: { fontFamily: 'Arial,sans-serif' }
         }).inject(app.container);
         
-        var stage = getVesselStage(ship);
-
-        // Vessel Name
         UWA.createElement('h2', {
             text: ship.vessel_name || 'Vessel Information',
-            styles: { margin: '0 0 5px 0', color: '#0B5CAB' }
-        }).inject(wrapper);
-
-        // Dynamic Status Badge
-        UWA.createElement('div', {
-            html: '<span style="background-color:' + stage.color + '; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; display: inline-block; margin-bottom: 12px;">' + stage.label + '</span>'
+            styles: { margin: '0 0 8px 0', color: '#0B5CAB' }
         }).inject(wrapper);
 
         var grid = UWA.createElement('div', {
@@ -209,26 +177,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
     function renderDefault() {
         app.container.empty();
-        var defaultWrap = UWA.createElement('div', {
-            styles: { fontFamily: 'Arial,sans-serif' }
+        UWA.createElement('div', {
+            text: 'Playback active. Click any moving vessel to view its details directly in this panel.',
+            styles: { color: '#666', padding: '6px 0', fontFamily: 'Arial,sans-serif' }
         }).inject(app.container);
-
-        UWA.createElement('div', {
-            text: 'Playback active. Click any moving vessel to view its details.',
-            styles: { color: '#666', padding: '6px 0 12px 0' }
-        }).inject(defaultWrap);
-
-        // Map Legend
-        UWA.createElement('div', {
-            html: '<b>Status Legend:</b><br/>' +
-                  '<div style="margin-top: 5px; line-height: 1.6;">' +
-                  '<span style="color:#2ECC71;">⬤</span> Arriving / Inbound<br/>' +
-                  '<span style="color:#E67E22;">⬤</span> Departing / Outbound<br/>' +
-                  '<span style="color:#3498DB;">⬤</span> Berthing / Moored<br/>' +
-                  '<span style="color:#9B59B6;">⬤</span> In Transit' +
-                  '</div>',
-            styles: { backgroundColor: '#f9f9f9', padding: '10px', borderRadius: '5px', fontSize: '13px' }
-        }).inject(defaultWrap);
     }
 
     function renderFrame(frame) {
@@ -323,7 +275,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         app.statusBar = UWA.createElement('div', {
             text: 'Initializing...',
-            styles: { color: '#666', marginBottom: '10px', fontSize: '12px' }
+            styles: { color: '#666', marginBottom: '10px' }
         }).inject(wrap);
 
         app.container = UWA.createElement('div').inject(wrap);
