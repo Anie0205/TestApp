@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vessel Operational Lifecycle Control Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; background: #f3f4f6; color: #1f2937; }
+        
+        /* Control Panel Layout */
+        .control-panel { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-weight: 600; font-size: 13px; color: #4b5563; }
+        select, input[type="text"] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; min-width: 240px; outline: none; }
+        input[type="text"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+        
+        /* KPI Dashboard Cards */
+        .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .kpi-card { background: white; padding: 16px; border-radius: 8px; flex: 1; min-width: 160px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .kpi-card .kpi-val { font-size: 24px; font-weight: 700; color: #111827; margin-top: 4px; }
+        
+        /* Main Grid Area Layout */
+        .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1100px; text-align: center; }
+        th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; transition: background-color 0.15s; }
+        th { background-color: #f9fafb; font-weight: 600; color: #374151; }
+        
+        /* Fixed Column for Vessel IDs */
+        .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 220px; color: #111827; position: sticky; left: 0; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1); z-index: 2; }
+        
+        /* Location and Status Badges */
+        .berth-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; margin-right: 4px; }
+        .status-in-port { background-color: #dbeafe; color: #1e40af; }
+        .status-departed { background-color: #f3f4f6; color: #4b5563; }
+        .status-planning { background-color: #fef3c7; color: #92400e; }
+
+        /* Cell Intensity Gradients */
+        .cell-empty { background-color: #fcfcfd; color: #d1d5db; }
+        .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
+        .cell-med { background-color: #eff6ff; color: #1e40af; font-weight: 500; }
+        .cell-high { background-color: #fef9c3; color: #854d0e; font-weight: 600; }
+        .cell-critical { background-color: #fee2e2; color: #991b1b; font-weight: 700; }
+
+        .highlight-column { background-color: #f3f4f6 !important; }
+
+        /* Popover Tooltip Box */
+        .matrix-cell { position: relative; cursor: help; }
+        .matrix-cell .tooltip-card {
+            visibility: hidden; width: 240px; background-color: #1e293b; color: #fff; text-align: left;
+            border-radius: 6px; padding: 12px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            font-size: 12px; line-height: 1.4; pointer-events: none;
+        }
+        .matrix-cell:hover .tooltip-card { visibility: visible; opacity: 1; }
+
+        /* Analytics Panels */
+        .analytics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
+        .chart-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .chart-title { font-weight: 600; font-size: 15px; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <div class="control-group">
+            <label for="ts-select">Snapshot Timestamp</label>
+            <select id="ts-select" onchange="renderDashboard()"></select>
+        </div>
+        
+        <div class="control-group">
+            <label for="status-filter">Vessel Status Filter</label>
+            <select id="status-filter" onchange="renderDashboard()">
+                <option value="IN_PORT" selected>Only Vessels in Port (Active)</option>
+                <option value="ALL">All Tracked Vessels</option>
+                <option value="PRE_ARRIVAL">Pre-Arrival Only</option>
+                <option value="DEPARTED">Departed Only</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="search-input">Search Vessel / Berth / Terminal / Line</label>
+            <input type="text" id="search-input" placeholder="e.g. V0001, T1, or B3" oninput="renderDashboard()">
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi-card" style="border-left: 4px solid #3b82f6;">
+            <label>Active In Port</label>
+            <div class="kpi-val" id="kpi-active">0</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+            <label>Pre-Arrival Pipeline</label>
+            <div class="kpi-val" id="kpi-planning">0</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #10b981;">
+            <label>Total Imports</label>
+            <div class="kpi-val" id="kpi-import">0 TEU</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #06b6d4;">
+            <label>Total Exports</label>
+            <div class="kpi-val" id="kpi-export">0 TEU</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #ef4444;">
+            <label>Avg Anchorage Delay</label>
+            <div class="kpi-val" id="kpi-anchorage">0.0h</div>
+        </div>
+    </div>
+
+    <div class="matrix-container">
+        <table>
+            <thead>
+                <tr id="matrix-header"></tr>
+            </thead>
+            <tbody id="matrix-body"></tbody>
+        </table>
+    </div>
+
+    <div class="analytics-row">
+        <div class="chart-card">
+            <div class="chart-title">Imports vs Exports Throughput per Terminal</div>
+            <div id="terminal-chart"></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Primary Logistical Delay Factor Distribution</div>
+            <div id="delay-chart"></div>
+        </div>
+    </div>
+
+<script>
+const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
+let rawData = [];
+let terminalChartInstance = null;
+let delayChartInstance = null;
+
+// Parse target CSV Log inputs
+fetch('vessel_lifecycle_simulation.csv')
+    .then(r => r.text())
+    .then(txt => {
+        Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true, complete: res => {
+            rawData = res.data;
+            const timestamps = [...new Set(rawData.map(r => r.event_time))].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b));
+            const select = document.getElementById('ts-select');
+            timestamps.forEach(ts => { select.add(new Option(ts, ts)); });
+            if(timestamps.length > 0) renderDashboard();
+        }});
+    });
+
+function renderDashboard() {
+    const selectedTimestamp = document.getElementById('ts-select').value;
+    const filterValue = document.getElementById('status-filter').value;
+    const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+    
+    const cutoff = new Date(selectedTimestamp);
+    const filtered = rawData.filter(r => new Date(r.event_time) <= cutoff);
+
+    const groups = {};
+    const currentMetadata = {}; 
+
+    // Reset Metrics
+    let activeInPortCount = 0;
+    let preArrivalCount = 0;
+    let departedCount = 0;
+    let grandTotalImports = 0;
+    let grandTotalExports = 0;
+    let totalAnchorageWait = 0;
+    let anchorageCount = 0;
+
+    // Split Terminal Tracking Structures
+    const terminalImportMap = {};
+    const terminalExportMap = {};
+    const delayReasonMap = {};
+
+    filtered.forEach(r => {
+        const uniqueKey = `${r.voyage_no}_${r.vessel_id}`;
+        if(!groups[uniqueKey]) {
+            groups[uniqueKey] = [];
+            currentMetadata[uniqueKey] = {
+                vesselId: r.vessel_id,
+                voyageNo: r.voyage_no,
+                shippingLine: r.shipping_line || 'Unknown Line',
+                vesselClass: r.vessel_class || 'N/A',
+                capacity: r.teu_capacity || 0,
+                importTeu: r.import_teu || 0,
+                exportTeu: r.export_teu || 0,
+                anchorageWait: r.anchorage_wait_hours || 0,
+                terminal: '-',
+                berth: '-',
+                hasArrived: false,
+                hasDeparted: false
+            };
+        }
+        
+        if (r.terminal && r.terminal !== "NaN") currentMetadata[uniqueKey].terminal = r.terminal;
+        if (r.berth && r.berth !== "NaN") currentMetadata[uniqueKey].berth = r.berth;
+        if (r.delay_reason && r.delay_reason !== "NaN") {
+            delayReasonMap[r.delay_reason] = (delayReasonMap[r.delay_reason] || 0) + 1;
+        }
+
+        groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage, substage: r.substage });
+    });
+
+    // Populate Headers
+    const headerRow = document.getElementById('matrix-header');
+    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel & Asset Allocation</th>';
+    STAGES.forEach((stage, idx) => { 
+        headerRow.innerHTML += `<th onmouseenter="toggleColumnHighlight(${idx}, true)" onmouseleave="toggleColumnHighlight(${idx}, false)">${stage}</th>`; 
+    });
+    headerRow.innerHTML += '<th>Total (hrs)</th>';
+
+    const tbody = document.getElementById('matrix-body');
+    tbody.innerHTML = '';
+
+    Object.keys(groups).forEach(uniqueKey => {
+        const meta = currentMetadata[uniqueKey];
+        const events = groups[uniqueKey].sort((a,b) => a.time - b.time);
+        
+        const latestEvent = events[events.length - 1];
+        if (events.some(e => e.stage !== 'PLANNING')) meta.hasArrived = true;
+        if (latestEvent.stage === 'DEPARTURE' && latestEvent.substage === 'SAILED') meta.hasDeparted = true;
+
+        let statusText = 'Pre-Arrival';
+        let statusClass = 'status-planning';
+
+        if (meta.hasArrived) {
+            if (meta.hasDeparted) {
+                statusText = 'Departed';
+                statusClass = 'status-departed';
+                departedCount++;
+            } else {
+                statusText = 'In Port';
+                statusClass = 'status-in-port';
+                activeInPortCount++;
+            }
+        } else {
+            preArrivalCount++;
+        }
+
+        // Process global splits calculations if arrived
+        if (meta.hasArrived) {
+            grandTotalImports += meta.importTeu;
+            grandTotalExports += meta.exportTeu;
+            
+            if (meta.terminal !== '-') {
+                terminalImportMap[meta.terminal] = (terminalImportMap[meta.terminal] || 0) + meta.importTeu;
+                terminalExportMap[meta.terminal] = (terminalExportMap[meta.terminal] || 0) + meta.exportTeu;
+            }
+            if (meta.anchorageWait > 0) {
+                totalAnchorageWait += meta.anchorageWait;
+                anchorageCount++;
+            }
+        }
+
+        // Filter valid status selection updates
+        if (filterValue === 'IN_PORT' && statusText !== 'In Port') return;
+        if (filterValue === 'PRE_ARRIVAL' && statusText !== 'Pre-Arrival') return;
+        if (filterValue === 'DEPARTED' && statusText !== 'Departed') return;
+
+        // Apply string query configurations
+        if (searchQuery) {
+            const matchId = meta.vesselId.toLowerCase().includes(searchQuery);
+            const matchLine = meta.shippingLine.toLowerCase().includes(searchQuery);
+            const matchVoyage = meta.voyageNo.toLowerCase().includes(searchQuery);
+            const matchTerm = meta.terminal.toLowerCase().includes(searchQuery);
+            const matchBerth = meta.berth.toLowerCase().includes(searchQuery);
+            if (!matchId && !matchLine && !matchVoyage && !matchTerm && !matchBerth) return;
+        }
+
+        const durations = {};
+        STAGES.forEach(s => durations[s] = 0);
+
+        for(let i=0; i<events.length; i++) {
+            const current = events[i];
+            const nextTime = (i < events.length - 1) ? events[i+1].time : cutoff;
+            const hours = Math.max(0, (nextTime - current.time) / (1000 * 60 * 60));
+            if(durations[current.stage] !== undefined) durations[current.stage] += hours;
+        }
+
+        let totalRowHours = 0;
+        let allocationText = (meta.terminal !== '-' || meta.berth !== '-') 
+            ? `<span class="berth-badge">Loc: ${meta.terminal} / ${meta.berth}</span>` 
+            : `<span class="berth-badge" style="background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb;">Loc: Unassigned</span>`;
+
+        let rowHtml = `
+            <td class="vessel-axis-cell">
+                <span style="font-size: 14px;">${meta.vesselId}</span> 
+                <span style="font-size:11px; color:#6b7280; font-weight:normal;">(${meta.voyageNo})</span>
+                <br>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+                ${allocationText}
+            </td>`;
+
+        STAGES.forEach((stage, idx) => {
+            const val = durations[stage];
+            totalRowHours += val;
+            
+            let heatClass = 'cell-empty';
+            let printVal = '-';
+            
+            if (val > 0) {
+                printVal = val.toFixed(1) + 'h';
+                if (val <= 2) heatClass = 'cell-low';
+                else if (val <= 8) heatClass = 'cell-med';
+                else if (val <= 24) heatClass = 'cell-high';
+                else heatClass = 'cell-critical';
+            }
+
+            rowHtml += `
+                <td class="matrix-cell ${heatClass}" data-col="${idx}">
+                    ${printVal}
+                    <div class="tooltip-card">
+                        <strong>${meta.vesselId} (${meta.shippingLine})</strong><br>
+                        Voyage: ${meta.voyageNo}<br>
+                        Current Location: ${meta.terminal} / ${meta.berth}<br>
+                        Class: ${meta.vesselClass} (${meta.capacity} TEU)<br>
+                        Imports/Exports: ${meta.importTeu} / ${meta.exportTeu} TEU<br>
+                        <hr style="border-color:#475569; margin: 6px 0;">
+                        Stage: ${stage}<br>
+                        Time Spent: ${val.toFixed(2)} hours
+                    </div>
+                </td>`;
+        });
+
+        rowHtml += `<td style="font-weight: bold; background: #f9fafb;">${totalRowHours.toFixed(1)}h</td>`;
+        tbody.innerHTML += `<tr>${rowHtml}</tr>`;
+    });
+
+    // Write split structural updates to upper summary headers
+    document.getElementById('kpi-active').textContent = activeInPortCount;
+    document.getElementById('kpi-planning').textContent = preArrivalCount;
+    document.getElementById('kpi-import').textContent = grandTotalImports.toLocaleString() + " TEU";
+    document.getElementById('kpi-export').textContent = grandTotalExports.toLocaleString() + " TEU";
+    document.getElementById('kpi-anchorage').textContent = anchorageCount > 0 ? (totalAnchorageWait / anchorageCount).toFixed(1) + "h" : "0.0h";
+
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${STAGES.length + 2}" style="padding: 32px; color: #9ca3af; font-style: italic;">No matching vessels found fitting criteria.</td></tr>`;
+    }
+
+    // Refresh dynamic graphic charts
+    updateAnalyticsCharts(terminalImportMap, terminalExportMap, delayReasonMap);
+}
+
+function updateAnalyticsCharts(terminalImportMap, terminalExportMap, delayReasonMap) {
+    // Collect and sort unique terminal list entries cleanly
+    const allTerminals = new Set([...Object.keys(terminalImportMap), ...Object.keys(terminalExportMap)]);
+    const termCategories = Array.from(allTerminals).sort();
+    
+    // Generate side by side pairing values
+    const importData = termCategories.map(cat => terminalImportMap[cat] || 0);
+    const exportData = termCategories.map(cat => terminalExportMap[cat] || 0);
+
+    const delayLabels = Object.keys(delayReasonMap);
+    const delaySeries = delayLabels.map(l => delayReasonMap[l]);
+
+    // Side-by-Side paired Grouped Bar Chart Config for cargo types
+    const termOptions = {
+        series: [
+            { name: 'Imports (TEU)', data: importData },
+            { name: 'Exports (TEU)', data: exportData }
+        ],
+        chart: { type: 'bar', height: 260, toolbar: { show: false } },
+        colors: ['#10b981', '#06b6d4'], // Emerald green for imports, Cyan blue for exports
+        plotOptions: { 
+            bar: { 
+                horizontal: false, 
+                columnWidth: '55%', 
+                borderRadius: 3
+            } 
+        },
+        xaxis: { categories: termCategories },
+        yaxis: { title: { text: 'Cargo Volume (TEU)' } },
+        dataLabels: { enabled: false },
+        legend: { position: 'top', horizontalAlign: 'right' }
+    };
+
+    if (terminalChartInstance) terminalChartInstance.updateOptions(termOptions);
+    else {
+        terminalChartInstance = new ApexCharts(document.querySelector("#terminal-chart"), termOptions);
+        terminalChartInstance.render();
+    }
+
+    const delayOptions = {
+        series: delaySeries,
+        chart: { type: 'donut', height: 260 },
+        labels: delayLabels,
+        colors: ['#ef4444', '#f59e0b', '#3b82f6', '#6366f1', '#a855f7'],
+        legend: { position: 'bottom' }
+    };
+
+    if (delayChartInstance) delayChartInstance.updateOptions(delayOptions);
+    else {
+        delayChartInstance = new ApexCharts(document.querySelector("#delay-chart"), delayOptions);
+        delayChartInstance.render();
+    }
+}
+
+function toggleColumnHighlight(colIdx, shouldHighlight) {
+    const cells = document.querySelectorAll(`td[data-col="${colIdx}"]`);
+    cells.forEach(cell => {
+        if (shouldHighlight) cell.classList.add('highlight-column');
+        else cell.classList.remove('highlight-column');
+    });
+}
+</script>
+</body>
+</html>
