@@ -1,6 +1,6 @@
 /*global window, document, widget, define */
 
-define('VesselMovement',
+define('VesselMovement2',
 [
     'UWA/Core',
     'UWA/Promise',
