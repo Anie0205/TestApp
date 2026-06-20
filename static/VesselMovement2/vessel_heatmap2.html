@@ -2,33 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Vessel Operational Lifecycle Matrix</title>
+    <title>Vessel Operational Lifecycle & Berth Monitor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; background: #f3f4f6; color: #1f2937; }
-        .controls { background: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        select { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; cursor: pointer; }
         
+        /* Control Panel Layout */
+        .control-panel { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-weight: 600; font-size: 13px; color: #4b5563; }
+        select, input[type="text"] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; min-width: 220px; outline: none; }
+        input[type="text"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+        
+        /* Summary Cards */
+        .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; }
+        .kpi-card { background: white; padding: 16px; border-radius: 8px; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .kpi-card .kpi-val { font-size: 24px; font-weight: 700; color: #111827; margin-top: 4px; }
+        
+        /* Grid Table Matrix */
         .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 900px; text-align: center; }
-        th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1100px; text-align: center; }
+        th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; transition: background-color 0.15s; }
         th { background-color: #f9fafb; font-weight: 600; color: #374151; }
         
-        /* Fixed styling for the absolute explicit Y-axis Column */
-        .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 180px; color: #111827; position: sticky; left: 0; }
+        /* Sticky Custom Axis Column */
+        .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 200px; color: #111827; position: sticky; left: 0; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1); z-index: 2; }
         
-        /* Grid heat cell states based on hours spent */
-        .cell-empty { background-color: #f3f4f6; color: #9ca3af; }
+        /* Custom Location Badges */
+        .berth-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; margin-right: 4px; }
+        .status-in-port { background-color: #dbeafe; color: #1e40af; }
+        .status-departed { background-color: #f3f4f6; color: #4b5563; }
+        .status-planning { background-color: #fef3c7; color: #92400e; }
+
+        /* Color Intensities for Matrix Timeline Gaps */
+        .cell-empty { background-color: #fcfcfd; color: #d1d5db; }
         .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
-        .cell-med { background-color: #dbeafe; color: #1e40af; font-weight: 500; }
+        .cell-med { background-color: #eff6ff; color: #1e40af; font-weight: 500; }
         .cell-high { background-color: #fef9c3; color: #854d0e; font-weight: 600; }
         .cell-critical { background-color: #fee2e2; color: #991b1b; font-weight: 700; }
 
-        /* Custom detailed tooltip container style */
+        .highlight-column { background-color: #f3f4f6 !important; }
+
+        /* Floating HTML Card Tooltips */
         .matrix-cell { position: relative; cursor: help; }
         .matrix-cell .tooltip-card {
-            visibility: hidden; width: 220px; background-color: #1e293b; color: #fff; text-align: left;
-            border-radius: 6px; padding: 10px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            visibility: hidden; width: 240px; background-color: #1e293b; color: #fff; text-align: left;
+            border-radius: 6px; padding: 12px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
             transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
             font-size: 12px; line-height: 1.4; pointer-events: none;
         }
@@ -37,29 +57,57 @@
 </head>
 <body>
 
-    <div class="controls">
-        <label for="ts-select"><strong>Snapshot Timestamp: </strong></label>
-        <select id="ts-select" onchange="renderMatrix(this.value)"></select>
+    <div class="control-panel">
+        <div class="control-group">
+            <label for="ts-select">Snapshot Timestamp</label>
+            <select id="ts-select" onchange="renderMatrix()"></select>
+        </div>
+        
+        <div class="control-group">
+            <label for="status-filter">Vessel Status Filter</label>
+            <select id="status-filter" onchange="renderMatrix()">
+                <option value="IN_PORT" selected>Only Vessels in Port (Active)</option>
+                <option value="ALL">All Tracked Vessels</option>
+                <option value="PRE_ARRIVAL">Pre-Arrival Only</option>
+                <option value="DEPARTED">Departed Only</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="search-input">Search Vessel / Berth / Terminal / Line</label>
+            <input type="text" id="search-input" placeholder="e.g. V0001, T1, or B4" oninput="renderMatrix()">
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi-card" style="border-left: 4px solid #3b82f6;">
+            <label>Active In Port</label>
+            <div class="kpi-val" id="kpi-active">0</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+            <label>Pre-Arrival Pipeline</label>
+            <div class="kpi-val" id="kpi-planning">0</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #6b7280;">
+            <label>Completed Departures</label>
+            <div class="kpi-val" id="kpi-departed">0</div>
+        </div>
     </div>
 
     <div class="matrix-container">
         <table id="lifecycle-matrix">
             <thead>
-                <tr id="matrix-header">
-                    </tr>
+                <tr id="matrix-header"></tr>
             </thead>
-            <tbody id="matrix-body">
-                </tbody>
+            <tbody id="matrix-body"></tbody>
         </table>
     </div>
 
 <script>
 const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
-
 let rawData = [];
-let currentMetadata = {};
 
-// Parse dataset dynamically
+// Parse CSV dynamic inputs
 fetch('vessel_lifecycle_simulation.csv')
     .then(r => r.text())
     .then(txt => {
@@ -68,19 +116,26 @@ fetch('vessel_lifecycle_simulation.csv')
             const timestamps = [...new Set(rawData.map(r => r.event_time))].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b));
             const select = document.getElementById('ts-select');
             timestamps.forEach(ts => { select.add(new Option(ts, ts)); });
-            if(timestamps.length > 0) renderMatrix(timestamps[0]);
+            if(timestamps.length > 0) renderMatrix();
         }});
     });
 
-function renderMatrix(selectedTimestamp) {
+function renderMatrix() {
+    const selectedTimestamp = document.getElementById('ts-select').value;
+    const filterValue = document.getElementById('status-filter').value;
+    const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+    
     const cutoff = new Date(selectedTimestamp);
     const filtered = rawData.filter(r => new Date(r.event_time) <= cutoff);
 
     const groups = {};
-    currentMetadata = {}; 
+    const currentMetadata = {}; 
+
+    let activeInPortCount = 0;
+    let preArrivalCount = 0;
+    let departedCount = 0;
 
     filtered.forEach(r => {
-        // Strict explicit map grouping via unique tracking combinations
         const uniqueKey = `${r.voyage_no}_${r.vessel_id}`;
         if(!groups[uniqueKey]) {
             groups[uniqueKey] = [];
@@ -89,21 +144,29 @@ function renderMatrix(selectedTimestamp) {
                 voyageNo: r.voyage_no,
                 shippingLine: r.shipping_line || 'Unknown Line',
                 vesselClass: r.vessel_class || 'N/A',
-                capacity: r.teu_capacity || 0
+                capacity: r.teu_capacity || 0,
+                terminal: '-',
+                berth: '-',
+                hasArrived: false,
+                hasDeparted: false
             };
         }
-        groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage });
+        
+        // Track the latest non-null terminal and berth values up to the snapshot time
+        if (r.terminal && r.terminal !== "NaN") currentMetadata[uniqueKey].terminal = r.terminal;
+        if (r.berth && r.berth !== "NaN") currentMetadata[uniqueKey].berth = r.berth;
+        
+        groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage, substage: r.substage });
     });
 
-    // 1. Generate Table Header
+    // Populate Headers
     const headerRow = document.getElementById('matrix-header');
-    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel ID / Voyage</th>';
-    STAGES.forEach(stage => {
-        headerRow.innerHTML += `<th>${stage}</th>`;
+    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel & Allocation Details</th>';
+    STAGES.forEach((stage, idx) => { 
+        headerRow.innerHTML += `<th onmouseenter="toggleColumnHighlight(${idx}, true)" onmouseleave="toggleColumnHighlight(${idx}, false)">${stage}</th>`; 
     });
     headerRow.innerHTML += '<th>Total (hrs)</th>';
 
-    // 2. Generate Grid Matrix Data Rows
     const tbody = document.getElementById('matrix-body');
     tbody.innerHTML = '';
 
@@ -111,7 +174,42 @@ function renderMatrix(selectedTimestamp) {
         const meta = currentMetadata[uniqueKey];
         const events = groups[uniqueKey].sort((a,b) => a.time - b.time);
         
-        // Accumulate precise hours for each stage cell explicitly
+        const latestEvent = events[events.length - 1];
+        if (events.some(e => e.stage !== 'PLANNING')) meta.hasArrived = true;
+        if (latestEvent.stage === 'DEPARTURE' && latestEvent.substage === 'SAILED') meta.hasDeparted = true;
+
+        let statusText = 'Pre-Arrival';
+        let statusClass = 'status-planning';
+
+        if (meta.hasArrived) {
+            if (meta.hasDeparted) {
+                statusText = 'Departed';
+                statusClass = 'status-departed';
+                departedCount++;
+            } else {
+                statusText = 'In Port';
+                statusClass = 'status-in-port';
+                activeInPortCount++;
+            }
+        } else {
+            preArrivalCount++;
+        }
+
+        // Apply dropdown status options
+        if (filterValue === 'IN_PORT' && statusText !== 'In Port') return;
+        if (filterValue === 'PRE_ARRIVAL' && statusText !== 'Pre-Arrival') return;
+        if (filterValue === 'DEPARTED' && statusText !== 'Departed') return;
+
+        // Apply text queries (now supports matching Terminal names like T1 or Berths like B4)
+        if (searchQuery) {
+            const matchId = meta.vesselId.toLowerCase().includes(searchQuery);
+            const matchLine = meta.shippingLine.toLowerCase().includes(searchQuery);
+            const matchVoyage = meta.voyageNo.toLowerCase().includes(searchQuery);
+            const matchTerm = meta.terminal.toLowerCase().includes(searchQuery);
+            const matchBerth = meta.berth.toLowerCase().includes(searchQuery);
+            if (!matchId && !matchLine && !matchVoyage && !matchTerm && !matchBerth) return;
+        }
+
         const durations = {};
         STAGES.forEach(s => durations[s] = 0);
 
@@ -123,13 +221,25 @@ function renderMatrix(selectedTimestamp) {
         }
 
         let totalRowHours = 0;
-        let rowHtml = `<td class="vessel-axis-cell">${meta.vesselId} <br><span style="font-size:11px; color:#6b7280; font-weight:normal;">${meta.voyageNo} | ${meta.shippingLine}</span></td>`;
+        
+        // Show assigned structural location variables inside the dynamic row headers
+        let allocationText = (meta.terminal !== '-' || meta.berth !== '-') 
+            ? `<span class="berth-badge">Loc: ${meta.terminal} / ${meta.berth}</span>` 
+            : `<span class="berth-badge" style="background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb;">Loc: Unassigned</span>`;
 
-        STAGES.forEach(stage => {
+        let rowHtml = `
+            <td class="vessel-axis-cell">
+                <span style="font-size: 14px;">${meta.vesselId}</span> 
+                <span style="font-size:11px; color:#6b7280; font-weight:normal;">(${meta.voyageNo})</span>
+                <br>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+                ${allocationText}
+            </td>`;
+
+        STAGES.forEach((stage, idx) => {
             const val = durations[stage];
             totalRowHours += val;
             
-            // Clean dynamic cell coloring logic matching durations without chart clipping
             let heatClass = 'cell-empty';
             let printVal = '-';
             
@@ -142,22 +252,38 @@ function renderMatrix(selectedTimestamp) {
             }
 
             rowHtml += `
-                <td class="matrix-cell ${heatClass}">
+                <td class="matrix-cell ${heatClass}" data-col="${idx}">
                     ${printVal}
                     <div class="tooltip-card">
                         <strong>${meta.vesselId} (${meta.shippingLine})</strong><br>
                         Voyage: ${meta.voyageNo}<br>
-                        Class: ${meta.vesselClass}<br>
-                        Capacity: ${meta.capacity} TEU<br>
+                        Current Location: ${meta.terminal} / ${meta.berth}<br>
+                        Class: ${meta.vesselClass} (${meta.capacity} TEU)<br>
                         <hr style="border-color:#475569; margin: 6px 0;">
                         Stage: ${stage}<br>
-                        Time: ${val.toFixed(2)} hours
+                        Time Spent: ${val.toFixed(2)} hours
                     </div>
                 </td>`;
         });
 
         rowHtml += `<td style="font-weight: bold; background: #f9fafb;">${totalRowHours.toFixed(1)}h</td>`;
         tbody.innerHTML += `<tr>${rowHtml}</tr>`;
+    });
+
+    document.getElementById('kpi-active').textContent = activeInPortCount;
+    document.getElementById('kpi-planning').textContent = preArrivalCount;
+    document.getElementById('kpi-departed').textContent = departedCount;
+
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${STAGES.length + 2}" style="padding: 32px; color: #9ca3af; font-style: italic;">No matching vessels found.</td></tr>`;
+    }
+}
+
+function toggleColumnHighlight(colIdx, shouldHighlight) {
+    const cells = document.querySelectorAll(`td[data-col="${colIdx}"]`);
+    cells.forEach(cell => {
+        if (shouldHighlight) cell.classList.add('highlight-column');
+        else cell.classList.remove('highlight-column');
     });
 }
 </script>

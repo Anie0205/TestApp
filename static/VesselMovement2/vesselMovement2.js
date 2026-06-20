@@ -243,7 +243,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             position: toXY(posFor(ev), CONFIG.VESSEL_MARKER_ELEVATION),
             layer: {
                 id: markerId,
-                name: id,
+                name: '🛳️' + id,
                 description:
                     '<b>Vessel:</b> ' + esc(id) + '<br>' +
                     '<b>Voyage:</b> ' + esc(ev.voyage_no) + '<br>' +
