@@ -2,35 +2,64 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Enhanced Vessel Operations Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <title>Vessel Operational Lifecycle Matrix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; background: #f3f4f6; color: #1f2937; }
         .controls { background: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         select { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; cursor: pointer; }
-        #chart-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; text-align: center; }
+        th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; }
+        th { background-color: #f9fafb; font-weight: 600; color: #374151; }
+        
+        /* Fixed styling for the absolute explicit Y-axis Column */
+        .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 180px; color: #111827; position: sticky; left: 0; }
+        
+        /* Grid heat cell states based on hours spent */
+        .cell-empty { background-color: #f3f4f6; color: #9ca3af; }
+        .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
+        .cell-med { background-color: #dbeafe; color: #1e40af; font-weight: 500; }
+        .cell-high { background-color: #fef9c3; color: #854d0e; font-weight: 600; }
+        .cell-critical { background-color: #fee2e2; color: #991b1b; font-weight: 700; }
+
+        /* Custom detailed tooltip container style */
+        .matrix-cell { position: relative; cursor: help; }
+        .matrix-cell .tooltip-card {
+            visibility: hidden; width: 220px; background-color: #1e293b; color: #fff; text-align: left;
+            border-radius: 6px; padding: 10px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            font-size: 12px; line-height: 1.4; pointer-events: none;
+        }
+        .matrix-cell:hover .tooltip-card { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body>
 
     <div class="controls">
         <label for="ts-select"><strong>Snapshot Timestamp: </strong></label>
-        <select id="ts-select" onchange="renderDashboard(this.value)"></select>
+        <select id="ts-select" onchange="renderMatrix(this.value)"></select>
     </div>
 
-    <div id="chart-container">
-        <div id="stacked-bar-chart"></div>
+    <div class="matrix-container">
+        <table id="lifecycle-matrix">
+            <thead>
+                <tr id="matrix-header">
+                    </tr>
+            </thead>
+            <tbody id="matrix-body">
+                </tbody>
+        </table>
     </div>
 
 <script>
 const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
-const STAGE_COLORS = ['#cbd5e1', '#93c5fd', '#fde047', '#f97316', '#a855f7', '#2dd4bf', '#3b82f6', '#10b981', '#ef4444'];
 
 let rawData = [];
-let chartInstance = null;
+let currentMetadata = {};
 
-// Load and Parse CSV Data
+// Parse dataset dynamically
 fetch('vessel_lifecycle_simulation.csv')
     .then(r => r.text())
     .then(txt => {
@@ -39,25 +68,23 @@ fetch('vessel_lifecycle_simulation.csv')
             const timestamps = [...new Set(rawData.map(r => r.event_time))].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b));
             const select = document.getElementById('ts-select');
             timestamps.forEach(ts => { select.add(new Option(ts, ts)); });
-            if(timestamps.length > 0) renderDashboard(timestamps[0]);
+            if(timestamps.length > 0) renderMatrix(timestamps[0]);
         }});
     });
 
-function renderDashboard(selectedTimestamp) {
+function renderMatrix(selectedTimestamp) {
     const cutoff = new Date(selectedTimestamp);
-    // Filter out future events relative to our snapshot
     const filtered = rawData.filter(r => new Date(r.event_time) <= cutoff);
 
-    // Group events and track vessel metadata
     const groups = {};
-    const metadata = {};
+    currentMetadata = {}; 
 
     filtered.forEach(r => {
-        const key = `${r.voyage_no} (${r.vessel_id})`;
-        if(!groups[key]) {
-            groups[key] = [];
-            // Cache details for the rich tooltip context
-            metadata[key] = {
+        // Strict explicit map grouping via unique tracking combinations
+        const uniqueKey = `${r.voyage_no}_${r.vessel_id}`;
+        if(!groups[uniqueKey]) {
+            groups[uniqueKey] = [];
+            currentMetadata[uniqueKey] = {
                 vesselId: r.vessel_id,
                 voyageNo: r.voyage_no,
                 shippingLine: r.shipping_line || 'Unknown Line',
@@ -65,15 +92,26 @@ function renderDashboard(selectedTimestamp) {
                 capacity: r.teu_capacity || 0
             };
         }
-        groups[key].push({ time: new Date(r.event_time), stage: r.stage });
+        groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage });
     });
 
-    const vessels = Object.keys(groups);
-    const stageDurations = {};
-    STAGES.forEach(s => stageDurations[s] = []);
+    // 1. Generate Table Header
+    const headerRow = document.getElementById('matrix-header');
+    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel ID / Voyage</th>';
+    STAGES.forEach(stage => {
+        headerRow.innerHTML += `<th>${stage}</th>`;
+    });
+    headerRow.innerHTML += '<th>Total (hrs)</th>';
 
-    vessels.forEach(vKey => {
-        const events = groups[vKey].sort((a,b) => a.time - b.time);
+    // 2. Generate Grid Matrix Data Rows
+    const tbody = document.getElementById('matrix-body');
+    tbody.innerHTML = '';
+
+    Object.keys(groups).forEach(uniqueKey => {
+        const meta = currentMetadata[uniqueKey];
+        const events = groups[uniqueKey].sort((a,b) => a.time - b.time);
+        
+        // Accumulate precise hours for each stage cell explicitly
         const durations = {};
         STAGES.forEach(s => durations[s] = 0);
 
@@ -84,111 +122,43 @@ function renderDashboard(selectedTimestamp) {
             if(durations[current.stage] !== undefined) durations[current.stage] += hours;
         }
 
-        STAGES.forEach(s => {
-            // Round nicely to 1 decimal place to clear up cluttered real numbers
-            stageDurations[s].push(parseFloat(durations[s].toFixed(1)));
+        let totalRowHours = 0;
+        let rowHtml = `<td class="vessel-axis-cell">${meta.vesselId} <br><span style="font-size:11px; color:#6b7280; font-weight:normal;">${meta.voyageNo} | ${meta.shippingLine}</span></td>`;
+
+        STAGES.forEach(stage => {
+            const val = durations[stage];
+            totalRowHours += val;
+            
+            // Clean dynamic cell coloring logic matching durations without chart clipping
+            let heatClass = 'cell-empty';
+            let printVal = '-';
+            
+            if (val > 0) {
+                printVal = val.toFixed(1) + 'h';
+                if (val <= 2) heatClass = 'cell-low';
+                else if (val <= 8) heatClass = 'cell-med';
+                else if (val <= 24) heatClass = 'cell-high';
+                else heatClass = 'cell-critical';
+            }
+
+            rowHtml += `
+                <td class="matrix-cell ${heatClass}">
+                    ${printVal}
+                    <div class="tooltip-card">
+                        <strong>${meta.vesselId} (${meta.shippingLine})</strong><br>
+                        Voyage: ${meta.voyageNo}<br>
+                        Class: ${meta.vesselClass}<br>
+                        Capacity: ${meta.capacity} TEU<br>
+                        <hr style="border-color:#475569; margin: 6px 0;">
+                        Stage: ${stage}<br>
+                        Time: ${val.toFixed(2)} hours
+                    </div>
+                </td>`;
         });
+
+        rowHtml += `<td style="font-weight: bold; background: #f9fafb;">${totalRowHours.toFixed(1)}h</td>`;
+        tbody.innerHTML += `<tr>${rowHtml}</tr>`;
     });
-
-    const series = STAGES.map(s => ({ name: s, data: stageDurations[s] }));
-
-    const options = {
-        series: series,
-        chart: {
-            type: 'bar',
-            stacked: true,
-            height: Math.max(450, vessels.length * 45),
-            toolbar: { show: true }
-        },
-        colors: STAGE_COLORS,
-        plotOptions: {
-            bar: {
-                horizontal: true,
-                dataLabels: {
-                    total: {
-                        enabled: true,
-                        offsetX: 8, // Shifts the total label slightly right so it never crops
-                        style: { fontWeight: 700, colors: ['#1f2937'] },
-                        formatter: function(val) {
-                            return parseFloat(val).toFixed(1) + "h";
-                        }
-                    }
-                }
-            }
-        },
-        dataLabels: {
-            enabled: true,
-            formatter: function(val) {
-                return val > 0.5 ? val : ''; // Hide labels inside the bar segments if they are tiny
-            }
-        },
-        xaxis: {
-            title: { text: 'Time Contributed (Hours)', style: { fontWeight: 600 } },
-            labels: { formatter: val => val.toFixed(0) + "h" }
-        },
-        yaxis: {
-            categories: vessels,
-            labels: {
-                style: { fontWeight: 500 },
-                // Custom formatter to incorporate metadata onto the Y-Axis directly if desired
-                formatter: function(value) {
-                    const meta = metadata[value];
-                    return meta ? `${meta.voyageNo} | ${meta.shippingLine}` : value;
-                }
-            }
-        },
-        legend: { position: 'top', horizontalAlign: 'left' },
-        // Custom Rich HTML Tooltip to display all the context missing before
-        tooltip: {
-            shared: true,
-            intersect: false,
-            custom: function({ series, seriesIndex, dataPointIndex, w }) {
-                const vesselKey = w.globals.labels[dataPointIndex];
-                const meta = metadata[vesselKey];
-                if (!meta) return '';
-
-                let totalTime = 0;
-                let stagesHtml = '';
-
-                // Dynamically compile breakdown list for the hover card
-                STAGES.forEach((stage, idx) => {
-                    const val = w.config.series[idx].data[dataPointIndex];
-                    if (val > 0) {
-                        totalTime += val;
-                        stagesHtml += `
-                            <div style="display: flex; justify-content: space-between; gap: 20px; margin-top: 3px;">
-                                <span style="color: #6b7280;">● ${stage}:</span>
-                                <strong>${val.toFixed(1)} hrs</strong>
-                            </div>`;
-                    }
-                });
-
-                return `
-                    <div style="padding: 12px; font-size: 13px; line-height: 1.5; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                        <div style="font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 6px; font-size: 14px; color: #111827;">
-                            ${meta.voyageNo} — ${meta.vesselId}
-                        </div>
-                        <div><strong>Line:</strong> ${meta.shippingLine}</div>
-                        <div><strong>Class:</strong> ${meta.vesselClass} (${meta.capacity} TEU)</div>
-                        <div style="border-top: 1px dashed #e5e7eb; margin-top: 6px; padding-top: 6px; font-weight: bold;">
-                            Stage Time Breakdown:
-                        </div>
-                        ${stagesHtml}
-                        <div style="border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 4px; display: flex; justify-content: space-between; font-weight: bold; color: #111827;">
-                            <span>Total Elapsed:</span>
-                            <span>${totalTime.toFixed(1)} hrs</span>
-                        </div>
-                    </div>`;
-            }
-        }
-    };
-
-    if (chartInstance) {
-        chartInstance.updateOptions(options);
-    } else {
-        chartInstance = new ApexCharts(document.querySelector("#stacked-bar-chart"), options);
-        chartInstance.render();
-    }
 }
 </script>
 </body>

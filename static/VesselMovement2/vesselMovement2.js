@@ -217,7 +217,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             position: toXY(CONFIG.TIDE_LOCATION, 0),
             layer: {
                 id: CONFIG.TIDE_MARKER_ID,
-                name: 'Tide Gauge',
+                name: 'Tide Gauge 🌊 ' + esc(value),
                 description: '<b>Current Tide:</b> ' + esc(value) + ' / 5.0'
             },
             render: {
