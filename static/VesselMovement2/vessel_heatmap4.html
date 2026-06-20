@@ -1,9 +1,8 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Vessel Operational Lifecycle & Berth Control Center</title>
+    <title>Vessel Operational Lifecycle Control Center</title>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -13,15 +12,20 @@
         .control-panel { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; }
         .control-group { display: flex; flex-direction: column; gap: 6px; }
         label { font-weight: 600; font-size: 13px; color: #4b5563; }
-        select, input[type="text"] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; min-width: 240px; outline: none; }
+        select, input[type="text"] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; min-width: 220px; outline: none; }
         input[type="text"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
         
+        /* Timeline Control Buttons */
+        .playback-btn { padding: 8px 16px; font-size: 14px; font-weight: 600; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; transition: all 0.2s; }
+        .playback-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+        .playback-btn.active { background: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+
         /* KPI Dashboard Cards */
         .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
         .kpi-card { background: white; padding: 16px; border-radius: 8px; flex: 1; min-width: 160px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         .kpi-card .kpi-val { font-size: 24px; font-weight: 700; color: #111827; margin-top: 4px; }
         
-        /* Main Grid Area Layout */
+        /* Main Grid Table Layout */
         .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; min-width: 1150px; text-align: center; }
         th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; transition: background-color 0.15s; }
@@ -30,17 +34,15 @@
         /* Fixed Column for Vessel IDs */
         .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 220px; color: #111827; position: sticky; left: 0; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1); z-index: 2; }
         
-        /* Location and Status Badges */
+        /* Badges */
         .berth-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
         .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; margin-right: 4px; }
         .status-in-port { background-color: #dbeafe; color: #1e40af; }
         .status-departed { background-color: #f3f4f6; color: #4b5563; }
         .status-planning { background-color: #fef3c7; color: #92400e; }
-
-        /* Integrated Delay Warning Overlay Text styling */
         .delay-warning-tag { display: block; font-size: 10px; color: #b91c1c; font-weight: bold; margin-top: 4px; text-transform: uppercase; background: rgba(254, 226, 226, 0.6); padding: 1px 3px; border-radius: 3px; border: 1px dashed #fee2e2; }
 
-        /* Cell Intensity Gradients */
+        /* Color Matrix Intensities */
         .cell-empty { background-color: #fcfcfd; color: #d1d5db; }
         .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
         .cell-med { background-color: #eff6ff; color: #1e40af; font-weight: 500; }
@@ -48,8 +50,6 @@
         .cell-critical { background-color: #fee2e2; color: #991b1b; font-weight: 700; }
 
         .highlight-column { background-color: #f3f4f6 !important; }
-
-        /* Popover Tooltip Box */
         .matrix-cell { position: relative; cursor: help; }
         .matrix-cell .tooltip-card {
             visibility: hidden; width: 250px; background-color: #1e293b; color: #fff; text-align: left;
@@ -59,7 +59,7 @@
         }
         .matrix-cell:hover .tooltip-card { visibility: visible; opacity: 1; }
 
-        /* Analytics Panels */
+        /* Charts Layout Panels */
         .analytics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
         .chart-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .chart-title { font-weight: 600; font-size: 15px; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
@@ -71,6 +71,11 @@
         <div class="control-group">
             <label for="ts-select">Snapshot Timestamp</label>
             <select id="ts-select" onchange="renderDashboard()"></select>
+        </div>
+
+        <div class="control-group" style="flex-direction: row; gap: 8px;">
+            <button class="playback-btn" id="play-btn" onclick="togglePlayback()">▶ Play Simulation</button>
+            <button class="playback-btn" onclick="stepPlayback(1)">Next ➔</button>
         </div>
         
         <div class="control-group">
@@ -94,21 +99,21 @@
             <label>Active In Port</label>
             <div class="kpi-val" id="kpi-active">0</div>
         </div>
-        <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
-            <label>Pre-Arrival Pipeline</label>
-            <div class="kpi-val" id="kpi-planning">0</div>
-        </div>
         <div class="kpi-card" style="border-left: 4px solid #10b981;">
-            <label>Total Imports</label>
-            <div class="kpi-val" id="kpi-import">0 TEU</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid #06b6d4;">
-            <label>Total Exports</label>
-            <div class="kpi-val" id="kpi-export">0 TEU</div>
+            <label>Total Cargo Volume</label>
+            <div class="kpi-val" id="kpi-teu">0 TEU</div>
         </div>
         <div class="kpi-card" style="border-left: 4px solid #ef4444;">
             <label>Avg Anchorage Delay</label>
             <div class="kpi-val" id="kpi-anchorage">0.0h</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #6366f1;">
+            <label>Current Weather Status</label>
+            <div class="kpi-val" id="kpi-weather">-</div>
+        </div>
+        <div class="kpi-card" style="border-left: 4px solid #06b6d4;">
+            <label>Tide Water Level</label>
+            <div class="kpi-val" id="kpi-tide">0.0m</div>
         </div>
     </div>
 
@@ -123,7 +128,7 @@
 
     <div class="analytics-row">
         <div class="chart-card">
-            <div class="chart-title">Terminal Throughput Broken Down by Berths (TEU)</div>
+            <div class="chart-title">Throughput Capacity by Berth & Mapped Terminal Parent (TEU)</div>
             <div id="terminal-chart"></div>
         </div>
         <div class="chart-card">
@@ -137,8 +142,9 @@ const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARA
 let rawData = [];
 let terminalChartInstance = null;
 let delayChartInstance = null;
+let playbackInterval = null;
 
-// Load operational CSV dataset
+// Parse Local CSV Data Logs
 fetch('vessel_lifecycle_simulation.csv')
     .then(r => r.text())
     .then(txt => {
@@ -165,13 +171,15 @@ function renderDashboard() {
     let activeInPortCount = 0;
     let preArrivalCount = 0;
     let departedCount = 0;
-    let grandTotalImports = 0;
-    let grandTotalExports = 0;
+    let totalTeuHandled = 0;
     let totalAnchorageWait = 0;
     let anchorageCount = 0;
+    
+    let latestWeather = "CLEAR";
+    let latestTide = 0.0;
 
-    // Terminal -> Berth double-layer tracking mapping structures
-    const berthThroughputMap = {}; // Format: { BerthName: { TerminalName: TotalTEU } }
+    // Strict structure mapping for exact terminal -> berth relational throughput calculations
+    const hierarchicalThroughput = {}; // Structure: { Terminal: { Berth: TotalTEU } }
     const delayReasonMap = {};
 
     filtered.forEach(r => {
@@ -189,7 +197,7 @@ function renderDashboard() {
                 anchorageWait: r.anchorage_wait_hours || 0,
                 terminal: '-',
                 berth: '-',
-                stageDelays: {}, // Format: { STAGE: "DelayReasonString" }
+                stageDelays: {},
                 hasArrived: false,
                 hasDeparted: false
             };
@@ -198,7 +206,12 @@ function renderDashboard() {
         if (r.terminal && r.terminal !== "NaN" && r.terminal !== "null") currentMetadata[uniqueKey].terminal = r.terminal;
         if (r.berth && r.berth !== "NaN" && r.berth !== "null") currentMetadata[uniqueKey].berth = r.berth;
         
-        // Trap specific reasons for delays matching this exact lifecycle block stage
+        // Extract environmental metrics relative to latest known snapshot time entries
+        if (new Date(r.event_time).getTime() === cutoff.getTime()) {
+            if (r.weather) latestWeather = r.weather;
+            if (r.tide_level) latestTide = r.tide_level;
+        }
+
         if (r.delay_reason && r.delay_reason !== "NaN" && r.delay_reason !== "null" && String(r.delay_reason).trim() !== "") {
             currentMetadata[uniqueKey].stageDelays[r.stage] = r.delay_reason;
             delayReasonMap[r.delay_reason] = (delayReasonMap[r.delay_reason] || 0) + 1;
@@ -207,9 +220,9 @@ function renderDashboard() {
         groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage, substage: r.substage });
     });
 
-    // Generate Head Elements
+    // Populate Matrix Table Headers
     const headerRow = document.getElementById('matrix-header');
-    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel & Allocation Grid</th>';
+    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel ID & Location</th>';
     STAGES.forEach((stage, idx) => { 
         headerRow.innerHTML += `<th onmouseenter="toggleColumnHighlight(${idx}, true)" onmouseleave="toggleColumnHighlight(${idx}, false)">${stage}</th>`; 
     });
@@ -243,16 +256,14 @@ function renderDashboard() {
             preArrivalCount++;
         }
 
-        // Aggregate calculations for global components
+        // Structural Throughput mapping constraints
         if (meta.hasArrived) {
-            grandTotalImports += meta.importTeu;
-            grandTotalExports += meta.exportTeu;
+            const combinedVol = (meta.importTeu + meta.exportTeu);
+            totalTeuHandled += combinedVol;
             
-            // Log combined volume throughput mapped to Berth sub-keys
             if (meta.terminal !== '-' && meta.berth !== '-') {
-                const bKey = meta.berth;
-                if (!berthThroughputMap[bKey]) berthThroughputMap[bKey] = {};
-                berthThroughputMap[bKey][meta.terminal] = (berthThroughputMap[bKey][meta.terminal] || 0) + (meta.importTeu + meta.exportTeu);
+                if (!hierarchicalThroughput[meta.terminal]) hierarchicalThroughput[meta.terminal] = {};
+                hierarchicalThroughput[meta.terminal][meta.berth] = (hierarchicalThroughput[meta.terminal][meta.berth] || 0) + combinedVol;
             }
             if (meta.anchorageWait > 0) {
                 totalAnchorageWait += meta.anchorageWait;
@@ -260,12 +271,12 @@ function renderDashboard() {
             }
         }
 
-        // Dropdown status validations
+        // Validate Filter Constraints
         if (filterValue === 'IN_PORT' && statusText !== 'In Port') return;
         if (filterValue === 'PRE_ARRIVAL' && statusText !== 'Pre-Arrival') return;
         if (filterValue === 'DEPARTED' && statusText !== 'Departed') return;
 
-        // Dynamic cross-column text querying (including scanning text matches inside delay reasons)
+        // Apply interactive real-time text filters
         if (searchQuery) {
             const matchId = meta.vesselId.toLowerCase().includes(searchQuery);
             const matchLine = meta.shippingLine.toLowerCase().includes(searchQuery);
@@ -307,7 +318,6 @@ function renderDashboard() {
             let printVal = '-';
             let delayTagHtml = '';
             
-            // If this stage contains a delay reason, pull it out to show visually inside the grid box cell
             if (meta.stageDelays[stage]) {
                 delayTagHtml = `<span class="delay-warning-tag">⚠️ ${meta.stageDelays[stage]}</span>`;
             }
@@ -327,8 +337,9 @@ function renderDashboard() {
                     <div class="tooltip-card">
                         <strong>${meta.vesselId} (${meta.shippingLine})</strong><br>
                         Voyage: ${meta.voyageNo}<br>
-                        Assigned: Terminal ${meta.terminal} / Berth ${meta.berth}<br>
+                        Location: Terminal ${meta.terminal} / Berth ${meta.berth}<br>
                         Class: ${meta.vesselClass} (${meta.capacity} TEU)<br>
+                        Imports/Exports: ${meta.importTeu} / ${meta.exportTeu} TEU<br>
                         <hr style="border-color:#475569; margin: 6px 0;">
                         Stage: ${stage}<br>
                         Duration: ${val.toFixed(2)} hours<br>
@@ -341,57 +352,51 @@ function renderDashboard() {
         tbody.innerHTML += `<tr>${rowHtml}</tr>`;
     });
 
-    // Populate upper metrics display
+    // Render Upper Level KPIs Box
     document.getElementById('kpi-active').textContent = activeInPortCount;
-    document.getElementById('kpi-planning').textContent = preArrivalCount;
-    document.getElementById('kpi-import').textContent = grandTotalImports.toLocaleString() + " TEU";
-    document.getElementById('kpi-export').textContent = grandTotalExports.toLocaleString() + " TEU";
+    document.getElementById('kpi-teu').textContent = totalTeuHandled.toLocaleString() + " TEU";
     document.getElementById('kpi-anchorage').textContent = anchorageCount > 0 ? (totalAnchorageWait / anchorageCount).toFixed(1) + "h" : "0.0h";
+    document.getElementById('kpi-weather').textContent = latestWeather;
+    document.getElementById('kpi-tide').textContent = latestTide.toFixed(2) + "m";
 
     if (tbody.children.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${STAGES.length + 2}" style="padding: 32px; color: #9ca3af; font-style: italic;">No matching records found.</td></tr>`;
     }
 
-    // Refresh nested hierarchical graph widgets
-    updateHierarchicalCharts(berthThroughputMap, delayReasonMap);
+    // Update Hierarchical Graphs
+    updateHierarchicalChart(hierarchicalThroughput, delayReasonMap);
 }
 
-function updateHierarchicalCharts(berthThroughputMap, delayReasonMap) {
-    // 1. Extract all active terminals (X-axis main components)
-    const terminalsSet = new Set();
-    Object.keys(berthThroughputMap).forEach(b => {
-        Object.keys(berthThroughputMap[b]).forEach(t => terminalsSet.add(t));
-    });
-    const termCategories = Array.from(termContainers = terminalsSet).sort();
+function updateHierarchicalChart(hierarchicalThroughput, delayReasonMap) {
+    // 1. Map hierarchical elements into dynamic X-axis strings formatted as "Terminal | Berth"
+    // This strictly ensures Berths are only drawn against their true physical parent terminals!
+    const categories = [];
+    const values = [];
 
-    // 2. Extract unique berths to map as structural legend series components
-    const uniqueBerths = Object.keys(berthThroughputMap).sort();
-
-    // Build stacked series data mapping exact Berth sub-allocations into corresponding parent Terminals
-    const seriesData = uniqueBerths.map(berthName => {
-        return {
-            name: `Berth ${berthName}`,
-            data: termCategories.map(termName => {
-                return berthThroughputMap[berthName][termName] || 0;
-            })
-        };
+    const sortedTerminals = Object.keys(hierarchicalThroughput).sort();
+    sortedTerminals.forEach(terminal => {
+        const sortedBerths = Object.keys(hierarchicalThroughput[terminal]).sort();
+        sortedBerths.forEach(berth => {
+            categories.push(`${terminal} ➔ ${berth}`);
+            values.push(hierarchicalThroughput[terminal][berth]);
+        });
     });
 
     const delayLabels = Object.keys(delayReasonMap);
     const delaySeries = delayLabels.map(l => delayReasonMap[l]);
 
-    // Stacked Hierarchical Column Layout Config
     const termOptions = {
-        series: seriesData,
-        chart: { type: 'bar', height: 260, stacked: true, toolbar: { show: true } },
-        plotOptions: { bar: { horizontal: false, columnWidth: '45%' } },
+        series: [{ name: 'Total Throughput (TEU)', data: values }],
+        chart: { type: 'bar', height: 260, toolbar: { show: false } },
+        colors: ['#0284c7'],
+        plotOptions: { bar: { borderRadius: 4, horizontal: false, columnWidth: '50%' } },
         xaxis: { 
-            categories: termCategories, 
-            title: { text: 'Parent Terminals', style: { fontWeight: 600 } } 
+            categories: categories,
+            labels: { rotate: -45, style: { fontSize: '11px' } },
+            title: { text: 'Terminal ➔ Berth Asset Structure', style: { fontWeight: 600 } }
         },
-        yaxis: { title: { text: 'Combined Capacity Throughput (TEU)' } },
-        dataLabels: { enabled: false },
-        legend: { position: 'right', verticalAlign: 'top', containerMargin: 10 }
+        yaxis: { title: { text: 'Throughput Volume (TEU)' } },
+        dataLabels: { enabled: false }
     };
 
     if (terminalChartInstance) terminalChartInstance.updateOptions(termOptions);
@@ -413,6 +418,31 @@ function updateHierarchicalCharts(berthThroughputMap, delayReasonMap) {
         delayChartInstance = new ApexCharts(document.querySelector("#delay-chart"), delayOptions);
         delayChartInstance.render();
     }
+}
+
+// Playback Engine Loops
+function togglePlayback() {
+    const btn = document.getElementById('play-btn');
+    if (playbackInterval) {
+        clearInterval(playbackInterval);
+        playbackInterval = null;
+        btn.textContent = "▶ Play Simulation";
+        btn.classList.remove('active');
+    } else {
+        btn.textContent = "⏸ Pause Simulation";
+        btn.classList.add('active');
+        playbackInterval = setInterval(() => { stepPlayback(1); }, 1200); // Progress frame step every 1.2 seconds
+    }
+}
+
+function stepPlayback(steps) {
+    const select = document.getElementById('ts-select');
+    let targetIdx = select.selectedIndex + steps;
+    if (targetIdx >= select.options.length) {
+        targetIdx = 0; // Loop seamlessly back to start
+    }
+    select.selectedIndex = targetIdx;
+    renderDashboard();
 }
 
 function toggleColumnHighlight(colIdx, shouldHighlight) {
