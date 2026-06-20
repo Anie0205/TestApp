@@ -28,20 +28,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         FAST_INTERVAL_MS: 100,
         VESSEL_MARKER_PREFIX: 'VESSEL_',
         BERTH_MARKER_PREFIX: 'BERTH_',
-        GRID_ROW_LIMIT: 13,
-        // Elevation (meters) vessel markers are lifted above ground level so they
-        // don't visually collide with the berth marker/label sitting at the same lat/lng.
-        VESSEL_MARKER_ELEVATION: 80,
-        VESSEL_MARKER_SCALE: 1.4,
-        // Berth markers stay pinned at ground level so the gap to the vessel above is obvious.
-        BERTH_MARKER_ELEVATION: 0
+        GRID_ROW_LIMIT: 13
     };
 
-    // Static reference points / berth coordinates
+    // Static reference points / berth coordinates, ported 1:1 from the HTML twin
     var BERTHS = {
         B1: [18.936532, 72.933758], B2: [18.937983, 72.934885], B3: [18.939687, 72.936355],
-        B4: [18.94753,  72.93965],  B5: [18.95031,  72.94201],  B6: [18.95470,  72.94551],
-        B7: [18.95717,  72.94673],  B8: [18.95993,  72.94795],  B9: [18.96259,  72.94918],
+        B4: [18.94753, 72.93965], B5: [18.95031, 72.94201], B6: [18.95470, 72.94551],
+        B7: [18.95717, 72.94673], B8: [18.95993, 72.94795], B9: [18.96259, 72.94918],
         B10: [18.96474, 72.95038]
     };
     var ANCH = [18.93366, 72.88527];
@@ -110,10 +104,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return out.sort();
     }
 
-    function toXY(latlon, z) {
-        var p = { x: latlon[1], y: latlon[0] };
-        if (z) { p.z = z; }
-        return p;
+    function toXY(latlon) {
+        return { x: latlon[1], y: latlon[0] };
     }
 
     function removeContent(id) {
@@ -142,7 +134,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             app.berthOccupied[b] = false;
             PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
                 widgetID: widget.id,
-                position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+                position: toXY(BERTHS[b]),
                 layer: {
                     id: markerId,
                     name: b,
@@ -167,7 +159,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.berthMarkerIds[b] = markerId;
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+            position: toXY(BERTHS[b]),
             layer: {
                 id: markerId,
                 name: b,
@@ -192,7 +184,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.vesselMarkerIds[id] = markerId;
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
-            position: toXY(posFor(ev), CONFIG.VESSEL_MARKER_ELEVATION),
+            position: toXY(posFor(ev)),
             layer: {
                 id: markerId,
                 name: id,
@@ -209,8 +201,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             render: {
                 style: 'icon',
                 color: '#D5E8F2',
-                iconName: 'transportation-boat',
-                scale: CONFIG.VESSEL_MARKER_SCALE
+                iconName: 'transportation-boat'
             },
             options: { projection: { from: 'WGS84' } }
         });
