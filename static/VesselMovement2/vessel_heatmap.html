@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vessel Lifecycle Stage Heatmap</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+        .controls { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        select { padding: 8px; font-size: 14px; border-radius: 4px; width: 250px; }
+        #chart { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+    <h2>Vessel Lifecycle Duration Heatmap</h2>
+    
+    <div class="controls">
+        <label for="timestamp-select"><strong>Select Snapshot Timestamp:</strong></label>
+        <select id="timestamp-select" onchange="handleTimestampChange(this.value)">
+            <option value="">Loading timestamps...</option>
+        </select>
+    </div>
+
+    <div id="chart"></div>
+
+<script>
+// 1. Define the chronological order of lifecycle stages based on your data
+const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
+
+let rawData = [];
+let chartInstance = null;
+
+// Mock loading or replace this with your actual JS variable / CSV fetch mechanism
+// e.g., Papa.parse(csvString, { header: true, complete: function(results) { ... } })
+fetch('vessel_lifecycle_simulation.csv')
+    .then(response => response.text())
+    .then(csvText => {
+        Papa.parse(csvText, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                rawData = results.data;
+                initializeDashboard();
+            }
+        });
+    });
+
+function initializeDashboard() {
+    // 2. Extract and sort unique timestamps for the dropdown
+    const timestamps = [...new Set(rawData.map(row => row.event_time))]
+        .filter(Boolean)
+        .sort((a, b) => new Date(a) - new Date(b));
+
+    const selectEl = document.getElementById('timestamp-select');
+    selectEl.innerHTML = ''; // Clear placeholder
+    
+    timestamps.forEach(ts => {
+        const option = document.createElement('option');
+        option.value = ts;
+        option.textContent = ts;
+        selectEl.appendChild(option);
+    });
+
+    // Load the initial heatmap with the first available timestamp
+    if (timestamps.length > 0) {
+        updateHeatmap(timestamps[0]);
+    }
+}
+
+function handleTimestampChange(selectedTimestamp) {
+    if (selectedTimestamp) {
+        updateHeatmap(selectedTimestamp);
+    }
+}
+
+function updateHeatmap(selectedTimestamp) {
+    const targetTime = new Date(selectedTimestamp);
+
+    // 3. Filter data: only include events up to the selected timestamp
+    const filteredData = rawData.filter(row => new Date(row.event_time) <= targetTime);
+
+    // 4. Group events by Voyage / Vessel
+    const vesselsMap = {};
+    filteredData.forEach(row => {
+        const vesselKey = `${row.voyage_no} (${row.vessel_id})`;
+        if (!vesselsMap[vesselKey]) {
+            vesselsMap[vesselKey] = [];
+        }
+        vesselsMap[vesselKey].push({
+            time: new Date(row.event_time),
+            stage: row.stage
+        });
+    });
+
+    // 5. Calculate durations per stage for each vessel
+    const processedVessels = []; // List of Y-axis items
+    const matrix = {}; // Matrix containing { VesselKey: { STAGE: hours } }
+
+    Object.keys(vesselsMap).forEach(vesselKey => {
+        processedVessels.push(vesselKey);
+        matrix[vesselKey] = {};
+        STAGES.forEach(s => matrix[vesselKey][s] = 0); // Initialize with 0
+
+        // Sort events chronologically to compute step-by-step durations
+        const events = vesselsMap[vesselKey].sort((a, b) => a.time - b.time);
+
+        for (let i = 0; i < events.length; i++) {
+            const currentEvent = events[i];
+            let durationHours = 0;
+
+            if (i < events.length - 1) {
+                // Time spent is the gap until the next event
+                const nextEvent = events[i + 1];
+                durationHours = (nextEvent.time - currentEvent.time) / (1000 * 60 * 60);
+            } else {
+                // For the last known event before the cutoff, calculate time spent up to the selected snapshot time
+                durationHours = (targetTime - currentEvent.time) / (1000 * 60 * 60);
+            }
+
+            // Map back to the designated lifecycle stage if it matches our list
+            if (matrix[vesselKey][currentEvent.stage] !== undefined) {
+                matrix[vesselKey][currentEvent.stage] += Math.max(0, durationHours);
+            }
+        }
+    });
+
+    // 6. Format the matrix into ApexCharts series format
+    // Series structure: [ { name: 'Vessel A', data: [ { x: 'PLANNING', y: 4.2 }, ... ] }, ... ]
+    const series = processedVessels.map(vesselKey => {
+        return {
+            name: vesselKey,
+            data: STAGES.map(stage => ({
+                x: stage,
+                y: parseFloat(matrix[vesselKey][stage].toFixed(2)) // Round to 2 decimal places
+            }))
+        };
+    });
+
+    // 7. Render or Update Heatmap Configuration
+    const options = {
+        series: series,
+        chart: {
+            height: Math.max(350, processedVessels.length * 35), // Dynamically expand height for large lists of vessels
+            type: 'heatmap',
+        },
+        dataLabels: {
+            enabled: false // Turn on if you want numbers inside the blocks
+        },
+        colors: ["#008FFB"], // Base color theme for the heatmap gradient
+        title: {
+            text: `Vessel Progress & Durations (Hours) up to ${selectedTimestamp}`
+        },
+        xaxis: {
+            type: 'category',
+            title: { text: 'Lifecycle Stages' }
+        },
+        yaxis: {
+            title: { text: 'Processed Vessels (Voyage / ID)' }
+        },
+        plotOptions: {
+            heatmap: {
+                shadeIntensity: 0.5,
+                radius: 0,
+                useFillColorAsStroke: true,
+                colorScale: {
+                    ranges: [
+                        { from: 0, to: 0, name: 'No time spent', color: '#EEEEEE' },
+                        { from: 0.01, to: 2, name: 'Short (< 2 hrs)', color: '#C7E9B4' },
+                        { from: 2.01, to: 10, name: 'Medium (2 - 10 hrs)', color: '#41B6C4' },
+                        { from: 10.01, to: 1000, name: 'Long (> 10 hrs)', color: '#253494' }
+                    ]
+                }
+            }
+        },
+        tooltip: {
+            y: {
+                formatter: function (value) {
+                    return value + " Hours";
+                }
+            }
+        }
+    };
+
+    // Instantiate or refresh the chart
+    if (chartInstance) {
+        chartInstance.updateOptions(options);
+    } else {
+        chartInstance = new ApexCharts(document.querySelector("#chart"), options);
+        chartInstance.render();
+    }
+}
+</script>
+</body>
+</html>

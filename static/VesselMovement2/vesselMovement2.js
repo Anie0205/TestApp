@@ -34,7 +34,15 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         VESSEL_MARKER_ELEVATION: 80,
         VESSEL_MARKER_SCALE: 1.4,
         // Berth markers stay pinned at ground level so the gap to the vessel above is obvious.
-        BERTH_MARKER_ELEVATION: 0
+        BERTH_MARKER_ELEVATION: 0,
+        // Fixed point where the current tide reading is displayed
+        TIDE_MARKER_ID: 'TIDE_GAUGE',
+        TIDE_LOCATION: [18.94543, 72.92450],
+        // Anchorage: vessels get a stable slot around ANCH instead of stacking on one point
+        ANCHORAGE_SLOTS: 12,
+        ANCHORAGE_RADIUS_DEG: 0.0018,
+        // UTF-8 glyph used for vessel markers instead of an icon set
+        VESSEL_SYMBOL: '🚢'
     };
 
     // Static reference points / berth coordinates
@@ -60,6 +68,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         berthMarkerIds: {},        // berth code -> marker id (created once)
         berthOccupied: {},         // berth code -> bool, last published occupancy
         currentTide: '-',
+        lastPublishedTide: null,
         playbackHandle: null,
         playing: false,
         // DOM refs (resolved via getElementById after injection - same pattern as renderDetail in original file)
@@ -121,9 +130,23 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         PlatformAPI.publish('3DEXPERIENCity.RemoveContent', id);
     }
 
-    // Mirrors pos() from the HTML twin exactly (same precedence order)
+    // Gives each vessel a stable slot on a small ring around ANCH so that when several
+    // vessels are anchored at once they fan out instead of stacking on a single point.
+    function anchorageOffset(vesselId) {
+        var numPart = parseInt(String(vesselId).replace(/[^0-9]/g, ''), 10) || 0;
+        var slots = CONFIG.ANCHORAGE_SLOTS;
+        var idx = numPart % slots;
+        var angle = (2 * Math.PI * idx) / slots;
+        var r = CONFIG.ANCHORAGE_RADIUS_DEG;
+        var latOffset = r * Math.sin(angle);
+        var lonOffset = (r * Math.cos(angle)) / Math.cos(ANCH[0] * Math.PI / 180);
+        return [ANCH[0] + latOffset, ANCH[1] + lonOffset];
+    }
+
+    // Mirrors pos() from the HTML twin (same precedence order), with anchored vessels
+    // spread around ANCH via anchorageOffset() instead of all sharing one exact point.
     function posFor(ev) {
-        if (ev.substage && ev.substage.indexOf('ANCHORAGE') !== -1) { return ANCH; }
+        if (ev.substage && ev.substage.indexOf('ANCHORAGE') !== -1) { return anchorageOffset(ev.vessel_id); }
         if (ev.stage === 'INBOUND' || ev.stage === 'BERTHING') { return CHANNEL; }
         if (ev.berth && (ev.stage === 'CARGO' || ev.stage === 'SERVICE' || ev.stage === 'CLEARANCE' ||
                 ev.stage === 'BERTHING' || ev.substage === 'ALL_FAST')) {
@@ -183,6 +206,31 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     // ---------------------------------------------------------------------
+    // TIDE GAUGE MARKER (fixed location, updated whenever the tide value changes)
+    // ---------------------------------------------------------------------
+    function publishTideMarker(value) {
+        if (app.lastPublishedTide === value) { return; }
+        app.lastPublishedTide = value;
+        removeContent(CONFIG.TIDE_MARKER_ID);
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: toXY(CONFIG.TIDE_LOCATION, 0),
+            layer: {
+                id: CONFIG.TIDE_MARKER_ID,
+                name: 'Tide Gauge',
+                description: '<b>Current Tide:</b> ' + esc(value) + ' / 5.0'
+            },
+            render: {
+                style: 'text',
+                text: '🌊 ' + safe(value),
+                color: '#d62728',
+                scale: 1.2
+            },
+            options: { projection: { from: 'WGS84' } }
+        });
+    }
+
+    // ---------------------------------------------------------------------
     // VESSEL MARKERS
     // ---------------------------------------------------------------------
     function publishVesselMarker(ev) {
@@ -207,9 +255,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     '<b>Substage:</b> ' + esc(ev.substage)
             },
             render: {
-                style: 'icon',
-                color: '#D5E8F2',
-                iconName: 'transportation-boat',
+                style: 'text', // glyph-based marker; if your platform names this style differently
+                                // (e.g. 'label'), swap it here - the rest of the payload is unchanged.
+                text: CONFIG.VESSEL_SYMBOL,
+                color: '#0B5CAB',
                 scale: CONFIG.VESSEL_MARKER_SCALE
             },
             options: { projection: { from: 'WGS84' } }
@@ -331,6 +380,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         if (cur.length) {
             app.currentTide = cur[0].tide_level;
+            publishTideMarker(app.currentTide);
         }
 
         cur.forEach(function (ev) {
@@ -384,6 +434,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function onLoad() {
         initUi();
         initBerthMarkers();
+        publishTideMarker('-');
 
         apiGetText(CONFIG.CSV_URL)
             .then(parseCsv)
