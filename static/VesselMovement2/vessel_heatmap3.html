@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Vessel Operational Lifecycle Control Center</title>
+    <title>Vessel Operational Lifecycle & Berth Control Center</title>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -22,7 +22,7 @@
         
         /* Main Grid Area Layout */
         .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; min-width: 1100px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; min-width: 1150px; text-align: center; }
         th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; transition: background-color 0.15s; }
         th { background-color: #f9fafb; font-weight: 600; color: #374151; }
         
@@ -36,6 +36,9 @@
         .status-departed { background-color: #f3f4f6; color: #4b5563; }
         .status-planning { background-color: #fef3c7; color: #92400e; }
 
+        /* Integrated Delay Warning Overlay Text styling */
+        .delay-warning-tag { display: block; font-size: 10px; color: #b91c1c; font-weight: bold; margin-top: 4px; text-transform: uppercase; background: rgba(254, 226, 226, 0.6); padding: 1px 3px; border-radius: 3px; border: 1px dashed #fee2e2; }
+
         /* Cell Intensity Gradients */
         .cell-empty { background-color: #fcfcfd; color: #d1d5db; }
         .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
@@ -48,7 +51,7 @@
         /* Popover Tooltip Box */
         .matrix-cell { position: relative; cursor: help; }
         .matrix-cell .tooltip-card {
-            visibility: hidden; width: 240px; background-color: #1e293b; color: #fff; text-align: left;
+            visibility: hidden; width: 250px; background-color: #1e293b; color: #fff; text-align: left;
             border-radius: 6px; padding: 12px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
             transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
             font-size: 12px; line-height: 1.4; pointer-events: none;
@@ -80,8 +83,8 @@
         </div>
 
         <div class="control-group">
-            <label for="search-input">Search Vessel / Berth / Terminal / Line</label>
-            <input type="text" id="search-input" placeholder="e.g. V0001, T1, or B3" oninput="renderDashboard()">
+            <label for="search-input">Search Vessel / Berth / Terminal / Delay Reason</label>
+            <input type="text" id="search-input" placeholder="e.g. T1, CONGESTION, V0003" oninput="renderDashboard()">
         </div>
     </div>
 
@@ -119,7 +122,7 @@
 
     <div class="analytics-row">
         <div class="chart-card">
-            <div class="chart-title">Imports vs Exports Throughput per Terminal</div>
+            <div class="chart-title">Terminal Throughput Broken Down by Berths (TEU)</div>
             <div id="terminal-chart"></div>
         </div>
         <div class="chart-card">
@@ -134,7 +137,7 @@ let rawData = [];
 let terminalChartInstance = null;
 let delayChartInstance = null;
 
-// Parse target CSV Log inputs
+// Load operational CSV dataset
 fetch('vessel_lifecycle_simulation.csv')
     .then(r => r.text())
     .then(txt => {
@@ -158,7 +161,6 @@ function renderDashboard() {
     const groups = {};
     const currentMetadata = {}; 
 
-    // Reset Metrics
     let activeInPortCount = 0;
     let preArrivalCount = 0;
     let departedCount = 0;
@@ -167,9 +169,8 @@ function renderDashboard() {
     let totalAnchorageWait = 0;
     let anchorageCount = 0;
 
-    // Split Terminal Tracking Structures
-    const terminalImportMap = {};
-    const terminalExportMap = {};
+    // Terminal -> Berth double-layer tracking mapping structures
+    const berthThroughputMap = {}; // Format: { BerthName: { TerminalName: TotalTEU } }
     const delayReasonMap = {};
 
     filtered.forEach(r => {
@@ -187,23 +188,27 @@ function renderDashboard() {
                 anchorageWait: r.anchorage_wait_hours || 0,
                 terminal: '-',
                 berth: '-',
+                stageDelays: {}, // Format: { STAGE: "DelayReasonString" }
                 hasArrived: false,
                 hasDeparted: false
             };
         }
         
-        if (r.terminal && r.terminal !== "NaN") currentMetadata[uniqueKey].terminal = r.terminal;
-        if (r.berth && r.berth !== "NaN") currentMetadata[uniqueKey].berth = r.berth;
-        if (r.delay_reason && r.delay_reason !== "NaN") {
+        if (r.terminal && r.terminal !== "NaN" && r.terminal !== "null") currentMetadata[uniqueKey].terminal = r.terminal;
+        if (r.berth && r.berth !== "NaN" && r.berth !== "null") currentMetadata[uniqueKey].berth = r.berth;
+        
+        // Trap specific reasons for delays matching this exact lifecycle block stage
+        if (r.delay_reason && r.delay_reason !== "NaN" && r.delay_reason !== "null" && String(r.delay_reason).trim() !== "") {
+            currentMetadata[uniqueKey].stageDelays[r.stage] = r.delay_reason;
             delayReasonMap[r.delay_reason] = (delayReasonMap[r.delay_reason] || 0) + 1;
         }
 
         groups[uniqueKey].push({ time: new Date(r.event_time), stage: r.stage, substage: r.substage });
     });
 
-    // Populate Headers
+    // Generate Head Elements
     const headerRow = document.getElementById('matrix-header');
-    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel & Asset Allocation</th>';
+    headerRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 5;">Vessel & Allocation Grid</th>';
     STAGES.forEach((stage, idx) => { 
         headerRow.innerHTML += `<th onmouseenter="toggleColumnHighlight(${idx}, true)" onmouseleave="toggleColumnHighlight(${idx}, false)">${stage}</th>`; 
     });
@@ -237,14 +242,16 @@ function renderDashboard() {
             preArrivalCount++;
         }
 
-        // Process global splits calculations if arrived
+        // Aggregate calculations for global components
         if (meta.hasArrived) {
             grandTotalImports += meta.importTeu;
             grandTotalExports += meta.exportTeu;
             
-            if (meta.terminal !== '-') {
-                terminalImportMap[meta.terminal] = (terminalImportMap[meta.terminal] || 0) + meta.importTeu;
-                terminalExportMap[meta.terminal] = (terminalExportMap[meta.terminal] || 0) + meta.exportTeu;
+            // Log combined volume throughput mapped to Berth sub-keys
+            if (meta.terminal !== '-' && meta.berth !== '-') {
+                const bKey = meta.berth;
+                if (!berthThroughputMap[bKey]) berthThroughputMap[bKey] = {};
+                berthThroughputMap[bKey][meta.terminal] = (berthThroughputMap[bKey][meta.terminal] || 0) + (meta.importTeu + meta.exportTeu);
             }
             if (meta.anchorageWait > 0) {
                 totalAnchorageWait += meta.anchorageWait;
@@ -252,19 +259,19 @@ function renderDashboard() {
             }
         }
 
-        // Filter valid status selection updates
+        // Dropdown status validations
         if (filterValue === 'IN_PORT' && statusText !== 'In Port') return;
         if (filterValue === 'PRE_ARRIVAL' && statusText !== 'Pre-Arrival') return;
         if (filterValue === 'DEPARTED' && statusText !== 'Departed') return;
 
-        // Apply string query configurations
+        // Dynamic cross-column text querying (including scanning text matches inside delay reasons)
         if (searchQuery) {
             const matchId = meta.vesselId.toLowerCase().includes(searchQuery);
             const matchLine = meta.shippingLine.toLowerCase().includes(searchQuery);
-            const matchVoyage = meta.voyageNo.toLowerCase().includes(searchQuery);
             const matchTerm = meta.terminal.toLowerCase().includes(searchQuery);
             const matchBerth = meta.berth.toLowerCase().includes(searchQuery);
-            if (!matchId && !matchLine && !matchVoyage && !matchTerm && !matchBerth) return;
+            const matchDelay = Object.values(meta.stageDelays).some(d => String(d).toLowerCase().includes(searchQuery));
+            if (!matchId && !matchLine && !matchTerm && !matchBerth && !matchDelay) return;
         }
 
         const durations = {};
@@ -297,6 +304,12 @@ function renderDashboard() {
             
             let heatClass = 'cell-empty';
             let printVal = '-';
+            let delayTagHtml = '';
+            
+            // If this stage contains a delay reason, pull it out to show visually inside the grid box cell
+            if (meta.stageDelays[stage]) {
+                delayTagHtml = `<span class="delay-warning-tag">⚠️ ${meta.stageDelays[stage]}</span>`;
+            }
             
             if (val > 0) {
                 printVal = val.toFixed(1) + 'h';
@@ -308,16 +321,17 @@ function renderDashboard() {
 
             rowHtml += `
                 <td class="matrix-cell ${heatClass}" data-col="${idx}">
-                    ${printVal}
+                    <strong>${printVal}</strong>
+                    ${delayTagHtml}
                     <div class="tooltip-card">
                         <strong>${meta.vesselId} (${meta.shippingLine})</strong><br>
                         Voyage: ${meta.voyageNo}<br>
-                        Current Location: ${meta.terminal} / ${meta.berth}<br>
+                        Assigned: Terminal ${meta.terminal} / Berth ${meta.berth}<br>
                         Class: ${meta.vesselClass} (${meta.capacity} TEU)<br>
-                        Imports/Exports: ${meta.importTeu} / ${meta.exportTeu} TEU<br>
                         <hr style="border-color:#475569; margin: 6px 0;">
                         Stage: ${stage}<br>
-                        Time Spent: ${val.toFixed(2)} hours
+                        Duration: ${val.toFixed(2)} hours<br>
+                        ${meta.stageDelays[stage] ? `<span style="color:#f87171;"><strong>Delay Cause:</strong> ${meta.stageDelays[stage]}</span>` : ''}
                     </div>
                 </td>`;
         });
@@ -326,7 +340,7 @@ function renderDashboard() {
         tbody.innerHTML += `<tr>${rowHtml}</tr>`;
     });
 
-    // Write split structural updates to upper summary headers
+    // Populate upper metrics display
     document.getElementById('kpi-active').textContent = activeInPortCount;
     document.getElementById('kpi-planning').textContent = preArrivalCount;
     document.getElementById('kpi-import').textContent = grandTotalImports.toLocaleString() + " TEU";
@@ -334,44 +348,49 @@ function renderDashboard() {
     document.getElementById('kpi-anchorage').textContent = anchorageCount > 0 ? (totalAnchorageWait / anchorageCount).toFixed(1) + "h" : "0.0h";
 
     if (tbody.children.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${STAGES.length + 2}" style="padding: 32px; color: #9ca3af; font-style: italic;">No matching vessels found fitting criteria.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${STAGES.length + 2}" style="padding: 32px; color: #9ca3af; font-style: italic;">No matching records found.</td></tr>`;
     }
 
-    // Refresh dynamic graphic charts
-    updateAnalyticsCharts(terminalImportMap, terminalExportMap, delayReasonMap);
+    // Refresh nested hierarchical graph widgets
+    updateHierarchicalCharts(berthThroughputMap, delayReasonMap);
 }
 
-function updateAnalyticsCharts(terminalImportMap, terminalExportMap, delayReasonMap) {
-    // Collect and sort unique terminal list entries cleanly
-    const allTerminals = new Set([...Object.keys(terminalImportMap), ...Object.keys(terminalExportMap)]);
-    const termCategories = Array.from(allTerminals).sort();
-    
-    // Generate side by side pairing values
-    const importData = termCategories.map(cat => terminalImportMap[cat] || 0);
-    const exportData = termCategories.map(cat => terminalExportMap[cat] || 0);
+function updateHierarchicalCharts(berthThroughputMap, delayReasonMap) {
+    // 1. Extract all active terminals (X-axis main components)
+    const terminalsSet = new Set();
+    Object.keys(berthThroughputMap).forEach(b => {
+        Object.keys(berthThroughputMap[b]).forEach(t => terminalsSet.add(t));
+    });
+    const termCategories = Array.from(termContainers = terminalsSet).sort();
+
+    // 2. Extract unique berths to map as structural legend series components
+    const uniqueBerths = Object.keys(berthThroughputMap).sort();
+
+    // Build stacked series data mapping exact Berth sub-allocations into corresponding parent Terminals
+    const seriesData = uniqueBerths.map(berthName => {
+        return {
+            name: `Berth ${berthName}`,
+            data: termCategories.map(termName => {
+                return berthThroughputMap[berthName][termName] || 0;
+            })
+        };
+    });
 
     const delayLabels = Object.keys(delayReasonMap);
     const delaySeries = delayLabels.map(l => delayReasonMap[l]);
 
-    // Side-by-Side paired Grouped Bar Chart Config for cargo types
+    // Stacked Hierarchical Column Layout Config
     const termOptions = {
-        series: [
-            { name: 'Imports (TEU)', data: importData },
-            { name: 'Exports (TEU)', data: exportData }
-        ],
-        chart: { type: 'bar', height: 260, toolbar: { show: false } },
-        colors: ['#10b981', '#06b6d4'], // Emerald green for imports, Cyan blue for exports
-        plotOptions: { 
-            bar: { 
-                horizontal: false, 
-                columnWidth: '55%', 
-                borderRadius: 3
-            } 
+        series: seriesData,
+        chart: { type: 'bar', height: 260, stacked: true, toolbar: { show: true } },
+        plotOptions: { bar: { horizontal: false, columnWidth: '45%' } },
+        xaxis: { 
+            categories: termCategories, 
+            title: { text: 'Parent Terminals', style: { fontWeight: 600 } } 
         },
-        xaxis: { categories: termCategories },
-        yaxis: { title: { text: 'Cargo Volume (TEU)' } },
+        yaxis: { title: { text: 'Combined Capacity Throughput (TEU)' } },
         dataLabels: { enabled: false },
-        legend: { position: 'top', horizontalAlign: 'right' }
+        legend: { position: 'right', verticalAlign: 'top', containerMargin: 10 }
     };
 
     if (terminalChartInstance) terminalChartInstance.updateOptions(termOptions);
@@ -384,7 +403,7 @@ function updateAnalyticsCharts(terminalImportMap, terminalExportMap, delayReason
         series: delaySeries,
         chart: { type: 'donut', height: 260 },
         labels: delayLabels,
-        colors: ['#ef4444', '#f59e0b', '#3b82f6', '#6366f1', '#a855f7'],
+        colors: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#a855f7'],
         legend: { position: 'bottom' }
     };
 
