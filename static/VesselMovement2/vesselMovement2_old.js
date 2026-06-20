@@ -93,17 +93,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    function uniqueSorted(arr) {
-        var seen = {}, out = [];
-        arr.forEach(function (v) {
-            if (!seen.hasOwnProperty(v)) {
-                seen[v] = true;
-                out.push(v);
-            }
-        });
-        return out.sort();
-    }
-
     function toXY(latlon) {
         return { x: latlon[1], y: latlon[0] };
     }
@@ -380,7 +369,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             .then(parseCsv)
             .then(function (rows) {
                 app.events = rows.filter(function (x) { return x.event_time; });
-                app.times = uniqueSorted(app.events.map(function (x) { return x.event_time; }));
+                app.times = Array.prototype.slice.call(
+                    rows.reduce(function (set, x) { if (x.event_time) { set.add(x.event_time); } return set; }, new Set())
+                ).sort();
 
                 document.getElementById('vm-timeline').max = app.times.length - 1;
 
