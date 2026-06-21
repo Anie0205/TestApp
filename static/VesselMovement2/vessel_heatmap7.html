@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Maritime Port Terminal & Lifecycle Control Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; background: #f3f4f6; color: #1f2937; }
+        
+        /* Control Panel Layout */
+        .control-panel { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-weight: 600; font-size: 13px; color: #4b5563; }
+        select, input[type="text"] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #d1d5db; background-color: #fff; min-width: 220px; outline: none; }
+        select:focus, input[type="text"]:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+        
+        /* Playback Rig Buttons */
+        .playback-btn { padding: 8px 16px; font-size: 14px; font-weight: 600; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; transition: all 0.2s; }
+        .playback-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+        .playback-btn.active { background: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+
+        /* Dynamic Tabs Bar CSS Architecture */
+        .tab-bar { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 2px; }
+        .tab-btn { padding: 10px 20px; font-size: 14px; font-weight: 600; border: none; background: none; border-radius: 6px 6px 0 0; cursor: pointer; color: #6b7280; transition: all 0.2s; border-bottom: 2px solid transparent; margin-bottom: -4px; }
+        .tab-btn:hover { color: #374151; background: #e5e7eb; }
+        .tab-btn.active { color: #3b82f6; border-bottom: 2px solid #3b82f6; background: #ffffff; box-shadow: 0 -2px 5px rgba(0,0,0,0.02); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Layout Grid Panels Container Cards */
+        .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .kpi-card { background: white; padding: 16px; border-radius: 8px; flex: 1; min-width: 160px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .kpi-card .kpi-val { font-size: 22px; font-weight: 700; color: #111827; margin-top: 4px; }
+        
+        .matrix-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow-x: auto; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1150px; text-align: center; }
+        th, td { padding: 12px 8px; border: 1px solid #e5e7eb; font-size: 13px; transition: background-color 0.15s; }
+        th { background-color: #f9fafb; font-weight: 600; color: #374151; }
+        
+        /* Interactive Row Expansion Accordion Styles */
+        .vessel-row { cursor: pointer; }
+        .vessel-row:hover td { background-color: #f8fafc; }
+        .vessel-axis-cell { text-align: left; font-weight: bold; background: #f9fafb; min-width: 220px; color: #111827; position: sticky; left: 0; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1); z-index: 2; }
+        
+        .drilldown-row { background-color: #f8fafc; display: none; }
+        .drilldown-container { padding: 16px; text-align: left; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; margin: 4px auto; width: 98%; }
+        .subtable { width: 100%; border-collapse: collapse; text-align: left; min-width: 100%; }
+        .subtable th { background: #f1f5f9; color: #475569; font-size: 12px; padding: 8px; }
+        .subtable td { padding: 8px; font-size: 12px; border: 1px solid #e2e8f0; background: #ffffff !important; }
+
+        /* Badges */
+        .berth-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .status-badge { display: inline-block; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: 600; margin-top: 4px; margin-right: 4px; }
+        .status-in-port { background-color: #dbeafe; color: #1e40af; }
+        .status-departed { background-color: #f3f4f6; color: #4b5563; }
+        .status-planning { background-color: #fef3c7; color: #92400e; }
+        .delay-warning-tag { display: block; font-size: 10px; color: #b91c1c; font-weight: bold; margin-top: 4px; text-transform: uppercase; background: rgba(254, 226, 226, 0.6); padding: 1px 3px; border-radius: 3px; border: 1px dashed #fee2e2; }
+
+        /* Matrix Cell Heat Map Gradients */
+        .cell-empty { background-color: #fcfcfd; color: #d1d5db; }
+        .cell-low { background-color: #dcfce7; color: #166534; font-weight: 500; }
+        .cell-med { background-color: #eff6ff; color: #1e40af; font-weight: 500; }
+        .cell-high { background-color: #fef9c3; color: #854d0e; font-weight: 600; }
+        .cell-critical { background-color: #fee2e2; color: #991b1b; font-weight: 700; }
+
+        .highlight-column { background-color: #f3f4f6 !important; }
+        .matrix-cell { position: relative; }
+        .matrix-cell .tooltip-card {
+            visibility: hidden; width: 250px; background-color: #1e293b; color: #fff; text-align: left;
+            border-radius: 6px; padding: 12px; position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            font-size: 12px; line-height: 1.4; pointer-events: none;
+        }
+        .matrix-cell:hover .tooltip-card { visibility: visible; opacity: 1; }
+
+        /* Generic Split Panel Charts Wrapper styling */
+        .charts-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; margin-top: 10px; }
+        .chart-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .chart-title { font-weight: 600; font-size: 15px; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <div class="control-group">
+            <label for="ts-select">Global Snapshot Timestamp</label>
+            <select id="ts-select" onchange="renderActiveTab()"></select>
+        </div>
+
+        <div class="control-group" style="flex-direction: row; gap: 8px;">
+            <button class="playback-btn" id="play-btn" onclick="togglePlayback()">▶ Play Simulation</button>
+            <button class="playback-btn" onclick="stepPlayback(1)">Next ➔</button>
+        </div>
+        
+        <div class="control-group">
+            <label for="status-filter">Vessel Tracking Context Filter</label>
+            <select id="status-filter" onchange="renderActiveTab()">
+                <option value="IN_PORT" selected>Only Vessels in Port (Active)</option>
+                <option value="ALL">All Tracked Voyages</option>
+                <option value="PRE_ARRIVAL">Pre-Arrival Only</option>
+                <option value="DEPARTED">Departed Only</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="search-input">Universal Key Query Search</label>
+            <input type="text" id="search-input" placeholder="e.g. T1, V0004, CONGESTION" oninput="renderActiveTab()">
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <button class="tab-btn active" id="btn-executive" onclick="switchTab('executive')">Executive Insights Dashboard</button>
+        <button class="tab-btn" id="btn-vessels" onclick="switchTab('vessels')">Vessel Tracking & Lifecycle</button>
+        <button class="tab-btn" id="btn-terminals" onclick="switchTab('terminals')">Terminal & Berth Optimization</button>
+        <button class="tab-btn" id="btn-operations" onclick="switchTab('operations')">Operational & Resource Efficiency</button>
+        <button class="tab-btn" id="btn-environment" onclick="switchTab('environment')">Environmental & Safety Context</button>
+    </div>
+
+    <div id="tab-executive" class="tab-content active">
+        <div class="kpi-row">
+            <div class="kpi-card" style="border-left: 4px solid #3b82f6;">
+                <label>Avg Port Turnaround Time</label>
+                <div class="kpi-val" id="kpi-exe-tat">0.0 hrs</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                <label>Asset Capacity Load Rate</label>
+                <div class="kpi-val" id="kpi-exe-cap">0.0%</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #ef4444;">
+                <label>Delayed Voyages Ratio</label>
+                <div class="kpi-val" id="kpi-exe-delpct">0.0%</div>
+            </div>
+        </div>
+        <div class="charts-grid-2">
+            <div class="chart-card">
+                <div class="chart-title">Accumulated Demurrage & Congestion Idle Gaps by Shipping Line (hrs)</div>
+                <div id="exe-demurrage-chart"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Logistical Delay Root Cause Distribution</div>
+                <div id="exe-delay-pie"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-vessels" class="tab-content">
+        <div class="kpi-row">
+            <div class="kpi-card" style="border-left: 4px solid #2563eb;">
+                <label>Active Hull In Port Count</label>
+                <div class="kpi-val" id="kpi-vsl-active">0</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #d97706;">
+                <label>Pre-Arrival Pipeline</label>
+                <div class="kpi-val" id="kpi-vsl-plan">0</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #dc2626;">
+                <label>Avg Anchorage Wait Gap</label>
+                <div class="kpi-val" id="kpi-vsl-anch">0.0 hrs</div>
+            </div>
+        </div>
+        <div class="matrix-container">
+            <table>
+                <thead><tr id="matrix-header"></tr></thead>
+                <tbody id="matrix-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="tab-terminals" class="tab-content">
+        <div class="kpi-row">
+            <div class="kpi-card" style="border-left: 4px solid #059669;">
+                <label>Total Import Throughput</label>
+                <div class="kpi-val" id="kpi-term-imp">0 TEU</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #0891b2;">
+                <label>Total Export Throughput</label>
+                <div class="kpi-val" id="kpi-term-exp">0 TEU</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #4f46e5;">
+                <label>Active Berth Allocation Rate</label>
+                <div class="kpi-val" id="kpi-term-occupancy">0%</div>
+            </div>
+        </div>
+        <div class="charts-grid-2">
+            <div class="chart-card">
+                <div class="chart-title">True Geographic Terminal ➔ Berth Capacity Volumes (TEU)</div>
+                <div id="term-geo-bar"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Physical Container Load Category Type Proportions</div>
+                <div id="term-type-pie"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-operations" class="tab-content">
+        <div class="kpi-row">
+            <div class="kpi-card" style="border-left: 4px solid #7c3aed;">
+                <label>Avg Cranes Assigned per Voyage</label>
+                <div class="kpi-val" id="kpi-ops-cranes">0.0</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #2563eb;">
+                <label>Mean Crane Handling Velocity</label>
+                <div class="kpi-val" id="kpi-ops-speed">0.0 TEU/h</div>
+            </div>
+        </div>
+        <div class="charts-grid-2">
+            <div class="chart-card" style="grid-column: 1 / -1;">
+                <div class="chart-title">Diminishing Returns Audit: Crane Density vs Exchange Velocity</div>
+                <div id="ops-efficiency-scatter"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-environment" class="tab-content">
+        <div class="kpi-row">
+            <div class="kpi-card" style="border-left: 4px solid #4b5563;">
+                <label>Current Weather Metric</label>
+                <div class="kpi-val" id="kpi-env-weather">-</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #06b6d4;">
+                <label>Real-Time Tide Water Level</label>
+                <div class="kpi-val" id="kpi-env-tide">0.00m</div>
+            </div>
+        </div>
+        <div class="charts-grid-2">
+            <div class="chart-card" style="grid-column: 1 / -1;">
+                <div class="chart-title">Environmental Correlation Window: Tide Fluctuations vs Active Port Disruptions</div>
+                <div id="env-tide-line"></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+let currentTab = 'executive';
+let rawData = [];
+let playbackInterval = null;
+
+// Persistent Global Graph Reference Variables
+let chartsMap = {};
+
+// Master Stage Sequences Mapping Array
+const STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
+
+// Load Local CSV Log File Entries
+fetch('vessel_lifecycle_simulation.csv')
+    .then(r => r.text())
+    .then(txt => {
+        Papa.parse(txt, { header: true, dynamicTyping: true, skipEmptyLines: true, complete: res => {
+            rawData = res.data;
+            const timestamps = [...new Set(rawData.map(r => r.event_time))].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b));
+            const select = document.getElementById('ts-select');
+            timestamps.forEach(ts => { select.add(new Option(ts, ts)); });
+            if(timestamps.length > 0) renderActiveTab();
+        }});
+    });
+
+function switchTab(tabId) {
+    currentTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    document.getElementById(`btn-${tabId}`).classList.add('active');
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    
+    renderActiveTab();
+}
+
+function renderActiveTab() {
+    const selectedTimestamp = document.getElementById('ts-select').value;
+    const filterValue = document.getElementById('status-filter').value;
+    const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+    
+    const cutoff = new Date(selectedTimestamp);
+    const filtered = rawData.filter(r => new Date(r.event_time) <= cutoff);
+
+    // Dynamic data consolidation containers
+    const groups = {};
+    const metadata = {};
+    
+    let activeInPort = 0, preArrival = 0, departed = 0;
+    let totalImports = 0, totalExports = 0, cumulativeCapacity = 0;
+    let sumAnchorageWait = 0, countAnchorage = 0;
+    let sumCranes = 0, countCranes = 0, totalCargoHours = 0;
+    let countDelayedVoyages = 0, totalVoyages = 0;
+    
+    let envWeather = "CLEAR", envTide = 0.0;
+    
+    const shippingLineDelayMap = {};
+    const delayReasonCounts = {};
+    const strictGeoThroughput = {};
+    const containerTypeCounts = {};
+    const opsScatterPoints = [];
+    const timelineTideMap = {};
+    const timelineDelayCountMap = {};
+
+    filtered.forEach(r => {
+        const key = `${r.voyage_no}_${r.vessel_id}`;
+        if (!groups[key]) {
+            groups[key] = [];
+            metadata[key] = {
+                vesselId: r.vessel_id, voyageNo: r.voyage_no, shippingLine: r.shipping_line,
+                vesselClass: r.vessel_class, capacity: r.teu_capacity || 0,
+                importTeu: r.import_teu || 0, exportTeu: r.export_teu || 0,
+                anchorageWait: r.anchorage_wait_hours || 0, cargoHours: r.cargo_hours || 0,
+                cranes: r.cranes_assigned || 0, terminal: '-', berth: '-',
+                stageDelays: {}, substagesList: [], hasArrived: false, hasDeparted: false
+            };
+        }
+        
+        let meta = metadata[key];
+        if (r.terminal && r.terminal !== "NaN") meta.terminal = r.terminal;
+        if (r.berth && r.berth !== "NaN") meta.berth = r.berth;
+        
+        // Trap environmental factors relative to global timestamp mapping loops
+        const timeKey = r.event_time;
+        if (!timelineTideMap[timeKey]) {
+            timelineTideMap[timeKey] = r.tide_level || 0;
+            timelineDelayCountMap[timeKey] = 0;
+        }
+
+        if (r.delay_reason && r.delay_reason !== "NaN" && String(r.delay_reason).trim() !== "") {
+            meta.stageDelays[r.stage] = r.delay_reason;
+            delayReasonCounts[r.delay_reason] = (delayReasonCounts[r.delay_reason] || 0) + 1;
+            timelineDelayCountMap[timeKey]++;
+            shippingLineDelayMap[r.shipping_line] = (shippingLineDelayMap[r.shipping_line] || 0) + 1;
+        }
+
+        if (r.container_type && r.container_type !== "NaN") {
+            containerTypeCounts[r.container_type] = (containerTypeCounts[r.container_type] || 0) + 1;
+        }
+
+        if (new Date(r.event_time).getTime() === cutoff.getTime()) {
+            if (r.weather) envWeather = r.weather;
+            if (r.tide_level) envTide = r.tide_level;
+        }
+
+        meta.substagesList.push({
+            timeStr: r.event_time, stage: r.stage, substage: r.substage,
+            cranes: r.cranes_assigned || '-', weather: r.weather || '-', delay: r.delay_reason || '-'
+        });
+
+        groups[key].push({ time: new Date(r.event_time), stage: r.stage });
+    });
+
+    // Compute Macro Metric Metrics
+    Object.keys(groups).forEach(key => {
+        let meta = metadata[key];
+        let events = groups[key].sort((a,b) => a.time - b.time);
+        let latest = events[events.length - 1];
+        
+        if (events.some(e => e.stage !== 'PLANNING')) meta.hasArrived = true;
+        if (latest.stage === 'DEPARTURE') meta.hasDeparted = true; // Simplified for calculation speed
+
+        if (meta.hasArrived) {
+            totalVoyages++;
+            totalImports += meta.importTeu;
+            totalExports += meta.exportTeu;
+            cumulativeCapacity += meta.capacity;
+            
+            if (Object.keys(meta.stageDelays).length > 0) countDelayedVoyages++;
+            if (meta.anchorageWait > 0) { sumAnchorageWait += meta.anchorageWait; countAnchorage++; }
+            if (meta.cranes > 0 && latest.stage === 'CARGO') { sumCranes += meta.cranes; countCranes++; }
+            
+            if (meta.terminal !== '-' && meta.berth !== '-') {
+                if (!strictGeoThroughput[meta.terminal]) strictGeoThroughput[meta.terminal] = {};
+                strictGeoThroughput[meta.terminal][meta.berth] = (strictGeoThroughput[meta.terminal][meta.berth] || 0) + (meta.importTeu + meta.exportTeu);
+            }
+
+            if (meta.cargoHours > 0) {
+                totalCargoHours += meta.cargoHours;
+                opsScatterPoints.push({ x: meta.cranes, y: parseFloat(((meta.importTeu + meta.exportTeu) / meta.cargoHours).toFixed(1)) });
+            }
+
+            if (meta.hasDeparted) departed++;
+            else activeInPort++;
+        } else {
+            preArrival++;
+        }
+    });
+
+    // RENDER LOGICAL TAB STRUCTURE MODULE CONTENT
+    if (currentTab === 'executive') {
+        document.getElementById('kpi-exe-tat').textContent = totalVoyages > 0 ? (totalCargoHours / totalVoyages * 1.8).toFixed(1) + " hrs" : "0.0 hrs";
+        document.getElementById('kpi-exe-cap').textContent = cumulativeCapacity > 0 ? ((totalImports + totalExports) / cumulativeCapacity * 100).toFixed(1) + "%" : "0.0%";
+        document.getElementById('kpi-exe-delpct').textContent = totalVoyages > 0 ? (countDelayedVoyages / totalVoyages * 100).toFixed(1) + "%" : "0.0%";
+        
+        renderBarChart('exe-demurrage-chart', Object.keys(shippingLineDelayMap), Object.values(shippingLineDelayMap), 'Delay Frequency');
+        renderDonutChart('exe-delay-pie', Object.keys(delayReasonCounts), Object.values(delayReasonCounts));
+        
+    } else if (currentTab === 'vessels') {
+        document.getElementById('kpi-vsl-active').textContent = activeInPort;
+        document.getElementById('kpi-vsl-plan').textContent = preArrival;
+        document.getElementById('kpi-vsl-anch').textContent = countAnchorage > 0 ? (sumAnchorageWait / countAnchorage).toFixed(1) + " hrs" : "0.0 hrs";
+        
+        // Generate Table Rows Matrix Element dynamically
+        const header = document.getElementById('matrix-header');
+        header.innerHTML = '<th style="position: sticky; left:0; z-index:5;">Vessel Allocation Framework</th>';
+        STAGES.forEach(s => header.innerHTML += `<th>${s}</th>`);
+        header.innerHTML += '<th>Total Time</th>';
+        
+        const tbody = document.getElementById('matrix-body');
+        tbody.innerHTML = '';
+        
+        Object.keys(groups).forEach(key => {
+            let meta = metadata[key];
+            
+            // Search validation constraints mapping array checks
+            if (searchQuery) {
+                const mId = meta.vesselId.toLowerCase().includes(searchQuery);
+                const mLine = meta.shippingLine.toLowerCase().includes(searchQuery);
+                const mSub = meta.substagesList.some(s => s.substage.toLowerCase().includes(searchQuery));
+                if (!mId && !mLine && !mSub) return;
+            }
+            if (filterValue === 'IN_PORT' && (preArrival > 0 && !meta.hasArrived || meta.hasDeparted)) return;
+
+            let events = groups[key].sort((a,b) => a.time - b.time);
+            let rowDurations = {};
+            STAGES.forEach(s => rowDurations[s] = 0);
+            
+            for(let i=0; i<events.length; i++) {
+                let nextTime = (i < events.length - 1) ? events[i+1].time : cutoff;
+                rowDurations[events[i].stage] += Math.max(0, (nextTime - events[i].time) / (1000*60*60));
+            }
+
+            let subHtml = '';
+            meta.substagesList.forEach(s => {
+                subHtml += `<tr><td>${s.timeStr}</td><td>${s.stage}</td><td><code>${s.substage}</code></td><td>${s.cranes}</td><td>${s.weather}</td><td>${s.delay}</td></tr>`;
+            });
+
+            let rowHtml = `<tr class="vessel-row" onclick="toggleDrilldownRow('sub_${key}')">
+                <td class="vessel-axis-cell">${meta.vesselId} <span style="font-size:11px; font-weight:normal; color:#6b7280;">(${meta.voyageNo})</span><br><span class="berth-badge">Loc: ${meta.terminal}/${meta.berth}</span></td>`;
+            
+            let totalT = 0;
+            STAGES.forEach(s => {
+                let d = rowDurations[s]; totalT += d;
+                let hClass = d > 0 ? (d <= 4 ? 'cell-low' : d <= 24 ? 'cell-med' : 'cell-critical') : 'cell-empty';
+                rowHtml += `<td class="matrix-cell ${hClass}"><strong>${d > 0 ? d.toFixed(1)+'h' : '-'}</strong>${meta.stageDelays[s] ? `<span class="delay-warning-tag">⚠️ ${meta.stageDelays[s]}</span>` : ''}</td>`;
+            });
+            
+            rowHtml += `<td>${totalT.toFixed(1)}h</td></tr>
+            <tr class="drilldown-row" id="sub_${key}"><td colspan="${STAGES.length + 2}"><div class="drilldown-container">
+                <table class="subtable"><thead><tr><th>Timestamp</th><th>Stage</th><th>Substage Identifier</th><th>Cranes</th><th>Weather</th><th>Disruption Flag</th></tr></thead><tbody>${subHtml}</tbody></table>
+            </div></td></tr>`;
+            
+            tbody.innerHTML += rowHtml;
+        });
+        
+    } else if (currentTab === 'terminals') {
+        document.getElementById('kpi-term-imp').textContent = totalImports.toLocaleString() + " TEU";
+        document.getElementById('kpi-term-exp').textContent = totalExports.toLocaleString() + " TEU";
+        document.getElementById('kpi-term-occupancy').textContent = activeInPort > 0 ? Math.min(100, (activeInPort * 12)).toFixed(0) + "%" : "0%";
+        
+        const categories = [];
+        const values = [];
+        Object.keys(strictGeoThroughput).sort().forEach(t => {
+            Object.keys(strictGeoThroughput[t]).sort().forEach(b => {
+                categories.push(`${t} ➔ ${b}`);
+                values.push(strictGeoThroughput[t][b]);
+            });
+        });
+        
+        renderBarChart('term-geo-bar', categories, values, 'TEU Throughput');
+        renderDonutChart('term-type-pie', Object.keys(containerTypeCounts), Object.values(containerTypeCounts));
+
+    } else if (currentTab === 'operations') {
+        document.getElementById('kpi-ops-cranes').textContent = countCranes > 0 ? (sumCranes / countCranes).toFixed(1) : "0.0";
+        document.getElementById('kpi-ops-speed').textContent = totalCargoHours > 0 ? ((totalImports + totalExports) / totalCargoHours).toFixed(1) + " TEU/h" : "0.0 TEU/h";
+        
+        renderScatterChart('ops-efficiency-scatter', opsScatterPoints);
+
+    } else if (currentTab === 'environment') {
+        document.getElementById('kpi-env-weather').textContent = envWeather;
+        document.getElementById('kpi-env-tide').textContent = envTide.toFixed(2) + "m";
+        
+        const timesSorted = Object.keys(timelineTideMap).sort().slice(-20); // Last 20 logs sequence for cleaner rendering
+        const tides = timesSorted.map(t => parseFloat(timelineTideMap[t].toFixed(2)));
+        const delays = timesSorted.map(t => timelineDelayCountMap[t]);
+        
+        renderDualAxisLineChart('env-tide-line', timesSorted, tides, delays);
+    }
+}
+
+function toggleDrilldownRow(id) {
+    const el = document.getElementById(id);
+    el.style.display = (el.style.display === 'table-row') ? 'none' : 'table-row';
+}
+
+// Playback Engine Wrapper Loops
+function togglePlayback() {
+    const btn = document.getElementById('play-btn');
+    if (playbackInterval) {
+        clearInterval(playbackInterval); playbackInterval = null;
+        btn.textContent = "▶ Play Simulation"; btn.classList.remove('active');
+    } else {
+        btn.textContent = "⏸ Pause Simulation"; btn.classList.add('active');
+        playbackInterval = setInterval(() => { stepPlayback(1); }, 1300);
+    }
+}
+function stepPlayback(steps) {
+    const select = document.getElementById('ts-select');
+    let target = select.selectedIndex + steps;
+    if (target >= select.options.length) target = 0;
+    select.selectedIndex = target;
+    renderActiveTab();
+}
+
+// Safe Universal Chart Management Destruction Blocks to handle responsive UI Updates cleanly
+function safeRender(id, config) {
+    if(chartsMap[id]) { chartsMap[id].destroy(); }
+    chartsMap[id] = new ApexCharts(document.querySelector(`#${id}`), config);
+    chartsMap[id].render();
+}
+
+// Component Charts Boilerplate Modules
+function renderBarChart(id, categories, data, label) {
+    safeRender(id, {
+        series: [{ name: label, data: data }],
+        chart: { type: 'bar', height: 250, toolbar: { show: false } },
+        colors: ['#3b82f6'],
+        xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '10px' } } },
+        dataLabels: { enabled: false }
+    });
+}
+function renderDonutChart(id, labels, series) {
+    safeRender(id, {
+        series: series, labels: labels,
+        chart: { type: 'donut', height: 250 },
+        legend: { position: 'bottom', fontSize: '11px' }
+    });
+}
+function renderScatterChart(id, points) {
+    safeRender(id, {
+        series: [{ name: 'Vessels Velocity', data: points }],
+        chart: { type: 'scatter', height: 280 },
+        xaxis: { title: { text: 'Cranes Allocated Intensity' }, tickAmount: 4 },
+        yaxis: { title: { text: 'Handling Exchange Velocity (TEU/hr)' } }
+    });
+}
+function renderDualAxisLineChart(id, categories, lineData, barData) {
+    safeRender(id, {
+        series: [{ name: 'Tide Level (m)', type: 'line', data: lineData }, { name: 'Active Disruptions Count', type: 'column', data: barData }],
+        chart: { height: 280, type: 'line', toolbar: { show: false } },
+        colors: ['#06b6d4', '#ef4444'],
+        stroke: { width: [3, 0] },
+        xaxis: { categories: categories, labels: { show: false } },
+        yaxis: [{ title: { text: 'Water Height Height (meters)' } }, { opposite: true, title: { text: 'Disruption Event Spikes Frequency' } }]
+    });
+}
+</script>
+</body>
+</html>
