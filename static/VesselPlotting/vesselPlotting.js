@@ -21,7 +21,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 console.log("Connected to Geospatial Design context successfully.");
                 
                 // Example: Plot ship at specific coordinates once ready
-                VesselWidget.plotVesselGeom(12.9716, 77.5946, 0.0);
+                VesselWidget.plotVesselGeom(18.94543, 72.92450, 0.0);
             });
         },
 
