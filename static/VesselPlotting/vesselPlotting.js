@@ -37,8 +37,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI, Toggler, Autocomplete, But
 
             // 2. Plot target ship asset at a given Lat/Lng
             // Example: Centered at specified coordinates
-            var targetLat = 12.9716; 
-            var targetLng = 77.5946;
+            var targetLat = 18.936532; 
+            var targetLng = 72.933758;
             var targetAlt = 0.0; // Sea/Ground Level
 
             VesselWidget.plotShip(targetLat, targetLng, targetAlt);
