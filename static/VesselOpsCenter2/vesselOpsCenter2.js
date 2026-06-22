@@ -226,12 +226,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     name: b,
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
-                render: {
-                    style: 'text',          // Using the reliable text engine
-                    text: '▲',             // Flat geometric triangle/arrow pointing forward
-                    color: '#2ca02c',       // Green for free
-                    scale: 1.5              // Scale the size up or down easily
-                },
+               render: {
+                style: 'icon',
+                color: '#2ca02c', // Your dynamic colors!
+                iconName: 'transportation-boat' // The native guaranteed icon
+            },
                 options: { 
                     projection: { from: 'WGS84' },
                     stem: false             // Ensures no vertical stick drops down
@@ -257,10 +256,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
             },
             render: {
-                style: 'text',
-                text: '▲',
-                color: occupied ? '#d62728' : '#2ca02c', // Flips cleanly between red and green
-                scale: 1.5
+                style: 'icon',
+                color: occupied ? '#d62728' : '#2ca02c', // Your dynamic colors!
+                iconName: 'transportation-boat' // The native guaranteed icon
             },
             options: { 
                 projection: { from: 'WGS84' },
