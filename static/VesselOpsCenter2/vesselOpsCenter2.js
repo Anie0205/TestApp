@@ -226,7 +226,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     id: markerId,
                     name: b,
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
-                },
+                }/*,
                 options: {
                     projection: { from: 'WGS84' },
                     stem: false, // Prevents the drop-pin stem from rendering
@@ -234,7 +234,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                         id: 'custom-berth-poi-free', // Maps directly to your CSS file
                         url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css'
                     }
-                }
+                }*/
             });
         });
     }
