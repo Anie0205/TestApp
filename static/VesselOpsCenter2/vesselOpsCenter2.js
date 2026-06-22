@@ -210,48 +210,33 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return SEA;
     }
 
-   // 📐 Calculates GeoJSON Polygon coordinates for a rectangular Berth zone
-    function getBerthPolygonCoords(lon, lat, heading, widthMeters, lengthMeters) {
-        var R = 6378137; 
+   function getBerthPolygonCoords(lon, lat, heading, widthMeters, lengthMeters) {
+        var R = 6378137;
         var rad = Math.PI / 180;
         var hRad = heading * rad;
-
-        // Base rectangle coordinates (centered on the lat/lon)
         var pts = [
             [widthMeters / 2, lengthMeters / 2],
             [widthMeters / 2, -lengthMeters / 2],
             [-widthMeters / 2, -lengthMeters / 2],
             [-widthMeters / 2, lengthMeters / 2],
-            [widthMeters / 2, lengthMeters / 2] // Close the ring
+            [widthMeters / 2, lengthMeters / 2] // Close ring
         ];
-
         var coords = [];
         for (var i = 0; i < pts.length; i++) {
-            var x = pts[i][0];
-            var y = pts[i][1];
-
-            // Rotate to align with the physical dock
-            var dx = x * Math.cos(hRad) + y * Math.sin(hRad);
-            var dy = -x * Math.sin(hRad) + y * Math.cos(hRad);
-
-            var dLat = dy / R / rad;
-            var dLon = dx / (R * Math.cos(lat * rad)) / rad;
-
-            coords.push([lon + dLon, lat + dLat]);
+            var dx = pts[i][0] * Math.cos(hRad) + pts[i][1] * Math.sin(hRad);
+            var dy = -pts[i][0] * Math.sin(hRad) + pts[i][1] * Math.cos(hRad);
+            coords.push([lon + (dx / (R * Math.cos(lat * rad)) / rad), lat + (dy / R / rad)]);
         }
-        return [coords]; 
+        return [coords];
     }
-    
-    // ---------------------------------------------------------------------
-    // STATIC BERTH MARKERS (GeoJSON Polygons)
-    // ---------------------------------------------------------------------
+
     function initBerthMarkers() {
         Object.keys(BERTHS).forEach(function (b) {
             var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
             app.berthMarkerIds[b] = markerId;
             app.berthOccupied[b] = false;
 
-            // Generate an 80m x 30m rectangular zone, rotated 135 degrees
+            // Generate an 80m x 30m rectangular zone, rotated 135 degrees to match the quay
             var polyCoords = getBerthPolygonCoords(BERTHS[b][1], BERTHS[b][0], 135, 30, 80);
 
             PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
@@ -266,8 +251,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
                 render: {
-                    color: '#2ca02c', // Green for Free
-                    opacity: 0.5,     // Semi-transparent so you can see the dock underneath
+                    color: '#2ca02c', // Green for free
+                    opacity: 0.5,     // Semi-transparent
                     outlineColor: '#ffffff',
                     outlineWidth: 2
                 },
@@ -280,9 +265,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    // ---------------------------------------------------------------------
-    // DYNAMIC BERTH MARKERS (State updates)
-    // ---------------------------------------------------------------------
     function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
         app.berthOccupied[b] = occupied;
@@ -292,7 +274,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
         app.berthMarkerIds[b] = markerId;
 
-        // Keep the exact same geometry when updating
+        // Keep the exact same geometry when updating the color
         var polyCoords = getBerthPolygonCoords(BERTHS[b][1], BERTHS[b][0], 135, 30, 80);
 
         PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
