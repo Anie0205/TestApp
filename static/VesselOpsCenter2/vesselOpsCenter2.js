@@ -351,67 +351,125 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return [coords];
     }
     // ---------------------------------------------------------------------
-    // DYNAMIC VESSEL SHAPES (GeoJSON Polygons)
+    // DYNAMIC 3D VESSEL SHAPES (Stacked GeoJSON Polygons)
     // ---------------------------------------------------------------------
     function publishVesselMarker(ev) {
         var id = ev.vessel_id;
-        var markerId = CONFIG.VESSEL_MARKER_PREFIX + id;
-        
-        removeContent(app.vesselMarkerIds[id]); 
-        app.vesselMarkerIds[id] = markerId;
 
-        // Determine coordinates and default heading
-        var pos = posFor(ev); // returns [lat, lon]
-        var heading = ev.heading_deg || 0; // Default to North if missing
-
-        // Generate a 40m x 150m ship polygon
-        var polyCoords = getShipPolygonCoords(pos[1], pos[0], heading, 40, 150);
-
-        // Assign visual colors based on the current stage
-        var stageColors = {
-            'PLANNING': '#95a5a6',  // Grey
-            'ARRIVAL': '#f39c12',   // Orange
-            'WAITING': '#e74c3c',   // Red
-            'INBOUND': '#3498db',   // Blue
-            'BERTHING': '#9b59b6',  // Purple
-            'CLEARANCE': '#1abc9c', // Teal
-            'CARGO': '#2ecc71',     // Green
-            'SERVICE': '#f1c40f',   // Yellow
-            'DEPARTURE': '#34495e'  // Dark Navy
-        };
-        var activeColor = stageColors[ev.stage] || '#0B5CAB';
-
-        PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
-            json: [{
-                type: 'Polygon',
-                properties: { STRID: id },
-                coordinates: polyCoords
-            }],
-            layer: {
-                id: markerId,
-                name: '\uD83D\uDEF3\uFE0F' + id,
-                description:
-                    '<b>Vessel:</b> ' + esc(id) + '<br>' +
-                    '<b>Voyage:</b> ' + esc(ev.voyage_no) + '<br>' +
-                    '<b>Line:</b> ' + esc(ev.shipping_line) + '<br>' +
-                    '<b>Type:</b> ' + esc(ev.container_type) + '<br>' +
-                    '<b>Terminal:</b> ' + esc(ev.terminal) + '<br>' +
-                    '<b>Berth:</b> ' + esc(ev.berth) + '<br>' +
-                    '<b>Stage:</b> ' + esc(ev.stage) + '<br>' +
-                    '<b>Substage:</b> ' + esc(ev.substage) + '<br>' +
-                    '<b>Import/Export TEU:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu)
-            },
-            render: {
-                color: activeColor,
-                opacity: 0.85,
-                outlineColor: '#ffffff',
-                outlineWidth: 2
-            },
-            options: { 
-                projection: { from: 'WGS84' },
-                addTerrainHeight: true,
-                altitudeMode: 'clampToGround'
+        // Cleanup previous multi-layer marker
+        if (app.vesselMarkerIds[id]) {
+            if (Array.isArray(app.vesselMarkerIds[id])) {
+                // If it's already an array of 3D layers, loop and destroy
+                app.vesselMarkerIds[id].forEach(function(layerId) {
+                    removeContent(layerId);
+                });
+            } else {
+                // Fallback cleanup if transitioning from the old single marker
+                removeContent(app.vesselMarkerIds[id]); 
             }
+        }
+        
+        // Reset the tracker for this vessel to an array
+        app.vesselMarkerIds[id] = [];
+
+        var pos = posFor(ev);
+        var heading = ev.heading_deg || 0;
+        
+        // ⚙️ Base Dimensions
+        var w = 40;  // Ship width in meters
+        var l = 150; // Ship length in meters
+        var baseZ = CONFIG.VESSEL_MARKER_ELEVATION || 0; // The float height (80m in your config)
+
+        var stageColors = {
+            'PLANNING': '#95a5a6', 'ARRIVAL': '#f39c12', 'WAITING': '#e74c3c',
+            'INBOUND': '#3498db', 'BERTHING': '#9b59b6', 'CLEARANCE': '#1abc9c',
+            'CARGO': '#2ecc71', 'SERVICE': '#f1c40f', 'DEPARTURE': '#34495e'
+        };
+        var hullColor = stageColors[ev.stage] || '#0B5CAB';
+
+        // 🏗️ Define the 5 Tiers of the 3D Ship Architecture
+        var shipLayers = [
+            // 1. Waterline Hull (Dark Grey, standard ship footprint)
+            { zOffset: 0, color: '#2c3e50', pts: [[0, l/2], [w/2, l/4], [w/2, -l/2], [-w/2, -l/2], [-w/2, l/4]] },
+            
+            // 2. Main Deck (Dynamic Status Color, sits just above the waterline)
+            { zOffset: 4, color: hullColor, pts: [[0, l/2], [w/2, l/4], [w/2, -l/2], [-w/2, -l/2], [-w/2, l/4]] },
+            
+            // 3. Cargo Block (Mid-Grey rectangle, stacked in the middle of the deck)
+            { zOffset: 12, color: '#7f8c8d', pts: [[w/2.2, l/5], [w/2.2, -l/4], [-w/2.2, -l/4], [-w/2.2, l/5]] },
+            
+            // 4. Bridge / Superstructure (White, nested at the stern/back of the ship)
+            { zOffset: 18, color: '#ecf0f1', pts: [[w/2.2, -l/4], [w/2.2, -l/2.1], [-w/2.2, -l/2.1], [-w/2.2, -l/4]] },
+            
+            // 5. Bridge Roof / Radar Tower (Light Grey, top level detail)
+            { zOffset: 24, color: '#bdc3c7', pts: [[w/3, -l/3.5], [w/3, -l/2.2], [-w/3, -l/2.2], [-w/3, -l/3.5]] }
+        ];
+
+        // 📐 Rotation & Translation Helper (Translates [x,y,z] to GPS)
+        function getLayerCoords(ptsArray, z) {
+            var R = 6378137;
+            var rad = Math.PI / 180;
+            var hRad = heading * rad;
+            var coords = [];
+            for (var i = 0; i < ptsArray.length; i++) {
+                var x = ptsArray[i][0];
+                var y = ptsArray[i][1];
+                
+                // Rotate the ship based on heading
+                var dx = x * Math.cos(hRad) + y * Math.sin(hRad);
+                var dy = -x * Math.sin(hRad) + y * Math.cos(hRad);
+                
+                // Append the Z-axis altitude to the GeoJSON array
+                coords.push([
+                    pos[1] + (dx / (R * Math.cos(pos[0] * rad)) / rad),
+                    pos[0] + (dy / R / rad),
+                    z
+                ]);
+            }
+            coords.push(coords[0]); // Close the polygon ring automatically
+            return [coords];
+        }
+
+        var tooltipDesc = 
+            '<b>Vessel:</b> ' + esc(id) + '<br>' +
+            '<b>Voyage:</b> ' + esc(ev.voyage_no) + '<br>' +
+            '<b>Line:</b> ' + esc(ev.shipping_line) + '<br>' +
+            '<b>Type:</b> ' + esc(ev.container_type) + '<br>' +
+            '<b>Terminal:</b> ' + esc(ev.terminal) + '<br>' +
+            '<b>Berth:</b> ' + esc(ev.berth) + '<br>' +
+            '<b>Stage:</b> ' + esc(ev.stage) + '<br>' +
+            '<b>Substage:</b> ' + esc(ev.substage) + '<br>' +
+            '<b>Import/Export TEU:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu);
+
+        // 🚀 Publish each stacked layer to create the volumetric 3D effect
+        shipLayers.forEach(function(layer, idx) {
+            var layerId = CONFIG.VESSEL_MARKER_PREFIX + id + '_L' + idx;
+            app.vesselMarkerIds[id].push(layerId); // Store so it can be cleaned up on the next tick
+
+            PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
+                json: [{
+                    type: 'Polygon',
+                    properties: { STRID: id },
+                    // Calculate exact 3D position by adding the base configuration height to the layer offset
+                    coordinates: getLayerCoords(layer.pts, baseZ + layer.zOffset)
+                }],
+                layer: {
+                    id: layerId,
+                    name: '\uD83D\uDEF3\uFE0F ' + id + ' (Deck Layer ' + idx + ')',
+                    description: tooltipDesc
+                },
+                render: {
+                    color: layer.color,
+                    opacity: 1.0,            // Solid fills hide the layers underneath them
+                    outlineColor: '#ffffff', // Crisp white borders make the 3D wireframe effect pop
+                    outlineWidth: 1
+                },
+                options: { 
+                    projection: { from: 'WGS84' },
+                    addTerrainHeight: true,
+                    altitudeMode: 'relativeToGround' // THE SECRET SAUCE: Allows the Z-coordinates to stack vertically
+                }
+            });
         });
     }
 
