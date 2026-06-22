@@ -227,20 +227,20 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
                 render: {
-                    style: 'rectangle',    // Native 2D shape
-                    color: '#2ca02c',      // Green for Free
-                    size: { width: 40, length: 80 } // Adjust dimensions to fit your quay length
+                    style: 'text',          // Using the reliable text engine
+                    text: '▲',             // Flat geometric triangle/arrow pointing forward
+                    color: '#2ca02c',       // Green for free
+                    scale: 1.5              // Scale the size up or down easily
                 },
                 options: { 
                     projection: { from: 'WGS84' },
-                    stem: false,                   // Removes the pin-stem
-                    altitudeMode: 'clampToGround'  // Keeps the rectangle flat on the terrain
+                    stem: false             // Ensures no vertical stick drops down
                 }
             });
         });
     }
     // Re-publishes a berth marker with updated color/description when its occupancy changes
-    function setBerthOccupied(b, occupied) {
+        function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
         app.berthOccupied[b] = occupied;
         
@@ -257,14 +257,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
             },
             render: {
-                style: 'rectangle',
-                color: occupied ? '#d62728' : '#2ca02c', // Red if occupied, Green if free
-                size: { width: 40, length: 80 }
+                style: 'text',
+                text: '▲',
+                color: occupied ? '#d62728' : '#2ca02c', // Flips cleanly between red and green
+                scale: 1.5
             },
             options: { 
                 projection: { from: 'WGS84' },
-                stem: false,
-                altitudeMode: 'clampToGround'
+                stem: false
             }
         });
     }
