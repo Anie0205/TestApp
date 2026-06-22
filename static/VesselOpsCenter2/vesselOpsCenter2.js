@@ -218,6 +218,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
             app.berthMarkerIds[b] = markerId;
             app.berthOccupied[b] = false;
+
             PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
                 widgetID: widget.id,
                 position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
@@ -226,20 +227,23 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     name: b,
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
-               render: {
-                style: 'icon',
-                color: '#2ca02c', // Your dynamic colors!
-                iconName: 'transportation-dock' // The native guaranteed icon
-            },
-                options: { 
+                options: {
                     projection: { from: 'WGS84' },
-                    stem: false             // Ensures no vertical stick drops down
+                    // Inject the external CSS configuration
+                    css: {
+                        id: 'custom-berth-poi', // Matches the selector in your CSS file
+                        url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css' // Your hosted CSS file
+                        style: 'icon',
+                        iconName: 'transportation-dock',
+                        color: '#2ca02c', // You can change this hex to literally anything!
+                        size: { width: 32, height: 32 }
+                    }
                 }
             });
         });
     }
     // Re-publishes a berth marker with updated color/description when its occupancy changes
-        function setBerthOccupied(b, occupied) {
+    function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
         app.berthOccupied[b] = occupied;
         
@@ -247,6 +251,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         
         var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
         app.berthMarkerIds[b] = markerId;
+
+        // Dynamically assign the CSS ID based on whether a ship is docked
+        var activeCssId = occupied ? 'custom-berth-poi-occupied' : 'custom-berth-poi-free';
+
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
             position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
@@ -255,14 +263,17 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 name: b,
                 description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
             },
-            render: {
-                style: 'icon',
-                color: occupied ? '#d62728' : '#2ca02c', // Your dynamic colors!
-                iconName: 'transportation-dock' // The native guaranteed icon
-            },
             options: { 
                 projection: { from: 'WGS84' },
-                stem: false
+                // Inject the external CSS configuration
+                css: {
+                    id: activeCssId, // Points to the specific state in your CSS file
+                    url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css' // Your hosted CSS file
+                    style: 'icon',
+                    iconName: 'transportation-dock',
+                    color: '#2ca02c', // You can change this hex to literally anything!
+                    size: { width: 32, height: 32 }
+                }
             }
         });
     }
