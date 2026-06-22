@@ -326,17 +326,67 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
+    // 📐 Calculates GeoJSON Polygon coordinates for a directional Ship shape
+    function getShipPolygonCoords(lon, lat, heading, widthMeters, lengthMeters) {
+        var R = 6378137;
+        var rad = Math.PI / 180;
+        var hRad = heading * rad;
+
+        // Base shape coordinates (pointed nose at the top)
+        var pts = [
+            [0, lengthMeters / 2],                   // Bow (Tip)
+            [widthMeters / 2, lengthMeters / 4],     // Right Shoulder
+            [widthMeters / 2, -lengthMeters / 2],    // Bottom Right
+            [-widthMeters / 2, -lengthMeters / 2],   // Bottom Left
+            [-widthMeters / 2, lengthMeters / 4],    // Left Shoulder
+            [0, lengthMeters / 2]                    // Close ring
+        ];
+
+        var coords = [];
+        for (var i = 0; i < pts.length; i++) {
+            var dx = pts[i][0] * Math.cos(hRad) + pts[i][1] * Math.sin(hRad);
+            var dy = -pts[i][0] * Math.sin(hRad) + pts[i][1] * Math.cos(hRad);
+            coords.push([lon + (dx / (R * Math.cos(lat * rad)) / rad), lat + (dy / R / rad)]);
+        }
+        return [coords];
+    }
     // ---------------------------------------------------------------------
-    // VESSEL MARKERS
+    // DYNAMIC VESSEL SHAPES (GeoJSON Polygons)
     // ---------------------------------------------------------------------
     function publishVesselMarker(ev) {
         var id = ev.vessel_id;
         var markerId = CONFIG.VESSEL_MARKER_PREFIX + id;
-        removeContent(app.vesselMarkerIds[id]); // drop previous position marker for this vessel, if any
+        
+        removeContent(app.vesselMarkerIds[id]); 
         app.vesselMarkerIds[id] = markerId;
-        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
-            widgetID: widget.id,
-            position: toXY(posFor(ev), CONFIG.VESSEL_MARKER_ELEVATION),
+
+        // Determine coordinates and default heading
+        var pos = posFor(ev); // returns [lat, lon]
+        var heading = ev.heading_deg || 0; // Default to North if missing
+
+        // Generate a 40m x 150m ship polygon
+        var polyCoords = getShipPolygonCoords(pos[1], pos[0], heading, 40, 150);
+
+        // Assign visual colors based on the current stage
+        var stageColors = {
+            'PLANNING': '#95a5a6',  // Grey
+            'ARRIVAL': '#f39c12',   // Orange
+            'WAITING': '#e74c3c',   // Red
+            'INBOUND': '#3498db',   // Blue
+            'BERTHING': '#9b59b6',  // Purple
+            'CLEARANCE': '#1abc9c', // Teal
+            'CARGO': '#2ecc71',     // Green
+            'SERVICE': '#f1c40f',   // Yellow
+            'DEPARTURE': '#34495e'  // Dark Navy
+        };
+        var activeColor = stageColors[ev.stage] || '#0B5CAB';
+
+        PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
+            json: [{
+                type: 'Polygon',
+                properties: { STRID: id },
+                coordinates: polyCoords
+            }],
             layer: {
                 id: markerId,
                 name: '\uD83D\uDEF3\uFE0F' + id,
@@ -352,13 +402,16 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     '<b>Import/Export TEU:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu)
             },
             render: {
-                style: 'text', // glyph-based marker; if your platform names this style differently
-                                // (e.g. 'label'), swap it here - the rest of the payload is unchanged.
-                text: CONFIG.VESSEL_SYMBOL,
-                color: '#0B5CAB',
-                scale: CONFIG.VESSEL_MARKER_SCALE
+                color: activeColor,
+                opacity: 0.85,
+                outlineColor: '#ffffff',
+                outlineWidth: 2
             },
-            options: { projection: { from: 'WGS84' } }
+            options: { 
+                projection: { from: 'WGS84' },
+                addTerrainHeight: true,
+                altitudeMode: 'clampToGround'
+            }
         });
     }
 
