@@ -229,7 +229,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                render: {
                 style: 'icon',
                 color: '#2ca02c', // Your dynamic colors!
-                iconName: 'transportation-ship' // The native guaranteed icon
+                iconName: 'transportation-dock' // The native guaranteed icon
             },
                 options: { 
                     projection: { from: 'WGS84' },
@@ -258,7 +258,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             render: {
                 style: 'icon',
                 color: occupied ? '#d62728' : '#2ca02c', // Your dynamic colors!
-                iconName: 'transportation-ship' // The native guaranteed icon
+                iconName: 'transportation-dock' // The native guaranteed icon
             },
             options: { 
                 projection: { from: 'WGS84' },
