@@ -227,20 +227,18 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
                 render: {
-                    style: 'icon',                // Using 'icon' style for native assets
-                    iconName: 'transportation-dock', // Native icon for docks
-                    color: '#2ca02c',             // Green for Free
-                    size: { width: 32, height: 32 }
+                    style: 'rectangle',    // Native 2D shape
+                    color: '#2ca02c',      // Green for Free
+                    size: { width: 40, length: 80 } // Adjust dimensions to fit your quay length
                 },
                 options: { 
                     projection: { from: 'WGS84' },
-                    stem: false,                  // No pin-stem
-                    altitudeMode: 'clampToGround' // Keeps it flat on the map
+                    stem: false,                   // Removes the pin-stem
+                    altitudeMode: 'clampToGround'  // Keeps the rectangle flat on the terrain
                 }
             });
         });
     }
-
     // Re-publishes a berth marker with updated color/description when its occupancy changes
     function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
@@ -270,7 +268,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             }
         });
     }
-
     // ---------------------------------------------------------------------
     // TIDE GAUGE MARKER (fixed location, updated whenever the tide value changes)
     // ---------------------------------------------------------------------
