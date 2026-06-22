@@ -227,14 +227,15 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
                 render: {
-                    style: 'rectangle',    // Native rectangle shape instead of icon
-                    color: '#2ca02c',      // Green for free
-                    size: { width: 40, length: 80 } // Adjust these to match the physical berth size
+                    style: 'icon',                // Using 'icon' style for native assets
+                    iconName: 'transportation-dock', // Native icon for docks
+                    color: '#2ca02c',             // Green for Free
+                    size: { width: 32, height: 32 }
                 },
                 options: { 
                     projection: { from: 'WGS84' },
-                    stem: false,                   // Removes the drop pin stick
-                    altitudeMode: 'clampToGround'  // Keeps it flat on the 2D surface
+                    stem: false,                  // No pin-stem
+                    altitudeMode: 'clampToGround' // Keeps it flat on the map
                 }
             });
         });
