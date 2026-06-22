@@ -219,7 +219,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             app.berthMarkerIds[b] = markerId;
             app.berthOccupied[b] = false;
 
-            PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            PlatformAPI.publish('3DEXPERIENCity.AddAnnotation', {
                 widgetID: widget.id,
                 position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
                 layer: {
@@ -254,7 +254,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         // Swap the CSS ID string dynamically
         var targetCssId = occupied ? 'custom-berth-poi-occupied' : 'custom-berth-poi-free';
 
-        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+        PlatformAPI.publish('3DEXPERIENCity.AddAnnotation', {
             widgetID: widget.id,
             position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
             layer: {
