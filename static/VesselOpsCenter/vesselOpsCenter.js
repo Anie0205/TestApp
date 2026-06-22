@@ -229,7 +229,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 render: {
                     style: 'icon',
                     color: '#2ca02c',
-                    iconName: 'transportation-dock'
+                    iconName: 'facility-port'
                 },
                 options: { projection: { from: 'WGS84' } }
             });
@@ -254,7 +254,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             render: {
                 style: 'icon',
                 color: occupied ? '#d62728' : '#2ca02c',
-                iconName: 'transportation-dock'
+                iconName: 'facility-port'
             },
             options: { projection: { from: 'WGS84' } }
         });
