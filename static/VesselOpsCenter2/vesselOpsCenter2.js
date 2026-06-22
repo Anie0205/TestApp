@@ -271,7 +271,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css' // Your hosted CSS file
                     style: 'icon',
                     iconName: 'transportation-dock',
-                    color: '#2ca02c', // You can change this hex to literally anything!
+                    occupied ? '#d62728' : '#2ca02c'
                     size: { width: 32, height: 32 }
                 }
             }
