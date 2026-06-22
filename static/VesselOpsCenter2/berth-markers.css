@@ -1,29 +1,30 @@
 /* berth-markers.css */
 
-/* Base container styling for the HTML POI */
-#berth-free, #berth-occupied {
-    width: 48px;            /* Force a strict size for the POI */
-    height: 48px;
-    display: block;
+#custom-berth-poi-free, #custom-berth-poi-occupied {
+    /* Force strict dimensions so the engine doesn't collapse the POI */
+    width: 42px !important;
+    height: 42px !important;
+    display: block !important;
+    
+    /* Pull your specific custom PNG */
+    background-image: url('https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth.png');
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
-    border-radius: 4px;     /* Optional: slightly rounds the edges */
-    box-shadow: 0px 4px 6px rgba(0,0,0,0.4); /* Makes the POI pop off the map */
+    
+    /* Optional: Soften the edges and lift it off the map */
+    border-radius: 6px;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.4);
 }
 
-/* 🟢 Free State - Loads your specific PNG */
-#berth-free {
-    /* Replace this URL with the actual link to your Green/Free custom PNG */
-    background-image: url('https://test-app-lyart-six.vercel.app/VesselSystem/custom_boat.png');
-    background-color: rgba(44, 160, 44, 0.2); /* Slight green tint behind the image */
+/* 🟢 Green tint for available berths */
+#custom-berth-poi-free {
+    background-color: rgba(44, 160, 44, 0.25); 
     border: 2px solid #2ca02c;
 }
 
-/* 🔴 Occupied State - Loads your specific PNG */
-#berth-occupied {
-    /* Replace this URL with the actual link to your Red/Occupied custom PNG */
-    background-image: url('https://test-app-lyart-six.vercel.app/VesselSystem/custom_boat.png');
-    background-color: rgba(214, 39, 40, 0.2); /* Slight red tint behind the image */
+/* 🔴 Red tint for occupied berths */
+#custom-berth-poi-occupied {
+    background-color: rgba(214, 39, 40, 0.25); 
     border: 2px solid #d62728;
 }
