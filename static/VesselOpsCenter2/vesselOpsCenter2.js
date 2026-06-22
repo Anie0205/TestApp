@@ -211,7 +211,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
    // ---------------------------------------------------------------------
-    // STATIC BERTH MARKERS (Using External CSS for POI)
+    // STATIC BERTH MARKERS (Strictly compliant Options.css injection)
     // ---------------------------------------------------------------------
     function initBerthMarkers() {
         Object.keys(BERTHS).forEach(function (b) {
@@ -229,10 +229,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 },
                 options: {
                     projection: { from: 'WGS84' },
-                    // 🚀 The exact CSS POI implementation
+                    stem: false, // Prevents the drop-pin stem from rendering
                     css: {
-                        id: 'berth-free', // Matches the CSS ID above
-                        url: 'https://test-app-lyart-six.vercel.app/VesselSystem/berth-markers.css'
+                        id: 'custom-berth-poi-free', // Maps directly to your CSS file
+                        url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css'
                     }
                 }
             });
@@ -240,7 +240,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     // ---------------------------------------------------------------------
-    // DYNAMIC BERTH MARKERS (Swapping CSS IDs on Occupancy)
+    // DYNAMIC BERTH MARKERS (State updates)
     // ---------------------------------------------------------------------
     function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
@@ -251,8 +251,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
         app.berthMarkerIds[b] = markerId;
 
-        // Dynamically select the CSS ID based on status
-        var targetCssId = occupied ? 'berth-occupied' : 'berth-free';
+        // Swap the CSS ID string dynamically
+        var targetCssId = occupied ? 'custom-berth-poi-occupied' : 'custom-berth-poi-free';
 
         PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
             widgetID: widget.id,
@@ -264,10 +264,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             },
             options: {
                 projection: { from: 'WGS84' },
-                // 🚀 Injecting the updated CSS state
+                stem: false,
                 css: {
-                    id: targetCssId,
-                    url: 'https://test-app-lyart-six.vercel.app/VesselSystem/berth-markers.css'
+                    id: targetCssId, 
+                    url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css'
                 }
             }
         });
