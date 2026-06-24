@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JNPA V7 Enterprise Control Tower</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{font-family:Segoe UI;background:#eef3f8;margin:0}
+header{background:#082f49;color:#fff;padding:16px}
+.tabs{display:flex;gap:6px;padding:10px;background:#fff;overflow:auto}
+.tab{padding:8px 12px;border:1px solid #ccc;cursor:pointer}
+.active{background:#0369a1;color:white}
+.page{display:none;padding:12px}.page.active{display:block}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.card{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.k{font-size:28px;font-weight:700;color:#082f49}
+.l{font-weight:700;color:#111}
+.d{font-size:11px;color:#555;margin-top:6px}
+.chart{background:#fff;padding:12px;border-radius:10px;margin-top:12px}
+</style>
+</head>
+<body>
+<header><h2>JNPA Enterprise Control Tower V7</h2></header>
+<div class=tabs>
+<button class="tab active" onclick="showP('exec',this)">Executive</button>
+<button class=tab onclick="showP('marine',this)">Marine</button>
+<button class=tab onclick="showP('yard',this)">Yard</button>
+<button class=tab onclick="showP('customs',this)">Customs</button>
+<button class=tab onclick="showP('process',this)">Process</button>
+<button class=tab onclick="showP('quality',this)">Quality</button>
+</div>
+
+<div id=exec class="page active"><div id=execkpi class=kpis></div><div class=chart><div id=term></div></div></div>
+<div id=marine class=page><div id=marinekpi class=kpis></div><div class=chart><div id=crane></div></div></div>
+<div id=yard class=page><div id=yardkpi class=kpis></div><div class=chart><div id=dwell></div></div></div>
+<div id=customs class=page><div id=customkpi class=kpis></div></div>
+<div id=process class=page><div id=processkpi class=kpis></div><div class=chart><div id=events></div></div></div>
+<div id=quality class=page><div id=qualitykpi class=kpis></div></div>
+
+<script>
+function showP(id,b){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');b.classList.add('active');}
+const files=['container_master.csv','vessels.csv','yard_operations.csv','customs_events.csv','digital_twin_events.csv','berth_crane_operations.csv'];
+const D={};
+Promise.all(files.map(f=>fetch(f).then(r=>r.text()).then(t=>new Promise(res=>Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})))))
+.then(r=>{files.forEach((f,i)=>D[f]=r[i]);build();});
+
+function addKpi(target,label,val,desc){
+target.innerHTML+=`<div class=card><div class=l>${label}</div><div class=k>${val}</div><div class=d>${desc}</div></div>`;
+}
+function build(){
+let cm=D['container_master.csv'], v=D['vessels.csv'], y=D['yard_operations.csv'], c=D['customs_events.csv'], e=D['digital_twin_events.csv'], b=D['berth_crane_operations.csv'];
+
+let exec=document.getElementById('execkpi');
+let imports=cm.filter(x=>x.flow_type=='IMPORT').length;
+let exports=cm.filter(x=>x.flow_type=='EXPORT').length;
+let dwell=y.map(r=>+r.dwell_hours||0);
+let avg=dwell.reduce((a,b)=>a+b,0)/dwell.length;
+let med=dwell.sort((a,b)=>a-b)[Math.floor(dwell.length/2)];
+addKpi(exec,'Total Containers',cm.length,'All tracked containers');
+addKpi(exec,'Import Containers',imports,'Inbound logistics flow');
+addKpi(exec,'Export Containers',exports,'Outbound logistics flow');
+addKpi(exec,'Vessel Calls',v.length,'Unique vessel visits');
+addKpi(exec,'Average Dwell',avg.toFixed(1)+'h','Average yard stay');
+addKpi(exec,'Median Dwell',med.toFixed(1)+'h','Typical yard stay');
+addKpi(exec,'Event Records',e.length,'Digital twin events');
+addKpi(exec,'Events/Container',(e.length/cm.length).toFixed(1),'Process visibility score');
+
+let marine=document.getElementById('marinekpi');
+let berthhrs=b.map(x=>+x.berth_hours);
+let avgBerth=berthhrs.reduce((a,b)=>a+b,0)/berthhrs.length;
+let crane=b.map(x=>+x.crane_moves_per_hour);
+addKpi(marine,'Avg Berth Stay',avgBerth.toFixed(1)+'h','Turnaround proxy');
+addKpi(marine,'Avg Crane MPH',(crane.reduce((a,b)=>a+b,0)/crane.length).toFixed(1),'Moves per hour');
+addKpi(marine,'Max Crane MPH',Math.max(...crane),'Best productivity');
+addKpi(marine,'Min Crane MPH',Math.min(...crane),'Lowest productivity');
+
+let yard=document.getElementById('yardkpi');
+addKpi(yard,'Long Stay >168h',dwell.filter(x=>x>168).length,'Potential congestion');
+addKpi(yard,'Critical >336h',dwell.filter(x=>x>336).length,'Escalation candidates');
+addKpi(yard,'Negative Dwell',dwell.filter(x=>x<0).length,'Data issue');
+
+let customs=document.getElementById('customkpi');
+let exportClr=c.filter(x=>!x.ooc_time).length;
+let importClr=c.length-exportClr;
+addKpi(customs,'Export Clearances',exportClr,'LEO lifecycle');
+addKpi(customs,'Import Clearances',importClr,'OOC lifecycle');
+addKpi(customs,'Customs Records',c.length,'Tracked clearances');
+
+let proc=document.getElementById('processkpi');
+let ev={}; e.forEach(r=>ev[r.event]=(ev[r.event]||0)+1);
+addKpi(proc,'Process Stages',Object.keys(ev).length,'Distinct events');
+addKpi(proc,'Journey Records',e.length,'Replayable event stream');
+
+let qual=document.getElementById('qualitykpi');
+addKpi(qual,'Negative Dwell Records',dwell.filter(x=>x<0).length,'Exit before entry');
+addKpi(qual,'Containers Missing Events',cm.length-new Set(e.map(x=>x.container_id)).size,'Coverage check');
+
+let term={}; cm.forEach(r=>term[r.terminal]=(term[r.terminal]||0)+1);
+new ApexCharts(document.querySelector("#term"),{chart:{type:'bar',height:350},series:[{data:Object.values(term)}],xaxis:{categories:Object.keys(term)},title:{text:'Terminal Throughput'}}).render();
+
+let tm={}; b.forEach(r=>{if(!tm[r.terminal])tm[r.terminal]=[]; tm[r.terminal].push(+r.crane_moves_per_hour);});
+new ApexCharts(document.querySelector("#crane"),{chart:{type:'bar',height:350},series:[{name:'Crane MPH',data:Object.values(tm).map(v=>v.reduce((a,b)=>a+b,0)/v.length)}],xaxis:{categories:Object.keys(tm)}}).render();
+
+let buckets={'0-24':0,'24-72':0,'72-168':0,'168-336':0,'336+':0};
+dwell.forEach(d=>{if(d<24)buckets['0-24']++; else if(d<72)buckets['24-72']++; else if(d<168)buckets['72-168']++; else if(d<336)buckets['168-336']++; else buckets['336+']++;});
+new ApexCharts(document.querySelector("#dwell"),{chart:{type:'bar',height:350},series:[{data:Object.values(buckets)}],xaxis:{categories:Object.keys(buckets)},title:{text:'Yard Dwell Distribution'}}).render();
+
+new ApexCharts(document.querySelector("#events"),{chart:{type:'bar',height:350},series:[{data:Object.values(ev)}],xaxis:{categories:Object.keys(ev)}}).render();
+}
+</script>
+</body></html>
