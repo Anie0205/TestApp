@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JNPA Phase 4 Operations Control Tower</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{margin:0;font-family:Segoe UI,Arial;background:#f5f7fb}
+header{background:#fff;padding:12px 18px;border-bottom:1px solid #ddd}
+.tabs{display:flex;gap:8px;padding:10px;background:#fff}
+.tab{padding:8px 12px;border:1px solid #ddd;cursor:pointer}
+.active{background:#0f4c81;color:#fff}
+.page{display:none;padding:12px}.page.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
+.v{font-size:24px;font-weight:bold;color:#0f4c81}
+.chart{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-top:10px}
+.insight{background:#eef6ff;border-left:4px solid #2563eb;padding:8px;margin:6px 0}
+</style>
+</head>
+<body>
+<header><b>JNPA Phase 4 - Operations Control Tower</b></header>
+<div class="tabs">
+<button class="tab active" onclick="showP('exec',this)">Executive</button>
+<button class="tab" onclick="showP('marine',this)">Marine</button>
+<button class="tab" onclick="showP('yard',this)">Yard</button>
+<button class="tab" onclick="showP('process',this)">Process</button>
+</div>
+
+<div id="exec" class="page active">
+<div class="grid" id="execKpi"></div>
+<div class="chart"><div id="termChart"></div></div>
+<div id="execInsights"></div>
+</div>
+
+<div id="marine" class="page">
+<div class="grid" id="marineKpi"></div>
+<div class="chart"><div id="craneChart"></div></div>
+</div>
+
+<div id="yard" class="page">
+<div class="grid" id="yardKpi"></div>
+<div class="chart"><div id="dwellChart"></div></div>
+</div>
+
+<div id="process" class="page">
+<div class="grid" id="procKpi"></div>
+<div class="chart"><div id="eventChart"></div></div>
+</div>
+
+<script>
+function showP(id,b){
+document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+document.getElementById(id).classList.add('active'); b.classList.add('active');
+}
+const files=['container_master.csv','yard_operations.csv','berth_crane_operations.csv','digital_twin_events.csv'];
+
+Promise.all(files.map(f=>fetch(f).then(r=>r.text()).then(t=>new Promise(res=>Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})))))
+.then(r=>{
+const cm=r[0], yard=r[1], berth=r[2], events=r[3];
+
+let imports=cm.filter(x=>x.flow_type==='IMPORT').length;
+let exports=cm.filter(x=>x.flow_type==='EXPORT').length;
+let dwell=yard.map(x=>+x.dwell_hours||0);
+let avgD=dwell.reduce((a,b)=>a+b,0)/dwell.length;
+
+document.getElementById('execKpi').innerHTML=`
+<div class=card><div>Containers</div><div class=v>${cm.length}</div></div>
+<div class=card><div>Imports</div><div class=v>${imports}</div></div>
+<div class=card><div>Exports</div><div class=v>${exports}</div></div>
+<div class=card><div>Avg Dwell</div><div class=v>${avgD.toFixed(1)}h</div></div>`;
+
+let term={}; cm.forEach(x=>term[x.terminal]=(term[x.terminal]||0)+1);
+new ApexCharts(document.querySelector("#termChart"),{
+chart:{type:'bar',height:320},
+series:[{data:Object.values(term)}],
+xaxis:{categories:Object.keys(term)},
+title:{text:'Terminal Throughput'}
+}).render();
+
+let top=Object.entries(term).sort((a,b)=>b[1]-a[1])[0];
+document.getElementById('execInsights').innerHTML=`
+<div class=insight>Top terminal: ${top[0]}</div>
+<div class=insight>${dwell.filter(x=>x>168).length} containers exceed 7-day dwell.</div>`;
+
+let crane=berth.map(x=>+x.crane_moves_per_hour||0);
+document.getElementById('marineKpi').innerHTML=`
+<div class=card><div>Avg Crane MPH</div><div class=v>${(crane.reduce((a,b)=>a+b,0)/crane.length).toFixed(1)}</div></div>
+<div class=card><div>Max Crane MPH</div><div class=v>${Math.max(...crane)}</div></div>`;
+let byT={}; berth.forEach(x=>{if(!byT[x.terminal])byT[x.terminal]=[];byT[x.terminal].push(+x.crane_moves_per_hour)});
+new ApexCharts(document.querySelector("#craneChart"),{
+chart:{type:'bar',height:320},
+series:[{data:Object.values(byT).map(v=>v.reduce((a,b)=>a+b,0)/v.length)}],
+xaxis:{categories:Object.keys(byT)},
+title:{text:'Crane Productivity by Terminal'}
+}).render();
+
+document.getElementById('yardKpi').innerHTML=`
+<div class=card><div>Long Stay</div><div class=v>${dwell.filter(x=>x>168).length}</div></div>
+<div class=card><div>Critical</div><div class=v>${dwell.filter(x=>x>336).length}</div></div>`;
+let buckets={'0-24':0,'24-72':0,'72-168':0,'168+':0};
+dwell.forEach(d=>{if(d<24)buckets['0-24']++; else if(d<72)buckets['24-72']++; else if(d<168)buckets['72-168']++; else buckets['168+']++;});
+new ApexCharts(document.querySelector("#dwellChart"),{
+chart:{type:'bar',height:320},
+series:[{data:Object.values(buckets)}],
+xaxis:{categories:Object.keys(buckets)},
+title:{text:'Dwell Distribution'}
+}).render();
+
+let ev={}; events.forEach(x=>ev[x.event]=(ev[x.event]||0)+1);
+document.getElementById('procKpi').innerHTML=`
+<div class=card><div>Events</div><div class=v>${events.length}</div></div>
+<div class=card><div>Stages</div><div class=v>${Object.keys(ev).length}</div></div>`;
+new ApexCharts(document.querySelector("#eventChart"),{
+chart:{type:'bar',height:320},
+series:[{data:Object.values(ev)}],
+xaxis:{categories:Object.keys(ev)},
+title:{text:'Process Event Frequency'}
+}).render();
+});
+</script>
+</body></html>
