@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JNPA Phase 5 Enterprise Control Tower</title>
+<style>
+body{margin:0;font-family:Segoe UI,Arial;background:#f4f7fb;color:#1f2937}
+header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 20px}
+.layout{display:grid;grid-template-columns:260px 1fr 360px;height:calc(100vh - 60px)}
+.left,.right{background:#fff;overflow:auto}
+.left{border-right:1px solid #e5e7eb}.right{border-left:1px solid #e5e7eb}
+.main{overflow:auto;padding:14px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.card{background:#fff;border:1px solid #dfe6ef;border-radius:10px;padding:10px}
+.score{font-size:28px;font-weight:700;color:#0f4c81}
+.section{margin-top:12px}
+.alert{background:#fff7ed;border-left:4px solid #f59e0b;padding:8px;margin:8px 0}
+.insight{background:#eff6ff;border-left:4px solid #2563eb;padding:8px;margin:8px 0}
+.good{background:#f0fdf4;border-left:4px solid #16a34a}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee}
+</style>
+</head>
+<body>
+<header><h2>JNPA Enterprise Digital Twin Control Tower – Phase 5</h2></header>
+<div class="layout">
+<div class="left">
+<div style="padding:12px">
+<h3>Global Filters</h3>
+<select style="width:100%"><option>All Terminals</option></select><br><br>
+<select style="width:100%"><option>All Flows</option></select><br><br>
+<input style="width:100%" placeholder="Container Search"/>
+<h3>Modules</h3>
+<ul>
+<li>Executive</li>
+<li>Marine</li>
+<li>Yard</li>
+<li>Customs</li>
+<li>Process Mining</li>
+<li>Digital Twin</li>
+<li>Data Quality</li>
+</ul>
+</div>
+</div>
+
+<div class="main">
+<div class="kpis">
+<div class="card"><div>Operational Health</div><div class="score">88</div></div>
+<div class="card"><div>Marine Score</div><div class="score">91</div></div>
+<div class="card"><div>Yard Score</div><div class="score">82</div></div>
+<div class="card"><div>Customs Score</div><div class="score">87</div></div>
+<div class="card"><div>Process Score</div><div class="score">84</div></div>
+<div class="card"><div>Data Quality</div><div class="score">96</div></div>
+</div>
+
+<div class="section card">
+<h3>Executive Workbench</h3>
+<table>
+<tr><th>Terminal</th><th>Throughput</th><th>Risk</th><th>Action</th></tr>
+<tr><td>GTI</td><td>High</td><td>Low</td><td>Drilldown</td></tr>
+<tr><td>NSFT</td><td>Medium</td><td>High</td><td>Investigate Dwell</td></tr>
+</table>
+</div>
+
+<div class="section card">
+<h3>Phase 5 Features Introduced</h3>
+<ul>
+<li>Executive scorecards</li>
+<li>Operational health framework</li>
+<li>Investigation workbench concept</li>
+<li>Alert and recommendation architecture</li>
+<li>Module structure for Customs, Process Mining and Digital Twin</li>
+<li>Foundation for drilldowns and cross-filtering</li>
+</ul>
+</div>
+</div>
+
+<div class="right">
+<div style="padding:12px">
+<h3>Narrative Insight Engine</h3>
+<div class="insight">GTI remains the top throughput terminal.</div>
+<div class="insight">Long-stay inventory is concentrated in selected terminals.</div>
+<div class="insight good">Crane productivity remains above network baseline.</div>
+
+<h3>Alert Engine</h3>
+<div class="alert">Containers exceeding dwell SLA require intervention.</div>
+<div class="alert">Review terminals with elevated congestion risk.</div>
+
+<h3>Recommended Actions</h3>
+<ul>
+<li>Prioritize evacuation of aged inventory.</li>
+<li>Review customs clearance bottlenecks.</li>
+<li>Investigate data quality exceptions.</li>
+</ul>
+</div>
+</div>
+</div>
+</body>
+</html>
