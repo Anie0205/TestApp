@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JNPA V9 Enterprise Control Tower</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{font-family:Segoe UI,Arial;margin:0;background:#eef3f8}
+header{background:#0b2545;color:#fff;padding:16px}
+.tabs{display:flex;gap:6px;padding:10px;background:#fff;overflow:auto}
+.tab{padding:8px 12px;border:1px solid #ccc;cursor:pointer}
+.active{background:#1565c0;color:#fff}
+.page{display:none;padding:12px}.page.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.card{background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.k{font-size:26px;font-weight:bold;color:#0b2545}
+.t{font-weight:700}
+.s{font-size:11px;color:#666}
+.chart{background:#fff;padding:12px;border-radius:8px;margin-top:12px}
+</style>
+</head>
+<body>
+<header><h2>JNPA V9 Enterprise Control Tower</h2><div>Real KPI model derived from uploaded V3 dataset</div></header>
+<div class="tabs">
+<button class="tab active" onclick="sw('exec',this)">Executive</button>
+<button class="tab" onclick="sw('marine',this)">Marine</button>
+<button class="tab" onclick="sw('yard',this)">Yard</button>
+<button class="tab" onclick="sw('customs',this)">Customs</button>
+<button class="tab" onclick="sw('process',this)">Process Mining</button>
+<button class="tab" onclick="sw('quality',this)">Data Quality</button>
+</div>
+
+<div id="exec" class="page active"><div id="execKpi" class="grid"></div><div class="chart"><div id="termChart"></div></div></div>
+<div id="marine" class="page"><div id="marineKpi" class="grid"></div><div class="chart"><div id="marineChart"></div></div></div>
+<div id="yard" class="page"><div id="yardKpi" class="grid"></div><div class="chart"><div id="yardChart"></div></div><div class="chart"><div id="yardTerminal"></div></div></div>
+<div id="customs" class="page"><div id="customKpi" class="grid"></div><div class="chart"><div id="customChart"></div></div></div>
+<div id="process" class="page"><div id="processKpi" class="grid"></div><div class="chart"><div id="eventChart"></div></div></div>
+<div id="quality" class="page"><div id="qualityKpi" class="grid"></div></div>
+
+<script>
+function sw(id,b){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');b.classList.add('active')}
+const files=['container_master.csv','vessels.csv','yard_operations.csv','customs_events.csv','digital_twin_events.csv','berth_crane_operations.csv'];
+const D={};
+Promise.all(files.map(f=>fetch(f).then(r=>r.text()).then(t=>new Promise(res=>Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})))))
+.then(r=>{files.forEach((f,i)=>D[f]=r[i]);build();});
+
+function card(target,t,v,s){target.innerHTML+=`<div class=card><div class=t>${t}</div><div class=k>${v}</div><div class=s>${s}</div></div>`}
+
+function pct(a,b){return ((a/b)*100).toFixed(1)+'%'}
+
+function build(){
+let cm=D['container_master.csv'], y=D['yard_operations.csv'], c=D['customs_events.csv'], e=D['digital_twin_events.csv'], b=D['berth_crane_operations.csv'], v=D['vessels.csv'];
+
+let dwell=y.map(r=>+r.dwell_hours);
+dwell.sort((a,b)=>a-b);
+let avg=dwell.reduce((a,b)=>a+b,0)/dwell.length;
+let p95=dwell[Math.floor(dwell.length*0.95)];
+
+let ex=document.getElementById('execKpi');
+card(ex,'Containers',cm.length,'Total logistics units');
+card(ex,'Imports',cm.filter(x=>x.flow_type=='IMPORT').length,'Inbound containers');
+card(ex,'Exports',cm.filter(x=>x.flow_type=='EXPORT').length,'Outbound containers');
+card(ex,'Vessel Calls',v.length,'Marine visits');
+card(ex,'Event Records',e.length,'Digital twin events');
+card(ex,'Avg Dwell',avg.toFixed(1)+'h','Average yard stay');
+card(ex,'P95 Dwell',p95+'h','Congestion threshold');
+card(ex,'Events/Container',(e.length/cm.length).toFixed(1),'Visibility index');
+card(ex,'Import Ratio',pct(cm.filter(x=>x.flow_type=='IMPORT').length,cm.length),'Flow mix');
+card(ex,'Export Ratio',pct(cm.filter(x=>x.flow_type=='EXPORT').length,cm.length),'Flow mix');
+
+let term={}; cm.forEach(r=>term[r.terminal]=(term[r.terminal]||0)+1);
+new ApexCharts(document.querySelector("#termChart"),{chart:{type:'bar',height:350},series:[{name:'Containers',data:Object.values(term)}],xaxis:{categories:Object.keys(term)},title:{text:'Terminal Throughput Ranking'}}).render();
+
+let mk=document.getElementById('marineKpi');
+let crane=b.map(x=>+x.crane_moves_per_hour), berth=b.map(x=>+x.berth_hours);
+card(mk,'Avg Crane MPH',(crane.reduce((a,b)=>a+b,0)/crane.length).toFixed(1),'Network productivity');
+card(mk,'Max Crane MPH',Math.max(...crane),'Best vessel productivity');
+card(mk,'Min Crane MPH',Math.min(...crane),'Lowest vessel productivity');
+card(mk,'Avg Berth Stay',(berth.reduce((a,b)=>a+b,0)/berth.length).toFixed(1)+'h','Turnaround proxy');
+card(mk,'P95 Berth Stay',berth.sort((a,b)=>a-b)[Math.floor(berth.length*.95)]+'h','Long stay vessels');
+
+let mterm={}; b.forEach(r=>{if(!mterm[r.terminal])mterm[r.terminal]=[];mterm[r.terminal].push(+r.crane_moves_per_hour)});
+new ApexCharts(document.querySelector("#marineChart"),{chart:{type:'bar',height:350},series:[{name:'Crane MPH',data:Object.values(mterm).map(v=>v.reduce((a,b)=>a+b,0)/v.length)}],xaxis:{categories:Object.keys(mterm)},title:{text:'Crane Productivity by Terminal'}}).render();
+
+let yk=document.getElementById('yardKpi');
+card(yk,'Long Stay >168h',dwell.filter(x=>x>168).length,'7+ day dwell');
+card(yk,'Critical >336h',dwell.filter(x=>x>336).length,'14+ day dwell');
+card(yk,'Negative Dwell',dwell.filter(x=>x<0).length,'Data anomaly');
+card(yk,'Median Dwell',dwell[Math.floor(dwell.length/2)]+'h','Typical stay');
+card(yk,'Max Dwell',Math.max(...dwell)+'h','Worst congestion');
+
+let buckets={'0-24':0,'24-72':0,'72-168':0,'168-336':0,'336+':0};
+dwell.forEach(d=>{if(d<24)buckets['0-24']++;else if(d<72)buckets['24-72']++;else if(d<168)buckets['72-168']++;else if(d<336)buckets['168-336']++;else buckets['336+']++;});
+new ApexCharts(document.querySelector("#yardChart"),{chart:{type:'bar',height:350},series:[{data:Object.values(buckets)}],xaxis:{categories:Object.keys(buckets)},title:{text:'Dwell Distribution'}}).render();
+
+let yterm={}; y.forEach(r=>{if(!yterm[r.terminal])yterm[r.terminal]=[];yterm[r.terminal].push(+r.dwell_hours)});
+new ApexCharts(document.querySelector("#yardTerminal"),{chart:{type:'bar',height:350},series:[{name:'Avg Dwell',data:Object.values(yterm).map(v=>Math.round(v.reduce((a,b)=>a+b,0)/v.length))}],xaxis:{categories:Object.keys(yterm)},title:{text:'Average Dwell by Terminal'}}).render();
+
+let ck=document.getElementById('customKpi');
+let imports=c.filter(x=>x.ooc_time).length, exports=c.length-imports;
+card(ck,'Import Clearances',imports,'OOC completed');
+card(ck,'Export Clearances',exports,'LEO completed');
+card(ck,'Clearance Mix',pct(imports,c.length),'Import share');
+new ApexCharts(document.querySelector("#customChart"),{chart:{type:'donut',height:350},series:[imports,exports],labels:['Import(OOC)','Export(LEO)']}).render();
+
+let pk=document.getElementById('processKpi');
+let ev={}; e.forEach(r=>ev[r.event]=(ev[r.event]||0)+1);
+card(pk,'Distinct Events',Object.keys(ev).length,'Lifecycle stages');
+card(pk,'Journey Records',e.length,'Replay capability');
+card(pk,'Containers Observed',new Set(e.map(x=>x.container_id)).size,'Process coverage');
+new ApexCharts(document.querySelector("#eventChart"),{chart:{type:'bar',height:350},series:[{data:Object.values(ev)}],xaxis:{categories:Object.keys(ev)},title:{text:'Process Event Frequency'}}).render();
+
+let q=document.getElementById('qualityKpi');
+card(q,'Negative Dwell',dwell.filter(x=>x<0).length,'Exit before entry');
+card(q,'Containers Missing Events',cm.length-new Set(e.map(x=>x.container_id)).size,'Coverage issue');
+card(q,'Data Coverage',pct(new Set(e.map(x=>x.container_id)).size,cm.length),'Event completeness');
+}
+</script>
+</body></html>
