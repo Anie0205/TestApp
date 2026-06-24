@@ -3,9 +3,22 @@
 /*
  * VesselOpsCenter
  * ---------------------------------------------------------------------
- * Fully optimized version mapping 100% of the analytical, filtering, 
- * matrix processing, and custom chart telemetry from vessel_heatmap8.html
- * into the required platform AMD structure.
+ * This widget merges two source artifacts into a single DS/UWA widget
+ * module:
+ *
+ * 1. vessel_heatmap8.html  - "Enterprise Port Command Center", a
+ * multi-tab analytics console (Executive / Vessel Tracking Matrix /
+ * Terminal & Berth / Operations & Cranes / Environmental Context)
+ * built with ApexCharts, a snapshot timeline, and filter controls.
+ *
+ * 2. vesselMovement2.js    - the 3D-scene twin that publishes vessel,
+ * berth and tide-gauge markers onto the platform via PlatformAPI as
+ * the timeline plays back.
+ *
+ * The analytics console drives the on-page UI; every time the snapshot
+ * timeline moves (via the dropdown, Play, Next, or filter changes) the
+ * widget both re-renders the dashboard AND re-publishes the 3D markers
+ * so the map and the console always describe the same instant in time.
  * ---------------------------------------------------------------------
  */
 
@@ -183,6 +196,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return SEA;
     }
 
+    // ---------------------------------------------------------------------
+    // STATIC BERTH MARKERS
+    // ---------------------------------------------------------------------
     function initBerthMarkers() {
         Object.keys(BERTHS).forEach(function (b) {
             var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
@@ -229,6 +245,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
+    // ---------------------------------------------------------------------
+    // TIDE GAUGE MARKER
+    // ---------------------------------------------------------------------
     function publishTideMarker(value) {
         if (app.lastPublishedTide === value) { return; }
         app.lastPublishedTide = value;
@@ -251,6 +270,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
+    // ---------------------------------------------------------------------
+    // VESSEL MARKERS
+    // ---------------------------------------------------------------------
     function publishVesselMarker(ev) {
         var id = ev.vessel_id;
         var markerId = CONFIG.VESSEL_MARKER_PREFIX + id;
@@ -283,24 +305,30 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
-    function verifyShiftMatch(timeStr, targetShift) {
-        if (targetShift === 'ALL') { return true; }
-        var parts = timeStr.split(' ');
-        if (parts.length < 2) { return true; }
-        var hour = parseInt(parts[1].split(':')[0], 10);
-        if (targetShift === 'MORNING') { return (hour >= 6 && hour < 14); }
-        if (targetShift === 'AFTERNOON') { return (hour >= 14 && hour < 22); }
-        if (targetShift === 'NIGHT') { return (hour >= 22 || hour < 6); }
-        return true;
+    function syncSceneMarkers(metadata, envTide) {
+        var occupied = {};
+        Object.keys(metadata).forEach(function (key) {
+            var meta = metadata[key];
+            if (meta.latestRow) { publishVesselMarker(meta.latestRow); }
+            if (meta.berth !== '-' && meta.hasArrived && !meta.hasDeparted) {
+                occupied[meta.berth] = true;
+            }
+        });
+        Object.keys(BERTHS).forEach(function (b) {
+            setBerthOccupied(b, !!occupied[b]);
+        });
+        publishTideMarker(typeof envTide === 'number' ? envTide.toFixed(2) : safe(envTide));
     }
 
     // ---------------------------------------------------------------------
-    // GLOBAL STYLING DICTIONARY
+    // UI - STYLES
     // ---------------------------------------------------------------------
     var STYLE = '<style>' +
         '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
         '.voc-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
-        'background:#f3f4f6;color:#1f2937;line-height:1.4;width:100%;height:100%;min-height:320px;overflow:auto;}' +
+        'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
+        'width:100%;height:100%;min-height:320px;' +
+        'overflow:auto;}' +
         '.voc-inner{padding:14px;min-width:420px;}' +
         '.voc-topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:relative;}' +
         '.voc-topbar-left{flex:1;min-width:0;}' +
@@ -376,26 +404,114 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '.voc-subtable td{padding:5px;font-size:10.5px;border:1px solid #e2e8f0;background:#fff!important;}' +
         '.voc-berth-badge{display:inline-block;padding:2px 4px;font-size:9.5px;border-radius:4px;' +
         'font-weight:600;margin-top:2px;background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;}' +
+        '.voc-status-badge{display:inline-block;padding:2px 4px;font-size:9.5px;border-radius:4px;font-weight:600;margin-top:2px;margin-right:4px;}' +
+        '.voc-status-in-port{background:#dbeafe;color:#1e40af;}' +
+        '.voc-status-departed{background:#f3f4f6;color:#4b5563;}' +
+        '.voc-status-planning{background:#fef3c7;color:#92400e;}' +
         '.voc-delay-tag{display:block;font-size:8.5px;color:#b91c1c;font-weight:bold;margin-top:2px;' +
         'text-transform:uppercase;background:rgba(254,226,226,0.6);padding:1px 2px;border-radius:3px;}' +
-        '.voc-cell-empty{background:#fcfcfd;color:#d1d5db;}' +
-        '.voc-cell-low{background:#dcfce7;color:#166534;}' +
-        '.voc-cell-med{background:#eff6ff;color:#1e40af;}' +
-        '.voc-cell-critical{background:#fee2e2;color:#991b1b;}' +
+        '.voc-c-empty{background:#fcfcfd;color:#d1d5db;}' +
+        '.voc-c-low{background:#dcfce7;color:#166534;}' +
+        '.voc-c-med{background:#eff6ff;color:#1e40af;}' +
+        '.voc-c-critical{background:#fee2e2;color:#991b1b;}' +
         '.voc-vessel-panel-grid{display:grid;grid-template-columns:2fr 1fr;gap:14px;}' +
-        '@media(max-width:1024px){.voc-vessel-panel-grid{grid-template-columns:1fr;}}' +
         '</style>';
 
     // ---------------------------------------------------------------------
-    // APEXCHARTS OPTIMIZED RENDER SYSTEM
+    // CALCULATORS & PROCESSING (Ported directly from HTML source)
+    // ---------------------------------------------------------------------
+    function getSnapshotData() {
+        var currentSnapshotTime = app.times[app.timeIndex];
+        var lookupTime = parseEventDate(currentSnapshotTime);
+
+        var snapshotEvents = app.events.filter(function (x) {
+            return parseEventDate(x.event_time) <= lookupTime;
+        });
+
+        var latestPerVessel = {};
+        snapshotEvents.forEach(function (ev) {
+            latestPerVessel[ev.vessel_id] = ev;
+        });
+
+        var metadata = {};
+        app.events.forEach(function (ev) {
+            if (!metadata[ev.vessel_id]) {
+                metadata[ev.vessel_id] = {
+                    vessel_id: ev.vessel_id, voyage_no: ev.voyage_no, shipping_line: ev.shipping_line,
+                    container_type: ev.container_type, teu_capacity: ev.teu_capacity, terminal: ev.terminal,
+                    import_teu: ev.import_teu, export_teu: ev.export_teu, cargo_hours: ev.cargo_hours,
+                    hasArrived: false, hasDeparted: false, currentStage: 'PLANNING', currentSubstage: '-',
+                    berth: '-', cranes: 0, waitHours: 0, lifecycle: [], latestRow: null
+                };
+            }
+        });
+
+        snapshotEvents.forEach(function (ev) {
+            var meta = metadata[ev.vessel_id];
+            meta.latestRow = ev;
+            meta.lifecycle.push(ev);
+            if (ev.stage === 'ARRIVAL') { meta.hasArrived = true; }
+            if (ev.stage === 'DEPARTURE') { meta.hasDeparted = true; }
+            meta.currentStage = ev.stage;
+            meta.currentSubstage = ev.substage || '-';
+            meta.berth = ev.berth || '-';
+            meta.cranes = ev.cranes_assigned || 0;
+            meta.waitHours = ev.anchorage_wait_hours || 0;
+        });
+
+        var activeTide = 0;
+        var matchingTideEvent = snapshotEvents.slice().reverse().find(function (x) { return x.tide_level > 0; });
+        if (matchingTideEvent) { activeTide = matchingTideEvent.tide_level; }
+
+        return { metadata: metadata, envTide: activeTide, snapshotTime: currentSnapshotTime };
+    }
+
+    function calculateMetrics(metadata) {
+        var activeInPort = 0, totalTeuHandled = 0, totalCranesAllocated = 0, totalWaitHours = 0;
+        var delayedVesselsCount = 0, berthsOccupiedCount = 0;
+        var stageCounts = {}, lineTeu = {}, stageWaitTimes = {};
+
+        STAGES.forEach(function (s) { stageCounts[s] = 0; stageWaitTimes[s] = { total: 0, count: 0 }; });
+
+        Object.keys(metadata).forEach(function (vId) {
+            var m = metadata[vId];
+            stageCounts[m.currentStage] = (stageCounts[m.currentStage] || 0) + 1;
+
+            if (m.hasArrived && !m.hasDeparted) {
+                activeInPort++;
+                totalCranesAllocated += m.cranes;
+                totalWaitHours += m.waitHours;
+                if (m.waitHours > 12) { delayedVesselsCount++; }
+                if (m.berth !== '-') { berthsOccupiedCount++; }
+            }
+
+            m.lifecycle.forEach(function (row) {
+                if (row.stage === 'CARGO' || row.substage === 'ALL_FAST') {
+                    totalTeuHandled += (row.import_teu + row.export_teu);
+                    lineTeu[m.shipping_line] = (lineTeu[m.shipping_line] || 0) + (row.import_teu + row.export_teu);
+                }
+                if (row.anchorage_wait_hours > 0 && stageWaitTimes[row.stage]) {
+                    stageWaitTimes[row.stage].total += row.anchorage_wait_hours;
+                    stageWaitTimes[row.stage].count++;
+                }
+            });
+        });
+
+        return {
+            activeInPort: activeInPort, totalTeuHandled: totalTeuHandled, totalCranesAllocated: totalCranesAllocated,
+            totalWaitHours: totalWaitHours, delayedVesselsCount: delayedVesselsCount, berthsOccupiedCount: berthsOccupiedCount,
+            stageCounts: stageCounts, lineTeu: lineTeu, stageWaitTimes: stageWaitTimes
+        };
+    }
+
+    // ---------------------------------------------------------------------
+    // APEXCHARTS RENDER RIG
     // ---------------------------------------------------------------------
     function safeRender(id, options) {
         var el = document.getElementById(id);
         if (!el) { return; }
         if (app.chartsMap[id]) {
-            options.chart = options.chart || {};
-            options.chart.animations = { enabled: false };
-            app.chartsMap[id].updateOptions(options, false, false);
+            app.chartsMap[id].updateOptions(options);
         } else {
             el.innerHTML = '';
             var c = new window.ApexCharts(el, options);
@@ -411,190 +527,213 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         app.chartsMap = {};
     }
 
+    function renderExecutiveTabCharts(metrics) {
+        var stageLabels = STAGES;
+        var stageValues = stageLabels.map(function (s) { return metrics.stageCounts[s] || 0; });
+        safeRender('voc-chart-exec-lifecycle', {
+            series: [{ name: 'Vessels', data: stageValues }],
+            chart: { type: 'bar', height: 200, toolbar: { show: false } },
+            colors: ['#3b82f6'],
+            plotOptions: { bar: { borderRadius: 4, horizontal: false } },
+            xaxis: { categories: stageLabels, labels: { style: { fontSize: '9px' } } },
+            dataLabels: { enabled: true, style: { fontSize: '10px' } }
+        });
+
+        var lineLabels = Object.keys(metrics.lineTeu);
+        var lineValues = lineLabels.map(function (k) { return metrics.lineTeu[k]; });
+        safeRender('voc-chart-exec-share', {
+            series: lineValues, labels: lineLabels,
+            chart: { type: 'pie', height: 200 },
+            legend: { position: 'bottom', fontSize: '10px' }
+        });
+    }
+
+    function renderTerminalsTabCharts(metadata) {
+        var berthUtilization = {};
+        Object.keys(BERTHS).forEach(function (b) { berthUtilization[b] = 0; });
+        Object.keys(metadata).forEach(function (k) {
+            var m = metadata[k];
+            if (m.berth !== '-' && m.hasArrived && !m.hasDeparted) {
+                berthUtilization[m.berth] = 100;
+            }
+        });
+
+        var categories = Object.keys(berthUtilization);
+        var dataValues = categories.map(function (c) { return berthUtilization[c]; });
+
+        safeRender('voc-chart-term-util', {
+            series: [{ name: 'Utilization %', data: dataValues }],
+            chart: { type: 'bar', height: 200, toolbar: { show: false } },
+            colors: ['#10b981'],
+            xaxis: { categories: categories },
+            yaxis: { max: 100 },
+            dataLabels: { enabled: true, formatter: function (v) { return v + '%'; } }
+        });
+    }
+
+    function renderOperationsTabCharts(metrics, metadata) {
+        var points = [];
+        Object.keys(metadata).forEach(function (k) {
+            var m = metadata[k];
+            if (m.hasArrived && !m.hasDeparted && m.cranes > 0) {
+                var velocity = m.cargo_hours > 0 ? ((m.import_teu + m.export_teu) / m.cargo_hours) : 0;
+                points.push({ x: m.cranes, y: Math.round(velocity) });
+            }
+        });
+
+        safeRender('voc-chart-ops-scatter', {
+            series: [{ name: 'Vessel Performance', data: points }],
+            chart: { type: 'scatter', height: 200, toolbar: { show: false } },
+            xaxis: { title: { text: 'Cranes Allocated', style: { fontSize: '10px' } }, tickAmount: 4 },
+            yaxis: { title: { text: 'Velocity (TEU/hr)', style: { fontSize: '10px' } } }
+        });
+    }
+
+    function renderEnvironmentTabCharts(envTide, metrics) {
+        var categories = STAGES;
+        var barData = categories.map(function (s) { return metrics.stageWaitTimes[s].total; });
+        var lineData = categories.map(function () { return envTide; });
+
+        safeRender('voc-chart-env-dual', {
+            series: [{ name: 'Tide Level (m)', type: 'line', data: lineData }, { name: 'Active Delays', type: 'column', data: barData }],
+            chart: { height: 200, type: 'line', toolbar: { show: false } },
+            stroke: { width: [2, 0] },
+            colors: ['#ef4444', '#3b82f6'],
+            xaxis: { categories: categories },
+            yaxis: [{ title: { text: 'Tide Level (m)' } }, { opposite: true, title: { text: 'Cumulative Delays (hrs)' } }]
+        });
+    }
+
     // ---------------------------------------------------------------------
-    // CENTRAL TIMELINE SYNC ENGINE (Harvested fully from HTML script)
+    // MATRIX MATRIX GRID RENDERER (Ported directly from Tab 2 matrix grid)
+    // ---------------------------------------------------------------------
+    function renderVesselMatrix(metadata) {
+        var container = document.getElementById('voc-matrix-space');
+        if (!container) { return; }
+
+        var html = '<div class="voc-matrix-container">' +
+            '<table class="voc-table">' +
+            '<thead>' +
+            '<tr>' +
+            '<th style="text-align:left; position:sticky; left:0; z-index:3; background:#f9fafb;">Vessel Core Identifier</th>';
+        
+        STAGES.forEach(function (s) {
+            html += '<th>' + esc(s) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+
+        Object.keys(metadata).forEach(function (vId) {
+            var m = metadata[vId];
+            html += '<tr class="voc-vessel-row" data-vessel="' + esc(vId) + '">' +
+                '<td class="voc-vessel-axis-cell">' +
+                '<div>' + esc(vId) + '</div>' +
+                '<div style="font-size:9.5px; color:#6b7280; font-weight:normal;">Voy: ' + esc(m.voyage_no) + ' | ' + esc(m.shipping_line) + '</div>' +
+                (m.berth !== '-' && m.hasArrived && !m.hasDeparted ? '<span class="voc-berth-badge">Berth: ' + esc(m.berth) + '</span>' : '') +
+                '</td>';
+
+            STAGES.forEach(function (s) {
+                var isCurrent = (m.currentStage === s);
+                var cellClass = 'voc-c-empty';
+                var cellContent = '-';
+
+                if (isCurrent) {
+                    if (m.hasDeparted) {
+                        cellClass = 'voc-c-low';
+                        cellContent = '<span class="voc-status-badge voc-status-departed">DEPARTED</span>';
+                    } else if (m.currentStage === 'PLANNING') {
+                        cellClass = 'voc-c-med';
+                        cellContent = '<span class="voc-status-badge voc-status-planning">PLANNING</span>';
+                    } else {
+                        cellClass = (m.waitHours > 12) ? 'voc-c-critical' : 'voc-c-med';
+                        cellContent = '<span class="voc-status-badge voc-status-in-port">' + esc(m.currentSubstage) + '</span>';
+                        if (m.waitHours > 0) {
+                            cellContent += '<div style="font-size:9.5px; margin-top:2px;">Wait: ' + m.waitHours + 'h</div>';
+                        }
+                        if (m.waitHours > 12) {
+                            cellContent += '<span class="voc-delay-tag">CRITICAL DELAY</span>';
+                        }
+                    }
+                } else {
+                    var passed = m.lifecycle.some(function (x) { return x.stage === s; });
+                    if (passed) {
+                        cellClass = 'voc-c-low';
+                        cellContent = '\u2713';
+                    }
+                }
+
+                html += '<td class="' + cellClass + '">' + cellContent + '</td>';
+            });
+
+            html += '</tr>';
+
+            // Hidden drilldown subtable accordion row
+            html += '<tr id="voc-drilldown-' + esc(vId) + '" class="voc-drilldown-row">' +
+                '<td colspan="' + (STAGES.length + 1) + '">' +
+                '<div class="voc-drilldown-container">' +
+                '<h4 style="margin-bottom:6px; font-size:12px; color:#1e3a8a;">Detailed Execution Log Trail: ' + esc(vId) + '</h4>' +
+                '<table class="voc-subtable">' +
+                '<thead><tr><th>Timestamp</th><th>Stage</th><th>Substage</th><th>Berth</th><th>Cranes</th><th>Wait Time</th><th>Cargo Hrs</th><th>TEU (Imp/Exp)</th></tr></thead>' +
+                '<tbody>';
+
+            if (m.lifecycle.length === 0) {
+                html += '<tr><td colspan="8" style="text-align:center; color:#9ca3af;">No state transits compiled in this token slice.</td></tr>';
+            } else {
+                m.lifecycle.forEach(function (row) {
+                    html += '<tr>' +
+                        '<td>' + esc(row.event_time) + '</td>' +
+                        '<td>' + esc(row.stage) + '</td>' +
+                        '<td>' + esc(row.substage || '-') + '</td>' +
+                        '<td>' + esc(row.berth || '-') + '</td>' +
+                        '<td>' + safe(row.cranes_assigned) + '</td>' +
+                        '<td>' + safe(row.anchorage_wait_hours) + 'h</td>' +
+                        '<td>' + safe(row.cargo_hours) + 'h</td>' +
+                        '<td>' + safe(row.import_teu) + ' / ' + safe(row.export_teu) + '</td>' +
+                        '</tr>';
+                });
+            }
+
+            html += '</tbody></table></div></td></tr>';
+        });
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        // Bind drilldown toggle event listeners
+        var rows = container.getElementsByClassName('voc-vessel-row');
+        Array.prototype.forEach.call(rows, function (r) {
+            r.addEventListener('click', function () {
+                var vId = this.getAttribute('data-vessel');
+                var drill = document.getElementById('voc-drilldown-' + vId);
+                if (drill) {
+                    if (drill.classList.contains('voc-open')) {
+                        drill.classList.remove('voc-open');
+                    } else {
+                        drill.classList.add('voc-open');
+                    }
+                }
+            });
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // MAIN TAB RENDERING ROUTER
     // ---------------------------------------------------------------------
     function renderActiveTab() {
         if (!app.times.length) { return; }
-
-        var selectedTimestamp = document.getElementById('voc-ts-select').value;
-        var dateScope = document.getElementById('voc-date-filter').value;
-        var shiftScope = document.getElementById('voc-shift-filter').value;
-        var filterValue = document.getElementById('voc-status-filter').value;
-        var sortValue = document.getElementById('voc-matrix-sort').value;
-        var searchQuery = document.getElementById('voc-search-input').value.toLowerCase().trim();
-
-        var cutoff = new Date(selectedTimestamp.replace(' ', 'T'));
-
-        // Core filter optimization
-        var filtered = app.events.filter(function (r) {
-            var d = parseEventDate(r.event_time);
-            if (d > cutoff) { return false; }
-            if (dateScope !== 'ALL' && r.event_time.indexOf(dateScope) !== 0) { return false; }
-            if (!verifyShiftMatch(r.event_time, shiftScope)) { return false; }
-            return true;
-        });
-
-        var groups = {}, metadata = {};
-        var activeInPort = 0, preArrival = 0, departed = 0;
-        var totalImports = 0, totalExports = 0, cumulativeCapacity = 0;
-        var sumAnchorageWait = 0, countAnchorage = 0;
-        var sumCranes = 0, countCranes = 0, totalCargoHours = 0;
-        var countDelayedVoyages = 0, totalVoyages = 0;
-
-        var envWeather = "CLEAR", envTide = 0.0;
-        var shippingLineDelayMap = {}, delayReasonCounts = {}, containerTypeCounts = {};
-        var opsScatterPoints = [], timelineTideMap = {}, timelineDelayCountMap = {};
-
-        var strictBerthImports = {};
-        var strictBerthExports = {};
-        var vesselClassMap = {};
-        var vesselStageMap = {};
-        STAGES.forEach(function (s) { vesselStageMap[s] = 0; });
         
-        var capacityRangeMap = { 'Under 3k TEU': 0, '3k - 6k TEU': 0, '6k - 10k TEU': 0, 'Above 10k TEU': 0 };
+        var snap = getSnapshotData();
+        var metrics = calculateMetrics(snap.metadata);
 
-        filtered.forEach(function (r) {
-            var key = r.voyage_no + '_' + r.vessel_id;
-            if (!groups[key]) {
-                groups[key] = [];
-                metadata[key] = {
-                    vesselId: r.vessel_id, voyageNo: r.voyage_no, shippingLine: r.shipping_line,
-                    vesselClass: r.vessel_class, capacity: r.teu_capacity || 0,
-                    importTeu: r.import_teu || 0, exportTeu: r.export_teu || 0,
-                    anchorageWait: r.anchorage_wait_hours || 0, cargoHours: r.cargo_hours || 0,
-                    cranes: r.cranes_assigned || 0, terminal: '-', berth: '-',
-                    stageDelays: {}, substagesList: [], hasArrived: false, hasDeparted: false,
-                    totalRowHours: 0, latestEventTime: parseEventDate(r.event_time), latestSubstage: '-',
-                    latestRow: null
-                };
-            }
+        // Update Global KPIs (always visible at top of tabs)
+        document.getElementById('voc-kpi-active').textContent = metrics.activeInPort;
+        document.getElementById('voc-kpi-teu').textContent = metrics.totalTeuHandled.toLocaleString();
+        document.getElementById('voc-kpi-cranes').textContent = metrics.totalCranesAllocated;
+        document.getElementById('voc-kpi-tide').textContent = snap.envTide ? snap.envTide.toFixed(2) + ' m' : '-';
 
-            var meta = metadata[key];
-            meta.latestRow = r;
-            if (r.terminal && r.terminal !== "NaN") { meta.terminal = r.terminal; }
-            if (r.berth && r.berth !== "NaN") { meta.berth = r.berth; }
+        // Synchronize 3D Markers via PlatformAPI
+        syncSceneMarkers(snap.metadata, snap.envTide);
 
-            var timeStr = r.event_time;
-            var currentEventDate = parseEventDate(timeStr);
-
-            if (currentEventDate >= meta.latestEventTime) {
-                meta.latestEventTime = currentEventDate;
-                meta.latestSubstage = r.substage || r.stage;
-            }
-
-            if (!timelineTideMap[timeStr]) {
-                timelineTideMap[timeStr] = r.tide_level || 0;
-                timelineDelayCountMap[timeStr] = 0;
-            }
-
-            if (r.delay_reason && r.delay_reason !== "NaN" && String(r.delay_reason).trim() !== "") {
-                meta.stageDelays[r.stage] = r.delay_reason;
-                delayReasonCounts[r.delay_reason] = (delayReasonCounts[r.delay_reason] || 0) + 1;
-                timelineDelayCountMap[timeStr]++;
-                shippingLineDelayMap[r.shipping_line] = (shippingLineDelayMap[r.shipping_line] || 0) + 1;
-            }
-
-            if (r.container_type && r.container_type !== "NaN") {
-                containerTypeCounts[r.container_type] = (containerTypeCounts[r.container_type] || 0) + 1;
-            }
-
-            if (parseEventDate(r.event_time).getTime() === cutoff.getTime()) {
-                if (r.weather) { envWeather = r.weather; }
-                if (r.tide_level) { envTide = r.tide_level; }
-            }
-
-            meta.substagesList.push({
-                timeStr: r.event_time, stage: r.stage, substage: r.substage,
-                cranes: r.cranes_assigned || '-', weather: r.weather || '-', delay: r.delay_reason || '-'
-            });
-
-            if (r.stage === 'CARGO' && r.cranes_assigned > 0) {
-                sumCranes += r.cranes_assigned;
-                countCranes++;
-            }
-
-            groups[key].push({ time: currentEventDate, stage: r.stage });
-        });
-
-        var matrixDataRows = [];
-
-        Object.keys(groups).forEach(function (key) {
-            var meta = metadata[key];
-            var events = groups[key].sort(function (a, b) { return a.time - b.time; });
-            var latest = events[events.length - 1];
-
-            if (events.some(function (e) { return e.stage !== 'PLANNING'; })) { meta.hasArrived = true; }
-            if (latest.stage === 'DEPARTURE') { meta.hasDeparted = true; }
-
-            var rowDurations = {};
-            STAGES.forEach(function (s) { rowDurations[s] = 0; });
-            for (var i = 0; i < events.length; i++) {
-                var nextTime = (i < events.length - 1) ? events[i + 1].time : cutoff;
-                rowDurations[events[i].stage] += Math.max(0, (nextTime - events[i].time) / (1000 * 60 * 60));
-            }
-            STAGES.forEach(function (s) { meta.totalRowHours += rowDurations[s]; });
-
-            if (meta.hasArrived) {
-                totalVoyages++;
-                totalImports += meta.importTeu;
-                totalExports += meta.exportTeu;
-                cumulativeCapacity += meta.capacity;
-
-                if (Object.keys(meta.stageDelays).length > 0) { countDelayedVoyages++; }
-                if (meta.anchorageWait > 0) { sumAnchorageWait += meta.anchorageWait; countAnchorage++; }
-
-                if (meta.vesselClass) { vesselClassMap[meta.vesselClass] = (vesselClassMap[meta.vesselClass] || 0) + 1; }
-                vesselStageMap[latest.stage] = (vesselStageMap[latest.stage] || 0) + 1;
-
-                if (meta.capacity < 3000) { capacityRangeMap['Under 3k TEU']++; }
-                else if (meta.capacity <= 6000) { capacityRangeMap['3k - 6k TEU']++; }
-                else if (meta.capacity <= 10000) { capacityRangeMap['6k - 10k TEU']++; }
-                else { capacityRangeMap['Above 10k TEU']++; }
-
-                if (meta.terminal !== '-' && meta.berth !== '-') {
-                    var geoKey = meta.terminal + '➔' + meta.berth;
-                    strictBerthImports[geoKey] = (strictBerthImports[geoKey] || 0) + meta.importTeu;
-                    strictBerthExports[geoKey] = (strictBerthExports[geoKey] || 0) + meta.exportTeu;
-                }
-
-                if (meta.cargoHours > 0) {
-                    totalCargoHours += meta.cargoHours;
-                    opsScatterPoints.push({ x: meta.cranes, y: parseFloat(((meta.importTeu + meta.exportTeu) / meta.cargoHours).toFixed(1)) });
-                }
-
-                if (meta.hasDeparted) { departed++; } else { activeInPort++; }
-            } else {
-                preArrival++;
-            }
-
-            if (filterValue === 'IN_PORT' && (!meta.hasArrived || meta.hasDeparted)) { return; }
-            if (filterValue === 'PRE_ARRIVAL' && meta.hasArrived) { return; }
-            if (filterValue === 'DEPARTED' && !meta.hasDeparted) { return; }
-
-            if (searchQuery) {
-                var mId = meta.vesselId.toLowerCase().indexOf(searchQuery) !== -1;
-                var mLine = meta.shippingLine.toLowerCase().indexOf(searchQuery) !== -1;
-                var mSub = meta.substagesList.some(function (s) { return (s.substage || '').toLowerCase().indexOf(searchQuery) !== -1; });
-                if (!mId && !mLine && !mSub) { return; }
-            }
-
-            matrixDataRows.push({ key: key, meta: meta, rowDurations: rowDurations });
-        });
-
-        // Dynamic multi-tier matrix sorting routing
-        matrixDataRows.sort(function (a, b) {
-            if (sortValue === 'TOTAL_TIME_DESC') { return b.meta.totalRowHours - a.meta.totalRowHours; }
-            if (sortValue === 'RECENT_EVENT_DESC') { return b.meta.latestEventTime - a.meta.latestEventTime; }
-            if (sortValue === 'VESSEL_ID_ASC') { return a.meta.vesselId.localeCompare(b.meta.vesselId); }
-            if (sortValue === 'CARGO_VOLUME_DESC') { return (b.meta.importTeu + b.meta.exportTeu) - (a.meta.importTeu + a.meta.exportTeu); }
-            return 0;
-        });
-
-        // Sync 3D markers twin tracking
-        syncSceneMarkers(metadata, envTide);
-
-        // Hide/Unhide view content panes
+        // Hide all frames, then unhide current active layout frame
         TABS.forEach(function (t) {
             var pane = document.getElementById('voc-pane-' + t);
             if (pane) { pane.classList.remove('voc-active'); }
@@ -602,178 +741,24 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var activePane = document.getElementById('voc-pane-' + app.currentTab);
         if (activePane) { activePane.classList.add('voc-active'); }
 
-        // ---------------------------------------------------------------------
-        // PERSPECTIVE DISPATCH ROUTER (Tab specific visualization loading)
-        // ---------------------------------------------------------------------
+        // Render tab-specific visualizations
         if (app.currentTab === 'executive') {
-            document.getElementById('kpi-exe-tat').textContent = totalVoyages > 0 ? (totalCargoHours / totalVoyages * 1.8).toFixed(1) + "h" : "0.0h";
-            document.getElementById('kpi-exe-cap').textContent = cumulativeCapacity > 0 ? ((totalImports + totalExports) / cumulativeCapacity * 100).toFixed(1) + "%" : "0.0%";
-            document.getElementById('kpi-exe-delpct').textContent = totalVoyages > 0 ? (countDelayedVoyages / totalVoyages * 100).toFixed(1) + "%" : "0.0%";
-
-            safeRender('voc-exe-demurrage-chart', {
-                series: [{ name: 'Delay Frequency', data: Object.values(shippingLineDelayMap) }],
-                chart: { type: 'bar', height: 200, toolbar: { show: false } },
-                colors: ['#3b82f6'],
-                plotOptions: { bar: { dataLabels: { position: 'top' } } },
-                xaxis: { categories: Object.keys(shippingLineDelayMap), labels: { rotate: -45, style: { fontSize: '9px' } } },
-                dataLabels: { enabled: true, style: { fontSize: '10px', colors: ["#333"] }, offsetY: -18 }
-            });
-
-            safeRender('voc-exe-delay-pie', {
-                series: Object.values(delayReasonCounts), labels: Object.keys(delayReasonCounts),
-                chart: { type: 'pie', height: 200 },
-                legend: { position: 'bottom', fontSize: '10px' }
-            });
-
+            renderExecutiveTabCharts(metrics);
         } else if (app.currentTab === 'vessels') {
-            document.getElementById('kpi-vsl-active').textContent = activeInPort;
-            document.getElementById('kpi-vsl-plan').textContent = preArrival;
-            document.getElementById('kpi-vsl-anch').textContent = countAnchorage > 0 ? (sumAnchorageWait / countAnchorage).toFixed(1) + "h" : "0.0h";
-
-            var header = document.getElementById('voc-matrix-header');
-            var hHtml = '<th style="position: sticky; left:0; z-index:5;">Vessel Infrastructure</th>';
-            STAGES.forEach(function (s) { hHtml += '<th>' + esc(s) + '</th>'; });
-            hHtml += '<th>Total</th>';
-            header.innerHTML = hHtml;
-
-            var tbody = document.getElementById('voc-matrix-body');
-            tbody.innerHTML = '';
-
-            matrixDataRows.forEach(function (rowObj) {
-                var mKey = rowObj.key;
-                var meta = rowObj.meta;
-                var durations = rowObj.rowDurations;
-
-                var subHtml = '';
-                meta.substagesList.forEach(function (s) {
-                    subHtml += '<tr><td>' + esc(s.timeStr) + '</td><td>' + esc(s.stage) + '</td><td><code>' + esc(s.substage || '-') + '</code></td><td>' + esc(s.cranes) + '</td><td>' + esc(s.weather) + '</td><td>' + esc(s.delay) + '</td></tr>';
-                });
-
-                var formattedTime = meta.latestEventTime.toISOString().split('T')[1].substring(0, 5);
-
-                var rowHtml = '<tr class="voc-vessel-row" id="voc-row-click-' + esc(mKey) + '">' +
-                    '<td class="voc-vessel-axis-cell">' +
-                        '▶ ' + esc(meta.vesselId) + ' <span style="font-size:10px; font-weight:normal; color:#6b7280;">(' + esc(meta.voyageNo) + ')</span><br>' +
-                        '<span class="voc-berth-badge">' + esc(meta.terminal) + '/' + esc(meta.berth) + '</span>' +
-                        '<span style="display:block; font-size:9.5px; color:#4b5563; font-weight:normal; margin-top:3px; background:#f1f5f9; padding:1px 4px; border-radius:3px;">' +
-                            '⏱️ Upd: ' + esc(meta.latestSubstage) + ' (' + formattedTime + ')' +
-                        '</span>' +
-                    '</td>';
-
-                STAGES.forEach(function (s) {
-                    var d = durations[s];
-                    var hClass = d > 0 ? (d <= 4 ? 'voc-cell-low' : d <= 24 ? 'voc-cell-med' : 'voc-cell-critical') : 'voc-cell-empty';
-                    rowHtml += '<td class="' + hClass + '"><strong>' + (d > 0 ? d.toFixed(1) + 'h' : '-') + '</strong>' + (meta.stageDelays[s] ? '<span class="voc-delay-tag">⚠️ ' + esc(meta.stageDelays[s]) + '</span>' : '') + '</td>';
-                });
-
-                rowHtml += '<td>' + meta.totalRowHours.toFixed(1) + 'h</td></tr>' +
-                    '<tr class="voc-drilldown-row" id="voc-sub-' + esc(mKey) + '"><td colspan="' + (STAGES.length + 2) + '"><div class="voc-drilldown-container">' +
-                        '<table class="voc-subtable"><thead><tr><th>Timestamp</th><th>Stage</th><th>Substage</th><th>Cranes</th><th>Weather</th><th>Alert Context</th></tr></thead><tbody>' + subHtml + '</tbody></table>' +
-                    '</div></td></tr>';
-
-                tbody.innerHTML += rowHtml;
-            });
-
-            // Re-bind accordion clicks
-            matrixDataRows.forEach(function (rowObj) {
-                var clickTarget = document.getElementById('voc-row-click-' + rowObj.key);
-                if (clickTarget) {
-                    clickTarget.addEventListener('click', function () {
-                        var targetRow = document.getElementById('voc-sub-' + rowObj.key);
-                        if (targetRow) {
-                            if (targetRow.classList.contains('voc-open')) {
-                                targetRow.classList.remove('voc-open');
-                            } else {
-                                targetRow.classList.add('voc-open');
-                            }
-                        }
-                    });
-                }
-            });
-
-            safeRender('voc-vsl-mix-donut', {
-                series: Object.values(vesselClassMap), labels: Object.keys(vesselClassMap),
-                chart: { type: 'pie', height: 200 },
-                legend: { position: 'bottom', fontSize: '10px' }
-            });
-
-            safeRender('voc-vsl-capacity-bar', {
-                series: [{ name: 'Vessels Count', data: Object.values(capacityRangeMap) }],
-                chart: { type: 'bar', height: 200, toolbar: { show: false } },
-                colors: ['#3b82f6'],
-                xaxis: { categories: Object.keys(capacityRangeMap) }
-            });
-
-            safeRender('voc-vsl-stage-bar', {
-                series: [{ name: 'Queue Count', data: Object.values(vesselStageMap) }],
-                chart: { type: 'bar', height: 200, toolbar: { show: false } },
-                colors: ['#3b82f6'],
-                xaxis: { categories: Object.keys(vesselStageMap) }
-            });
-
+            renderVesselMatrix(snap.metadata);
         } else if (app.currentTab === 'terminals') {
-            document.getElementById('kpi-term-imp').textContent = totalImports.toLocaleString() + " TEU";
-            document.getElementById('kpi-term-exp').textContent = totalExports.toLocaleString() + " TEU";
-            document.getElementById('kpi-term-occupancy').textContent = activeInPort > 0 ? Math.min(100, (activeInPort * 12)).toFixed(0) + "%" : "0%";
-
-            var allGeoCategories = Array.from(new Set([].concat(Object.keys(strictBerthImports), Object.keys(strictBerthExports)))).sort();
-            var finalImportValues = allGeoCategories.map(function (cat) { return strictBerthImports[cat] || 0; });
-            var finalExportValues = allGeoCategories.map(function (cat) { return strictBerthExports[cat] || 0; });
-
-            safeRender('voc-term-geo-bar', {
-                series: [
-                    { name: 'Imports Throughput (TEU)', data: finalImportValues },
-                    { name: 'Exports Throughput (TEU)', data: finalExportValues }
-                ],
-                chart: { type: 'bar', height: 280, toolbar: { show: false } },
-                colors: ['#059669', '#0891b2'],
-                plotOptions: { bar: { dataLabels: { position: 'top' }, columnWidth: '65%' } },
-                xaxis: { categories: allGeoCategories, labels: { rotate: -45, style: { fontSize: '9px' } } },
-                dataLabels: { enabled: true, style: { fontSize: '9px', colors: ["#333"] }, offsetY: -16 },
-                legend: { position: 'top', horizontalAlign: 'right' }
-            });
-
-            safeRender('voc-term-type-pie', {
-                series: Object.values(containerTypeCounts), labels: Object.keys(containerTypeCounts),
-                chart: { type: 'pie', height: 200 },
-                legend: { position: 'bottom', fontSize: '10px' }
-            });
-
+            renderTerminalsTabCharts(snap.metadata);
         } else if (app.currentTab === 'operations') {
-            document.getElementById('kpi-ops-cranes').textContent = countCranes > 0 ? (sumCranes / countCranes).toFixed(1) : "0.0";
-            document.getElementById('kpi-ops-speed').textContent = totalCargoHours > 0 ? ((totalImports + totalExports) / totalCargoHours).toFixed(1) + " TEU/h" : "0.0 TEU/h";
-
-            safeRender('voc-ops-efficiency-scatter', {
-                series: [{ name: 'Vessel Performance', data: opsScatterPoints }],
-                chart: { type: 'scatter', height: 240, toolbar: { show: false } },
-                xaxis: { title: { text: 'Cranes Allocated', style: { fontSize: '11px' } }, tickAmount: 4 },
-                yaxis: { title: { text: 'Velocity (TEU/hr)', style: { fontSize: '11px' } } }
-            });
-
+            renderOperationsTabCharts(metrics, snap.metadata);
         } else if (app.currentTab === 'environment') {
-            document.getElementById('kpi-env-weather').textContent = envWeather;
-            document.getElementById('kpi-env-tide').textContent = envTide.toFixed(2) + "m";
-
-            var timesSorted = Object.keys(timelineTideMap).sort().slice(-15);
-            var tides = timesSorted.map(function (t) { return parseFloat(timelineTideMap[t].toFixed(2)); });
-            var delays = timesSorted.map(function (t) { return timelineDelayCountMap[t]; });
-
-            safeRender('voc-env-tide-line', {
-                series: [{ name: 'Tide Level (m)', type: 'line', data: tides }, { name: 'Active Delays', type: 'column', data: delays }],
-                chart: { height: 240, type: 'line', toolbar: { show: false } },
-                colors: ['#06b6d4', '#ef4444'],
-                stroke: { width: [3, 0] },
-                xaxis: { categories: timesSorted, labels: { show: false } },
-                yaxis: [{ title: { text: 'Water Level (m)', style: { fontSize: '11px' } } }, { opposite: true, title: { text: 'Disruption Counts', style: { fontSize: '11px' } } }]
-            });
+            renderEnvironmentTabCharts(snap.metadata, metrics);
         }
 
-        app.isFirstLoad = false;
-        setStatus('Snapshot synchronized successfully at ' + selectedTimestamp);
+        setStatus('Snapshot synchrony complete at timeline sequence index frame: ' + snap.snapshotTime);
     }
 
     // ---------------------------------------------------------------------
-    // FRAMEWORK INTERFACES RENDER
+    // UI BUILD & WINDOW INTERFACES
     // ---------------------------------------------------------------------
     function initUi() {
         var styleEl = document.createElement('div');
@@ -783,150 +768,119 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var html = 
         '<div class="voc-wrap">' +
             '<div class="voc-inner">' +
+                // Top Header Bar
                 '<div class="voc-topbar">' +
                     '<div class="voc-topbar-left">' +
                         '<div class="voc-title">Enterprise Port Command Center</div>' +
                         '<div class="voc-subtitle">Dynamic Role-Based Operational Intelligence Console Matrix</div>' +
                     '</div>' +
                     '<div class="voc-topbar-right">' +
-                        '<div id="voc-active-tab-badge" class="voc-active-badge">Executive Insights</div>' +
-                        '<button id="voc-burger-btn" class="voc-icon-btn" title="Perspectives Menu">\u2630</button>' +
+                        '<div id="voc-active-tab-badge" class="voc-active-badge">Executive View</div>' +
+                        '<button id="voc-burger-btn" class="voc-icon-btn" title="Switch Views Menu">\u2630</button>' +
+                        // Burger drop menu structure
                         '<div id="voc-burger-menu" class="voc-burger-menu">' +
                             '<div class="voc-menu-section">Operational Perspectives</div>' +
-                            '<button class="voc-menu-item voc-selected" data-tab="executive">Executive Insights</button>' +
+                            '<button class="voc-menu-item voc-selected" data-tab="executive">Executive Dashboard</button>' +
                             '<button class="voc-menu-item" data-tab="vessels">Vessel Tracking Matrix</button>' +
-                            '<button class="voc-menu-item" data-tab="terminals">Terminal & Berth</button>' +
+                            '<button class="voc-menu-item" data-tab="terminals">Terminal & Berth View</button>' +
                             '<button class="voc-menu-item" data-tab="operations">Operations & Cranes</button>' +
                             '<button class="voc-menu-item" data-tab="environment">Environmental Context</button>' +
                         '</div>' +
                     '</div>' +
                 '</div>' +
 
-                '<div id="voc-status" class="voc-status-bar">Initializing control console dashboard...</div>' +
+                // Status Notification Strip
+                '<div id="voc-status" class="voc-status-bar">Initializing control deck...</div>' +
 
                 '<div class="voc-main-layout">' +
-                    // Control Deck Panel
+                    // Control Panel Card
                     '<div class="voc-control-card">' +
                         '<div class="voc-select-group">' +
                             '<label>Snapshot Timeline (Time Slider)</label>' +
-                            '<select id="voc-ts-select" class="voc-select"><option>Loading times...</option></select>' +
+                            '<select id="voc-ts-select" class="voc-select"><option>Loading time keys...</option></select>' +
                         '</div>' +
                         '<div class="voc-playback-rig">' +
-                            '<button id="voc-btn-play" class="voc-btn voc-btn-primary" title="Play">\u25B6 Play</button>' +
-                            '<button id="voc-btn-next" class="voc-btn" title="Next snapshot">Next \u2794</button>' +
+                            '<button id="voc-btn-play" class="voc-btn voc-btn-primary" title="Automate Playback">\u25B6 Play</button>' +
+                            '<button id="voc-btn-next" class="voc-btn" title="Step Next Snapshot">\u23ED Next</button>' +
+                            '<button id="voc-btn-speed" class="voc-btn" title="Toggle Speed Metric">Speed: Normal</button>' +
                         '</div>' +
-                        '<div class="voc-select-group">' +
-                            '<label>Date Scope Filter</label>' +
-                            '<select id="voc-date-filter" class="voc-select">' +
-                                '<option value="ALL" selected>All Simulation History</option>' +
-                                '<option value="2026-02-28">2026-02-28 (Day 1)</option>' +
-                                '<option value="2026-03-01">2026-03-01 (Day 2)</option>' +
-                                '<option value="2026-03-02">2026-03-02 (Day 3)</option>' +
-                                '<option value="2026-03-03">2026-03-03 (Day 4)</option>' +
-                                '<option value="2026-03-04">2026-03-04 (Day 5)</option>' +
-                                '<option value="2026-03-05">2026-03-05 (Day 6)</option>' +
-                                '<option value="2026-03-06">2026-03-06 (Day 7)</option>' +
-                                '<option value="2026-03-07">2026-03-07 (Day 8)</option>' +
-                            '</select>' +
+                    '</div>' +
+
+                    // Global Context KPI Metric Row Grid
+                    '<div class="voc-kpi-row">' +
+                        '<div class="voc-kpi-card">' +
+                            '<label>Active Vessels In-Port</label>' +
+                            '<div id="voc-kpi-active" class="voc-kpi-val">-</div>' +
+                            '<div class="voc-kpi-exp">Anchored or berthed tracking</div>' +
                         '</div>' +
-                        '<div class="voc-select-group">' +
-                            '<label>Work Shift Window</label>' +
-                            '<select id="voc-shift-filter" class="voc-select">' +
-                                '<option value="ALL" selected>All Shifts (24 Hours)</option>' +
-                                '<option value="MORNING">Morning Shift (06:00 - 14:00)</option>' +
-                                '<option value="AFTERNOON">Afternoon Shift (14:00 - 22:00)</option>' +
-                                '<option value="NIGHT">Night Shift (22:00 - 06:00)</option>' +
-                            '</select>' +
+                        '<div class="voc-kpi-card">' +
+                            '<label>Cumulative TEU Handled</label>' +
+                            '<div id="voc-kpi-teu" class="voc-kpi-val">-</div>' +
+                            '<div class="voc-kpi-exp">Aggregated throughput scale</div>' +
                         '</div>' +
-                        '<div class="voc-select-group">' +
-                            '<label>Vessel Tracking Pipeline</label>' +
-                            '<select id="voc-status-filter" class="voc-select">' +
-                                '<option value="IN_PORT" selected>In Port (Active Operations)</option>' +
-                                '<option value="ALL">All Tracked Voyages</option>' +
-                                '<option value="PRE_ARRIVAL">Pre-Arrival Only</option>' +
-                                '<option value="DEPARTED">Departed Only</option>' +
-                            '</select>' +
+                        '<div class="voc-kpi-card">' +
+                            '<label>Active Crane Allocation</label>' +
+                            '<div id="voc-kpi-cranes" class="voc-kpi-val">-</div>' +
+                            '<div class="voc-kpi-exp">Total machinery load lines</div>' +
                         '</div>' +
-                        '<div class="voc-select-group">' +
-                            '<label>Matrix Sorting Priority</label>' +
-                            '<select id="voc-matrix-sort" class="voc-select">' +
-                                '<option value="TOTAL_TIME_DESC">Total Time Spent (Max \u2794 Min)</option>' +
-                                '<option value="RECENT_EVENT_DESC" selected>Most Recent Update Timeline</option>' +
-                                '<option value="VESSEL_ID_ASC">Vessel ID (A \u2794 Z)</option>' +
-                                '<option value="CARGO_VOLUME_DESC">Total Cargo Volume (Max TEU)</option>' +
-                            '</select>' +
+                        '<div class="voc-kpi-card">' +
+                            '<label>Hydrographic Tide Gauge</label>' +
+                            '<div id="voc-kpi-tide" class="voc-kpi-val">-</div>' +
+                            '<div class="voc-kpi-exp">Live coastal baseline meter</div>' +
                         '</div>' +
-                        '<div class="voc-select-group">' +
-                            '<label>Universal Quick Search Lookup</label>' +
-                            '<input type="text" id="voc-search-input" placeholder="Search ID, Line, Substage..." />' +
-                        } +
                     '</div>' +
 
                     // Tab 1 Frame View Content
                     '<div id="voc-pane-executive" class="voc-pane voc-active">' +
-                        '<div class="voc-kpi-row">' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #3b82f6;"><label>Avg Turnaround Time (TAT)</label><div id="kpi-exe-tat" class="voc-kpi-val">0.0h</div><div class="voc-kpi-exp">Total elapsed hours from port footprint entry to final open sea sail validation milestone.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #10b981;"><label>Capacity Utilization Load</label><div id="kpi-exe-cap" class="voc-kpi-val">0.0%</div><div class="voc-kpi-exp">Percentage ratio of active TEU exchange compared against total maximum vessel capacity sizes.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #ef4444;"><label>Delayed Voyage Ratio</label><div id="kpi-exe-delpct" class="voc-kpi-val">0.0%</div><div class="voc-kpi-exp">Percentage share of total active vessel manifests reporting active disruption exception logs.</div></div>' +
-                        '</div>' +
                         '<div class="voc-charts-grid">' +
-                            '<div class="voc-chart-card"><div class="voc-chart-title">Congestion Gaps by Carrier Line (Hours)</div><div class="voc-chart-exp">Tracks accumulated demurrage/idle hours spent waiting across operations by carrier account tags.</div><div id="voc-exe-demurrage-chart" class="voc-card-body"></div></div>' +
-                            '<div class="voc-chart-card"><div class="voc-chart-title">Primary Logistical Delay Factor Distribution (Pie)</div><div class="voc-chart-exp">Frequencies breakdown showing the leading operational root cause bottlenecks across the system.</div><div id="voc-exe-delay-pie" class="voc-card-body"></div></div>' +
+                            '<div class="voc-chart-card">' +
+                                '<div class="voc-chart-title">Vessel Lifecycle Stage Distribution Matrix</div>' +
+                                '<div class="voc-chart-exp">Real-time load allocation across operational stages</div>' +
+                                '<div id="voc-chart-exec-lifecycle" class="voc-card-body"></div>' +
+                            '</div>' +
+                            '<div class="voc-chart-card">' +
+                                '<div class="voc-chart-title">Shipping Line Volume Share Throughput</div>' +
+                                '<div class="voc-chart-exp">Total TEU split by carrier line</div>' +
+                                '<div id="voc-chart-exec-share" class="voc-card-body"></div>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
 
                     // Tab 2 Frame View Content
                     '<div id="voc-pane-vessels" class="voc-pane">' +
-                        '<div class="voc-kpi-row">' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #2563eb;"><label>Active Hulls In Port</label><div id="kpi-vsl-active" class="voc-kpi-val">0</div><div class="voc-kpi-exp">Vessels currently berthed or transiting within port operational limits.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #d97706;"><label>Pre-Arrival Pipeline</label><div id="kpi-vsl-plan" class="voc-kpi-val">0</div><div class="voc-kpi-exp">Vessels currently listed in the planning stages with active ETA receipts logged.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #dc2626;"><label>Avg Anchorage Idle Time</label><div id="kpi-vsl-anch" class="voc-kpi-val">0.0h</div><div class="voc-kpi-exp">Average duration vessels sit at sea waiting for pilot channel access validation.</div></div>' +
-                        '</div>' +
-                        '<div class="voc-vessel-panel-grid">' +
-                            '<div class="voc-matrix-container">' +
-                                '<span style="font-size:11px; color:#6b7280; font-style:italic; display:block; margin-bottom:8px;">\uD83D\uDCA1 Tip: Click on a row to expand its comprehensive sub-stage timeline.</span>' +
-                                '<table class="voc-table"><thead><tr id="voc-matrix-header"></tr></thead><tbody id="voc-matrix-body"></tbody></table>' +
-                            '</div>' +
-                            '<div style="display:flex; flex-direction:column; gap:12px;">' +
-                                '<div class="voc-chart-card"><div class="voc-chart-title">Vessel Fleet Mix Profile (Pie)</div><div id="voc-vsl-mix-donut" class="voc-card-body"></div></div>' +
-                                '<div class="voc-chart-card"><div class="voc-chart-title">Capacity Threshold Allocation (TEU Capacity Ranges)</div><div id="voc-vsl-capacity-bar" class="voc-card-body"></div></div>' +
-                                '<div class="voc-chart-card"><div class="voc-chart-title">Vessels Queue Count by Active Stage</div><div id="voc-vsl-stage-bar" class="voc-card-body"></div></div>' +
-                            '</div>' +
-                        '</div>' +
+                        '<div id="voc-matrix-space"></div>' +
                     '</div>' +
 
                     // Tab 3 Frame View Content
                     '<div id="voc-pane-terminals" class="voc-pane">' +
-                        '<div class="voc-kpi-row">' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #059669;"><label>Total Imports Handled</label><div id="kpi-term-imp" class="voc-kpi-val">0 TEU</div><div class="voc-kpi-exp">Cumulative discharge container volume targets achieved up to the selected timestamp.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #0891b2;"><label>Total Exports Handled</label><div id="kpi-term-exp" class="voc-kpi-val">0 TEU</div><div class="voc-kpi-exp">Cumulative loaded container volume targets processed out to outbound manifests.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #4f46e5;"><label>Active Berth Occupancy Index</label><div id="kpi-term-occupancy" class="voc-kpi-val">0%</div><div class="voc-kpi-exp">Percentage calculation of fixed mooring locations currently holding active hull weights.</div></div>' +
-                        '</div>' +
                         '<div class="voc-charts-grid">' +
-                            '<div class="voc-chart-card" style="grid-column: 1 / -1;"><div class="voc-chart-title">Terminal \u2794 Berth Dynamic Usage: Side-by-Side Imports & Exports Insights</div><div class="voc-chart-exp">Provides clear visual asset evaluation showing exactly how much inbound (Import) vs outbound (Export) container counts passed through each independent structural berth node.</div><div id="voc-term-geo-bar" class="voc-card-body"></div></div>' +
-                            '<div class="voc-chart-card" style="grid-column: 1 / -1;"><div class="voc-chart-title">Physical Container Load Category Type Proportions (Pie)</div><div class="voc-chart-exp">Tracks specialized distribution configurations (Dry Van vs. Reefer Cargo plug configurations).</div><div id="voc-term-type-pie" class="voc-card-body"></div></div>' +
+                            '<div class="voc-chart-card">' +
+                                '<div class="voc-chart-title">Berth Occupies & Quay Allocation Percentage</div>' +
+                                '<div class="voc-chart-exp">Live active footprints across individual berth slots</div>' +
+                                '<div id="voc-chart-term-util" class="voc-card-body"></div>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
 
                     // Tab 4 Frame View Content
                     '<div id="voc-pane-operations" class="voc-pane">' +
-                        '<div class="voc-kpi-row">' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #7c3aed;"><label>Avg Cranes Assigned Intensity</label><div id="kpi-ops-cranes" class="voc-kpi-val">0.0</div><div class="voc-kpi-exp">Mean intensity volume of heavy machinery crane sets allocated per vessel loading phase.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #2563eb;"><label>Mean Crane Velocity Pace</label><div id="kpi-ops-speed" class="voc-kpi-val">0.0 TEU/h</div><div class="voc-kpi-exp">Calculated handling exchange velocity mapping cargo volumes directly against crane operational hours.</div></div>' +
-                        '</div>' +
                         '<div class="voc-charts-grid">' +
-                            '<div class="voc-chart-card" style="grid-column: 1 / -1;"><div class="voc-chart-title">Crane Allocation Count Density vs Handling Velocity Rate</div><div class="voc-chart-exp">Scatter analysis checking whether high crane clustering actually maximizes operational speeds.</div><div id="voc-ops-efficiency-scatter" class="voc-card-body"></div></div>' +
+                            '<div class="voc-chart-card">' +
+                                '<div class="voc-chart-title">Crane Allocation vs Cargo Handling Velocity Correlation</div>' +
+                                '<div class="voc-chart-exp">Scatter distribution of gang allocations relative to TEU velocity performance</div>' +
+                                '<div id="voc-chart-ops-scatter" class="voc-card-body"></div>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
 
                     // Tab 5 Frame View Content
                     '<div id="voc-pane-environment" class="voc-pane">' +
-                        '<div class="voc-kpi-row">' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #4b5563;"><label>Current Weather Metric</label><div id="kpi-env-weather" class="voc-kpi-val">-</div><div class="voc-kpi-exp">Categorical atmospheric descriptor tracker (Clear, Rainy, Rough) logged at current timestamp.</div></div>' +
-                            '<div class="voc-kpi-card" style="border-left:4px solid #06b6d4;"><label>Real-Time Tide Water Level</label><div id="kpi-env-tide" class="voc-kpi-val">0.00m</div><div class="voc-kpi-exp">Physical hydrographic water level displacement height logged in meters.</div></div>' +
-                        '</div>' +
                         '<div class="voc-charts-grid">' +
-                            '<div class="voc-chart-card" style="grid-column: 1 / -1;"><div class="voc-chart-title">Environmental Correlation: Tide Level Fluctuations vs Active Port Disruptions</div><div class="voc-chart-exp">Cross-references water level drops against active delay spike frequency logs across the channel.</div><div id="voc-env-tide-line" class="voc-card-body"></div></div>' +
+                            '<div class="voc-chart-card">' +
+                                '<div class="voc-chart-title">Hydrographic Tide Footprint vs Cumulative Stage Delay Indices</div>' +
+                                '<div class="voc-chart-exp">Dual-axis correlation of tide thresholds mapped against anchorage queue hours</div>' +
+                                '<div id="voc-chart-env-dual" class="voc-card-body"></div>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
 
@@ -937,7 +891,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         widget.body.innerHTML = html;
         app.statusBar = document.getElementById('voc-status');
 
-        // Toggle Burger perspectives dropdown panel bar setup
+        // Toggle Burger drop system panel
         var burgerBtn = document.getElementById('voc-burger-btn');
         var burgerMenu = document.getElementById('voc-burger-menu');
         burgerBtn.addEventListener('click', function (e) {
@@ -949,20 +903,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             burgerMenu.classList.remove('voc-open');
         });
 
-        // Register filter core change update hooks
-        var filtersList = ['voc-date-filter', 'voc-shift-filter', 'voc-status-filter', 'voc-matrix-sort', 'voc-ts-select'];
-        filtersList.forEach(function (fid) {
-            document.getElementById(fid).addEventListener('change', function () {
-                if (this.id === 'voc-ts-select') { app.timeIndex = this.selectedIndex; }
-                renderActiveTab();
-            });
-        });
-
-        document.getElementById('voc-search-input').addEventListener('input', function () {
-            renderActiveTab();
-        });
-
-        // Tab routing perspective buttons trigger actions
+        // Tab selection change routing event listeners
         var menuItems = burgerMenu.getElementsByClassName('voc-menu-item');
         var badge = document.getElementById('voc-active-tab-badge');
         Array.prototype.forEach.call(menuItems, function (item) {
@@ -978,7 +919,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             });
         });
 
-        // Automate timeline simulation tools
+        // Timeline drop selection index adjustment hook
+        var select = document.getElementById('voc-ts-select');
+        select.addEventListener('change', function () {
+            app.timeIndex = parseInt(this.value, 10) || 0;
+            renderActiveTab();
+        });
+
+        // Playback automate triggers
         var playBtn = document.getElementById('voc-btn-play');
         playBtn.addEventListener('click', function () {
             if (app.playing) {
@@ -993,6 +941,22 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             stopPlayback();
             stepNext();
         });
+
+        var speedBtn = document.getElementById('voc-btn-speed');
+        var intervalMs = CONFIG.DEFAULT_INTERVAL_MS;
+        speedBtn.addEventListener('click', function () {
+            if (intervalMs === CONFIG.DEFAULT_INTERVAL_MS) {
+                intervalMs = CONFIG.FAST_INTERVAL_MS;
+                this.textContent = 'Speed: Fast';
+            } else {
+                intervalMs = CONFIG.DEFAULT_INTERVAL_MS;
+                this.textContent = 'Speed: Normal';
+            }
+            if (app.playing) {
+                stopPlayback();
+                startPlayback();
+            }
+        });
     }
 
     function populateTimelineSelect() {
@@ -1000,7 +964,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         if (!select) { return; }
         var h = '';
         app.times.forEach(function (t, idx) {
-            h += '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+            h += '<option value="' + idx + '">' + esc(t) + '</option>';
         });
         select.innerHTML = h;
     }
@@ -1008,8 +972,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function stepNext() {
         if (!app.times.length) { return; }
         app.timeIndex = (app.timeIndex + 1) % app.times.length;
-        var sel = document.getElementById('voc-ts-select');
-        sel.selectedIndex = app.timeIndex;
+        document.getElementById('voc-ts-select').value = app.timeIndex;
         renderActiveTab();
     }
 
@@ -1020,9 +983,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         btn.textContent = '\u23F8 Pause';
         btn.classList.add('voc-btn-danger');
 
+        var speedBtn = document.getElementById('voc-btn-speed');
+        var currentInterval = (speedBtn && speedBtn.textContent.indexOf('Fast') !== -1) ? 
+            CONFIG.FAST_INTERVAL_MS : CONFIG.DEFAULT_INTERVAL_MS;
+
         app.playbackHandle = setInterval(function () {
             stepNext();
-        }, CONFIG.DEFAULT_INTERVAL_MS);
+        }, currentInterval);
     }
 
     function stopPlayback() {
@@ -1038,13 +1005,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     // ---------------------------------------------------------------------
-    // LOAD BOOTSTRAPPING
+    // LOAD
     // ---------------------------------------------------------------------
     function onLoad() {
         initUi();
         initBerthMarkers();
         publishTideMarker('-');
-        setStatus('Loading chart libraries and contextual port telemetry matrices...');
+        setStatus('Loading ApexCharts and vessel lifecycle data...');
 
         ensureApexCharts()
             .then(function () { return apiGetText(CONFIG.CSV_URL); })
@@ -1060,11 +1027,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     document.getElementById('voc-ts-select').selectedIndex = 0;
                     renderActiveTab();
                 } else {
-                    setStatus('Telemetry event data log keys look empty.', true);
+                    setStatus('No events found in CSV', true);
                 }
             })
             .catch(function (err) {
-                setStatus('Failed to load asset stream parameters: ' +
+                setStatus('Failed to load vessel lifecycle CSV or chart library: ' +
                     (err && err.message ? err.message : err), true);
             });
     }
