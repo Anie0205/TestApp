@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JNPA V5 Enterprise Control Tower - Blueprint</title>
+<style>
+body{font-family:Segoe UI;margin:40px;background:#f5f7fa}
+.card{background:white;padding:20px;margin:15px 0;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+h1,h2{color:#0f172a}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}
+li{margin:6px 0}
+</style>
+</head>
+<body>
+<h1>JNPA V5 Enterprise Control Tower Architecture</h1>
+
+<div class="card">
+<h2>Dashboard Modules</h2>
+<div class="grid">
+<div>
+<ul>
+<li>Executive Command Center</li>
+<li>Marine Operations</li>
+<li>Berth & Crane Control</li>
+<li>Gate & Truck Operations</li>
+<li>Yard Operations</li>
+</ul>
+</div>
+<div>
+<ul>
+<li>Customs & Compliance</li>
+<li>Rail & ICD Operations</li>
+<li>Digital Twin Replay</li>
+<li>Process Mining</li>
+<li>Alert & Incident Center</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Planned Features</h2>
+<ul>
+<li>Timeline Playback Engine</li>
+<li>Container Journey Replay</li>
+<li>Vessel Gantt Chart</li>
+<li>Yard Heatmaps</li>
+<li>SLA Monitoring</li>
+<li>Predictive Congestion Analytics</li>
+<li>Role-Based Views</li>
+<li>Scenario Simulation</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Required Data Sources</h2>
+<ul>
+<li>container_master.csv</li>
+<li>vessels.csv</li>
+<li>yard_operations.csv</li>
+<li>customs_events.csv</li>
+<li>digital_twin_events.csv</li>
+<li>berth_crane_operations.csv</li>
+<li>truck_movements.csv (future)</li>
+<li>rail_icd.csv (future)</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Recommended Next Build</h2>
+<p>This document is a deployment blueprint. The next iteration should be built as a modular application (React/Vue or enterprise HTML+JS) with a shared data model, filtering framework, playback engine, and analytics layer.</p>
+</div>
+</body>
+</html>
