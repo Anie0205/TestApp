@@ -22,7 +22,7 @@
  * ---------------------------------------------------------------------
  */
 
-define('VesselOpsCenter3',
+define('VesselOpsCenter',
 [
     'UWA/Core',
     'UWA/Promise',
@@ -57,10 +57,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         VESSEL_MARKER_SCALE: 1.4,
         // Berth markers stay pinned at ground level so the gap to the vessel above is obvious.
         BERTH_MARKER_ELEVATION: 0,
-        // Berth footprint polygon dimensions (meters): a rectangle oriented along the
-        // local quay line, representing the dock structure rather than a single pin.
-        BERTH_POLYGON_LENGTH_M: 130,
-        BERTH_POLYGON_WIDTH_M: 34,
         // Fixed point where the current tide reading is displayed
         TIDE_MARKER_ID: 'TIDE_GAUGE',
         TIDE_LOCATION: [18.94543, 72.92450],
@@ -78,9 +74,6 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         B7: [18.95717,  72.94673],  B8: [18.95993,  72.94795],  B9: [18.96259,  72.94918],
         B10: [18.96474, 72.95038]
     };
-    // Explicit left-to-right order along the quay, used to orient each berth's polygon
-    // footprint to the local coastline direction (neighbor-to-neighbor heading).
-    var BERTH_ORDER = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10'];
     var ANCH = [18.93366, 72.88527];
     var CHANNEL = [18.94137, 72.90879];
     var SEA = [18.92879, 72.86845];
@@ -218,156 +211,53 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     }
 
     // ---------------------------------------------------------------------
-    // BERTH POLYGON GEOMETRY HELPERS
-    // Each berth is drawn as a thin oriented rectangle (dock footprint) whose
-    // long axis runs parallel to the local quay line instead of being a single pin.
-    //
-    // Coordinate maths (all in WGS-84 degrees):
-    //   1° latitude  ≈ 111 320 m   (constant)
-    //   1° longitude ≈ 111 320 × cos(lat) m
-    //
-    // We derive the quay-line heading from the position of each berth's left and
-    // right neighbours in BERTH_ORDER, then build a rectangle that is
-    //   BERTH_POLYGON_LENGTH_M long  (along the quay)
-    //   BERTH_POLYGON_WIDTH_M  wide  (perpendicular, out into the water)
-    // The "water side" of the rectangle is offset outward from the centroid by
-    // WIDTH/2 and the "land side" is offset inward by WIDTH/2.
-    // ---------------------------------------------------------------------
-
-    var M_PER_LAT = 111320;                           // metres per degree latitude
-
-    // Metres-per-degree-longitude at a given latitude
-    function mPerLon(latDeg) {
-        return M_PER_LAT * Math.cos(latDeg * Math.PI / 180);
-    }
-
-    // Bearing (radians, clockwise from north) of the quay axis at berth b.
-    // Uses adjacent neighbours in BERTH_ORDER so end berths fall back to a
-    // single-sided estimate.
-    function berthHeadingRad(b) {
-        var idx = BERTH_ORDER.indexOf(b);
-        var prev = idx > 0                       ? BERTHS[BERTH_ORDER[idx - 1]] : null;
-        var next = idx < BERTH_ORDER.length - 1 ? BERTHS[BERTH_ORDER[idx + 1]] : null;
-        var from = prev || BERTHS[b];
-        var to   = next || BERTHS[b];
-        // Convert the lat/lon delta to a planar (north=Y, east=X) heading
-        var dLat = (to[0] - from[0]) * M_PER_LAT;
-        var dLon = (to[1] - from[1]) * mPerLon(BERTHS[b][0]);
-        return Math.atan2(dLon, dLat);            // clockwise from north
-    }
-
-    // Build four WGS-84 corner coordinates of the berth rectangle.
-    // The rectangle is oriented with:
-    //   - its LONG axis  parallel to the quay (headingRad)
-    //   - its SHORT axis perpendicular, offset seaward (90° clockwise = into the water)
-    // Returns [[lat,lon], ...] in polygon ring order (closed automatically by the caller).
-    function berthPolygonCorners(b) {
-        var centre    = BERTHS[b];
-        var lat       = centre[0];
-        var lon       = centre[1];
-        var mLon      = mPerLon(lat);
-        var heading   = berthHeadingRad(b);
-
-        var halfLen   = CONFIG.BERTH_POLYGON_LENGTH_M / 2;
-        var halfWid   = CONFIG.BERTH_POLYGON_WIDTH_M  / 2;
-
-        // Unit vectors (in metres):
-        //   along  = parallel to quay        (heading)
-        //   across = perpendicular, seaward  (heading + 90°)
-        var sinH = Math.sin(heading), cosH = Math.cos(heading);
-        var sinP = Math.sin(heading + Math.PI / 2), cosP = Math.cos(heading + Math.PI / 2);
-
-        // Four corners: (±along) × (±across) from centre
-        function corner(aSign, xSign) {
-            var dLatM = aSign * halfLen * cosH + xSign * halfWid * cosP;
-            var dLonM = aSign * halfLen * sinH + xSign * halfWid * sinP;
-            return [lat + dLatM / M_PER_LAT, lon + dLonM / mLon];
-        }
-
-        return [
-            corner(-1, -1),   // stern-land
-            corner( 1, -1),   // bow-land
-            corner( 1,  1),   // bow-water
-            corner(-1,  1)    // stern-water
-        ];
-    }
-
-    // Convert a corners array to the GeoJSON-style coordinate list the platform expects:
-    // [ [lon, lat], [lon, lat], ... ] (closed — first point repeated at end).
-    function cornersToRing(corners) {
-        var ring = corners.map(function (c) { return [c[1], c[0]]; });
-        ring.push(ring[0]);   // close the ring
-        return ring;
-    }
-
-    // Publish (or re-publish) a berth as an AddPolygon payload.
-    // free   → semi-transparent steel-blue outline, light fill  (#b3cde0 / #d9eaf7)
-    // occupied → red-amber outline, warm amber fill             (#e07b00 / #fde8c8)
-    function publishBerthPolygon(b, occupied) {
-        var polyId  = CONFIG.BERTH_MARKER_PREFIX + b;
-        removeContent(polyId);
-
-        var corners = berthPolygonCorners(b);
-        var ring    = cornersToRing(corners);
-
-        // Label pin: centre of the rectangle
-        var centre  = BERTHS[b];
-
-        PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
-            widgetID: widget.id,
-            layer: {
-                id:          polyId,
-                name:        b + (occupied ? ' \u2693 Occupied' : ' \u2713 Free'),
-                description: '<b>Berth ' + esc(b) + '</b><br>' +
-                             '<b>Status:</b> ' + (occupied ? '\u26A0\uFE0F Occupied' : '\u2705 Free') + '<br>' +
-                             '<b>Length:</b> ' + CONFIG.BERTH_POLYGON_LENGTH_M + ' m<br>' +
-                             '<b>Width:</b> '  + CONFIG.BERTH_POLYGON_WIDTH_M  + ' m'
-            },
-            geometry: {
-                type:        'Polygon',
-                coordinates: [ring]
-            },
-            render: {
-                fillColor:    occupied ? '#fde8c8' : '#d9eaf7',
-                fillOpacity:  occupied ? 0.72      : 0.50,
-                strokeColor:  occupied ? '#e07b00' : '#3a7bbf',
-                strokeWidth:  occupied ? 3         : 2,
-                strokeOpacity: 1.0
-            },
-            // Label pinned at the centroid of the polygon
-            label: {
-                text:      b,
-                position:  { x: centre[1], y: centre[0] },
-                style: {
-                    color:      occupied ? '#7a3800' : '#1a3c5c',
-                    fontSize:   11,
-                    fontWeight: 'bold',
-                    background: occupied ? '#fde8c8' : '#d9eaf7',
-                    padding:    3,
-                    borderRadius: 3
-                }
-            },
-            options: { projection: { from: 'WGS84' } }
-        });
-
-        app.berthMarkerIds[b] = polyId;
-    }
-
-    // ---------------------------------------------------------------------
-    // STATIC BERTH POLYGONS (created once at load)
+    // STATIC BERTH MARKERS (created once at load, icon pins on the quay)
     // ---------------------------------------------------------------------
     function initBerthMarkers() {
-        BERTH_ORDER.forEach(function (b) {
+        Object.keys(BERTHS).forEach(function (b) {
+            var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
+            app.berthMarkerIds[b] = markerId;
             app.berthOccupied[b] = false;
-            publishBerthPolygon(b, false);
+            PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+                widgetID: widget.id,
+                position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+                layer: {
+                    id: markerId,
+                    name: b,
+                    description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
+                },
+                render: {
+                    style: 'icon',
+                    color: '#2ca02c',
+                    iconName: 'transportation-dock'
+                },
+                options: { projection: { from: 'WGS84' } }
+            });
         });
     }
 
-    // Re-publishes the berth polygon with updated fill/stroke when occupancy changes
+    // Re-publishes a berth marker with updated colour when occupancy changes
     function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
         app.berthOccupied[b] = occupied;
-        publishBerthPolygon(b, occupied);
+        removeContent(app.berthMarkerIds[b]);
+        var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
+        app.berthMarkerIds[b] = markerId;
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+            layer: {
+                id: markerId,
+                name: b,
+                description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
+            },
+            render: {
+                style: 'icon',
+                color: occupied ? '#d62728' : '#2ca02c',
+                iconName: 'transportation-dock'
+            },
+            options: { projection: { from: 'WGS84' } }
+        });
     }
 
     // ---------------------------------------------------------------------
@@ -448,59 +338,127 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         publishTideMarker(typeof envTide === 'number' ? envTide.toFixed(2) : safe(envTide));
     }
 
+
+
     // ---------------------------------------------------------------------
-    // UI - built dynamically (no static HTML host page), mirrors the
-    // Enterprise Port Command Center console from the HTML twin.
+    // UI - STYLES
     // ---------------------------------------------------------------------
     var STYLE =
         '<style>' +
-        '.voc-widget,.voc-widget *{box-sizing:border-box;}' +
-        '.voc-widget{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:14px;background:#f3f4f6;color:#1f2937;line-height:1.4;}' +
-        '.voc-header-title{font-size:1.35rem;font-weight:700;color:#111827;margin-bottom:4px;}' +
-        '.voc-header-desc{font-size:12px;color:#6b7280;margin-bottom:12px;}' +
-        '.voc-status-bar{font-size:11.5px;color:#374151;background:#fff;padding:7px 10px;border-radius:6px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);}' +
-        '.voc-control-panel{background:#fff;padding:14px;border-radius:8px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;}' +
-        '.voc-control-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:165px;}' +
-        '.voc-playback-group{display:flex;gap:8px;align-items:flex-end;flex:0 1 auto;min-width:auto;}' +
-        '.voc-control-group label{font-weight:600;font-size:11px;color:#4b5563;}' +
-        '.voc-control-group select,.voc-control-group input[type="text"]{padding:7px 10px;font-size:13px;border-radius:6px;border:1px solid #d1d5db;background:#fff;width:100%;outline:none;}' +
-        '.voc-control-group select:focus,.voc-control-group input[type="text"]:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,0.15);}' +
-        '.voc-btn{padding:8px 14px;font-size:13px;font-weight:600;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;white-space:nowrap;transition:all .2s;}' +
+        /* ---- reset / base ---- */
+        '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
+        /* outer scrollable container – the single div the platform embeds */
+        '.voc-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+            'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
+            'width:100%;height:100%;min-height:320px;' +
+            'overflow:auto;}' +          /* scroll on demand, both axes */
+        /* inner padding box so content never bleeds to edge */
+        '.voc-inner{padding:14px;min-width:420px;}' +
+
+        /* ---- top header bar ---- */
+        '.voc-topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:relative;}' +
+        '.voc-topbar-left{flex:1;min-width:0;}' +
+        '.voc-title{font-size:1.2rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.voc-subtitle{font-size:11px;color:#6b7280;}' +
+        '.voc-topbar-right{display:flex;gap:6px;align-items:center;flex-shrink:0;}' +
+        /* active tab badge */
+        '.voc-active-badge{font-size:11.5px;font-weight:600;color:#3b82f6;background:#eff6ff;' +
+            'border:1px solid #bfdbfe;padding:3px 9px;border-radius:20px;white-space:nowrap;cursor:default;}' +
+        /* icon buttons */
+        '.voc-icon-btn{width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;background:#fff;' +
+            'cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
+            'transition:background .15s,border-color .15s;}' +
+        '.voc-icon-btn:hover{background:#f0f9ff;border-color:#93c5fd;}' +
+        '.voc-icon-btn.voc-active{background:#eff6ff;border-color:#3b82f6;}' +
+
+        /* ---- status bar ---- */
+        '.voc-status-bar{font-size:11px;color:#374151;background:#fff;padding:6px 10px;border-radius:6px;' +
+            'margin-bottom:11px;box-shadow:0 1px 3px rgba(0,0,0,.05);word-break:break-all;}' +
+
+        /* ---- burger dropdown menu ---- */
+        '.voc-burger-menu{position:absolute;top:42px;right:0;z-index:200;' +
+            'background:#fff;border:1px solid #e5e7eb;border-radius:10px;' +
+            'box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:230px;padding:6px 0;display:none;}' +
+        '.voc-burger-menu.voc-open{display:block;}' +
+        '.voc-menu-section{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;' +
+            'letter-spacing:.06em;padding:8px 14px 4px;}' +
+        '.voc-menu-item{display:flex;align-items:center;gap:9px;padding:9px 14px;font-size:13px;' +
+            'font-weight:500;color:#374151;cursor:pointer;transition:background .12s;}' +
+        '.voc-menu-item:hover{background:#f0f9ff;color:#2563eb;}' +
+        '.voc-menu-item.voc-menu-active{background:#eff6ff;color:#2563eb;font-weight:700;}' +
+        '.voc-menu-divider{border:none;border-top:1px solid #f3f4f6;margin:4px 0;}' +
+        '.voc-menu-icon{font-size:14px;width:18px;text-align:center;}' +
+
+        /* ---- settings modal overlay ---- */
+        '.voc-modal-backdrop{position:absolute;inset:0;background:rgba(17,24,39,.35);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:50px;}' +
+        '.voc-modal-backdrop.voc-open{display:flex;}' +
+        '.voc-modal{background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);' +
+            'width:90%;max-width:680px;max-height:82vh;overflow-y:auto;display:flex;flex-direction:column;}' +
+        '.voc-modal-header{display:flex;align-items:center;justify-content:space-between;' +
+            'padding:14px 18px;border-bottom:1px solid #f3f4f6;position:sticky;top:0;background:#fff;z-index:1;}' +
+        '.voc-modal-title{font-size:15px;font-weight:700;color:#111827;}' +
+        '.voc-modal-close{width:30px;height:30px;border-radius:6px;border:1px solid #e5e7eb;' +
+            'background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}' +
+        '.voc-modal-close:hover{background:#fee2e2;border-color:#fca5a5;}' +
+        '.voc-modal-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;}' +
+        /* playback row inside modal */
+        '.voc-pb-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}' +
+        '.voc-pb-row .voc-cg{flex:1;min-width:140px;}' +
+        /* modal apply button */
+        '.voc-modal-footer{padding:12px 18px;border-top:1px solid #f3f4f6;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#fff;}' +
+
+        /* ---- shared form control group ---- */
+        '.voc-cg{display:flex;flex-direction:column;gap:4px;}' +
+        '.voc-cg label{font-weight:600;font-size:11px;color:#4b5563;}' +
+        '.voc-cg select,.voc-cg input[type="text"]{padding:7px 10px;font-size:13px;border-radius:6px;' +
+            'border:1px solid #d1d5db;background:#fff;width:100%;outline:none;}' +
+        '.voc-cg select:focus,.voc-cg input[type="text"]:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15);}' +
+        '.voc-filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;}' +
+
+        /* ---- buttons ---- */
+        '.voc-btn{padding:8px 14px;font-size:13px;font-weight:600;border-radius:6px;' +
+            'border:1px solid #d1d5db;background:#fff;cursor:pointer;white-space:nowrap;transition:all .15s;}' +
         '.voc-btn:hover{background:#f9fafb;border-color:#9ca3af;}' +
         '.voc-btn.voc-active{background:#fee2e2;color:#ef4444;border-color:#fca5a5;}' +
-        '.voc-tab-bar{display:flex;gap:4px;margin-bottom:13px;border-bottom:2px solid #e5e7eb;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}' +
-        '.voc-tab-bar::-webkit-scrollbar{display:none;}' +
-        '.voc-tab-btn{padding:10px 14px;font-size:12.5px;font-weight:600;border:none;background:none;border-radius:6px 6px 0 0;cursor:pointer;color:#6b7280;border-bottom:2px solid transparent;margin-bottom:-2px;}' +
-        '.voc-tab-btn.voc-tab-active{color:#3b82f6;border-bottom:2px solid #3b82f6;background:#fff;}' +
+        '.voc-btn-primary{background:#2563eb;color:#fff;border-color:#2563eb;}' +
+        '.voc-btn-primary:hover{background:#1d4ed8;border-color:#1d4ed8;}' +
+
+        /* ---- tab content panes ---- */
         '.voc-tab-content{display:none;}' +
         '.voc-tab-content.voc-tab-content-active{display:block;}' +
+
+        /* ---- KPI cards ---- */
         '.voc-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:13px;}' +
-        '.voc-kpi-card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;flex-direction:column;position:relative;}' +
+        '.voc-kpi-card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;}' +
         '.voc-kpi-card label{font-size:10.5px;font-weight:600;color:#4b5563;margin-bottom:2px;}' +
         '.voc-kpi-val{font-size:18px;font-weight:700;color:#111827;margin-bottom:5px;}' +
         '.voc-kpi-explanation{font-size:10px;color:#6b7280;border-top:1px dashed #e5e7eb;padding-top:4px;font-style:italic;line-height:1.3;}' +
+
+        /* ---- vessel matrix ---- */
         '.voc-vessel-panel-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;}' +
         '@media(max-width:1024px){.voc-vessel-panel-grid{grid-template-columns:1fr;}}' +
-        '.voc-matrix-container{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.05);overflow-x:auto;margin-bottom:14px;}' +
+        '.voc-matrix-container{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,.05);overflow-x:auto;margin-bottom:14px;}' +
         '.voc-matrix-container table{width:100%;border-collapse:collapse;min-width:850px;text-align:center;}' +
         '.voc-matrix-container th,.voc-matrix-container td{padding:8px 5px;border:1px solid #e5e7eb;font-size:11.5px;}' +
         '.voc-matrix-container th{background:#f9fafb;font-weight:600;color:#374151;}' +
         '.voc-vessel-row{cursor:pointer;}' +
         '.voc-vessel-row:hover td{background:#f8fafc;}' +
-        '.voc-vessel-axis-cell{text-align:left;font-weight:bold;background:#f9fafb;min-width:180px;color:#111827;position:sticky;left:0;box-shadow:2px 0 5px -2px rgba(0,0,0,0.1);}' +
+        '.voc-vessel-axis-cell{text-align:left;font-weight:bold;background:#f9fafb;min-width:180px;color:#111827;position:sticky;left:0;box-shadow:2px 0 5px -2px rgba(0,0,0,.1);}' +
         '.voc-drilldown-row{background:#f8fafc;display:none;}' +
         '.voc-drilldown-container{padding:10px;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px auto;width:98%;overflow-x:auto;}' +
         '.voc-subtable{width:100%;border-collapse:collapse;min-width:700px;}' +
         '.voc-subtable th{background:#f1f5f9;color:#475569;font-size:10.5px;padding:5px;}' +
         '.voc-subtable td{padding:5px;font-size:10.5px;border:1px solid #e2e8f0;background:#fff;}' +
         '.voc-berth-badge{display:inline-block;padding:2px 4px;font-size:10px;border-radius:4px;font-weight:600;margin-top:4px;background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;}' +
-        '.voc-delay-warning-tag{display:block;font-size:9px;color:#b91c1c;font-weight:bold;margin-top:4px;text-transform:uppercase;background:rgba(254,226,226,0.6);padding:1px 2px;border-radius:3px;}' +
+        '.voc-delay-warning-tag{display:block;font-size:9px;color:#b91c1c;font-weight:bold;margin-top:4px;text-transform:uppercase;background:rgba(254,226,226,.6);padding:1px 2px;border-radius:3px;}' +
         '.voc-cell-empty{background:#fcfcfd;color:#d1d5db;}' +
         '.voc-cell-low{background:#dcfce7;color:#166534;}' +
         '.voc-cell-med{background:#eff6ff;color:#1e40af;}' +
         '.voc-cell-critical{background:#fee2e2;color:#991b1b;}' +
+
+        /* ---- charts ---- */
         '.voc-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:8px;}' +
-        '.voc-chart-card{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.05);width:100%;overflow:hidden;display:flex;flex-direction:column;}' +
+        '.voc-chart-card{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,.05);width:100%;overflow:hidden;display:flex;flex-direction:column;}' +
         '.voc-chart-card.voc-span2{grid-column:1/-1;}' +
         '.voc-chart-title{font-weight:600;font-size:13px;color:#374151;margin-bottom:2px;border-bottom:1px solid #e5e7eb;padding-bottom:5px;}' +
         '.voc-chart-explanation{font-size:10.5px;color:#6b7280;font-style:italic;margin-bottom:10px;margin-top:2px;line-height:1.3;}' +
@@ -508,6 +466,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '.voc-tip{font-size:11px;color:#6b7280;font-style:italic;display:block;margin-bottom:8px;}' +
         '</style>';
 
+    // ---- small helpers ----
     function kpiCard(id, label, color, explanation) {
         return '<div class="voc-kpi-card" style="border-left:4px solid ' + color + ';">' +
             '<label>' + label + '</label>' +
@@ -516,187 +475,268 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             '</div>';
     }
 
-    function tabButton(id, label, isFirst) {
-        return '<button class="voc-tab-btn' + (isFirst ? ' voc-tab-active' : '') + '" id="voc-btn-' + id + '">' + label + '</button>';
-    }
+    var TAB_META = [
+        { id: 'executive',   icon: '\uD83D\uDCCA', label: 'Executive Insights' },
+        { id: 'vessels',     icon: '\uD83D\uDEA2', label: 'Vessel Tracking Matrix' },
+        { id: 'terminals',   icon: '\u2693',        label: 'Terminal \u0026 Berth' },
+        { id: 'operations',  icon: '\uD83C\uDFF7\uFE0F', label: 'Operations \u0026 Cranes' },
+        { id: 'environment', icon: '\uD83C\uDF21\uFE0F', label: 'Environmental Context' }
+    ];
 
     function buildHtml() {
-        var html = STYLE + '<div class="voc-widget">' +
-            '<div class="voc-header-title">Enterprise Port Command Center</div>' +
-            '<div class="voc-header-desc">Dynamic role-based operational intelligence console - synced live with the 3D port scene.</div>' +
-            '<div class="voc-status-bar" id="voc-status">Initializing...</div>' +
+        // ---- burger dropdown items ----
+        var menuItems = '';
+        menuItems += '<div class="voc-menu-section">Navigate</div>';
+        TAB_META.forEach(function (t) {
+            menuItems += '<div class="voc-menu-item" id="voc-menu-' + t.id + '" data-tab="' + t.id + '">' +
+                '<span class="voc-menu-icon">' + t.icon + '</span>' + t.label + '</div>';
+        });
+        menuItems += '<hr class="voc-menu-divider">' +
+            '<div class="voc-menu-item" id="voc-menu-open-settings">' +
+                '<span class="voc-menu-icon">\u2699\uFE0F</span>Simulation Controls' +
+            '</div>';
 
-            '<div class="voc-control-panel">' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-ts-select">Snapshot Timeline (Time Slider)</label>' +
-                    '<select id="voc-ts-select"></select>' +
-                '</div>' +
-                '<div class="voc-control-group voc-playback-group">' +
-                    '<button class="voc-btn" id="voc-play-btn">\u25B6 Play</button>' +
-                    '<button class="voc-btn" id="voc-next-btn">Next \u2794</button>' +
-                    '<select id="voc-speed" style="width:auto;">' +
-                        '<option value="' + CONFIG.DEFAULT_INTERVAL_MS + '">Normal</option>' +
-                        '<option value="' + CONFIG.FAST_INTERVAL_MS + '">Fast</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-date-filter">Date Scope Filter</label>' +
-                    '<select id="voc-date-filter">' +
-                        '<option value="ALL" selected>All Simulation History</option>' +
-                        '<option value="2026-02-28">2026-02-28 (Day 1)</option>' +
-                        '<option value="2026-03-01">2026-03-01 (Day 2)</option>' +
-                        '<option value="2026-03-02">2026-03-02 (Day 3)</option>' +
-                        '<option value="2026-03-03">2026-03-03 (Day 4)</option>' +
-                        '<option value="2026-03-04">2026-03-04 (Day 5)</option>' +
-                        '<option value="2026-03-05">2026-03-05 (Day 6)</option>' +
-                        '<option value="2026-03-06">2026-03-06 (Day 7)</option>' +
-                        '<option value="2026-03-07">2026-03-07 (Day 8)</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-shift-filter">Work Shift Window</label>' +
-                    '<select id="voc-shift-filter">' +
-                        '<option value="ALL" selected>All Shifts (24 Hours)</option>' +
-                        '<option value="MORNING">Morning Shift (06:00 - 14:00)</option>' +
-                        '<option value="AFTERNOON">Afternoon Shift (14:00 - 22:00)</option>' +
-                        '<option value="NIGHT">Night Shift (22:00 - 06:00)</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-status-filter">Vessel Tracking Pipeline</label>' +
-                    '<select id="voc-status-filter">' +
-                        '<option value="IN_PORT" selected>In Port (Active Operations)</option>' +
-                        '<option value="ALL">All Tracked Voyages</option>' +
-                        '<option value="PRE_ARRIVAL">Pre-Arrival Only</option>' +
-                        '<option value="DEPARTED">Departed Only</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-matrix-sort">Matrix Sorting Priority</label>' +
-                    '<select id="voc-matrix-sort">' +
-                        '<option value="TOTAL_TIME_DESC">Total Time Spent (Max \u2794 Min)</option>' +
-                        '<option value="RECENT_EVENT_DESC" selected>Most Recent Update Timeline</option>' +
-                        '<option value="VESSEL_ID_ASC">Vessel ID (A \u2794 Z)</option>' +
-                        '<option value="CARGO_VOLUME_DESC">Total Cargo Volume (Max TEU)</option>' +
-                    '</select>' +
-                '</div>' +
-                '<div class="voc-control-group">' +
-                    '<label for="voc-search-input">Universal Quick Search Lookup</label>' +
-                    '<input type="text" id="voc-search-input" placeholder="Search ID, Line, Substage...">' +
-                '</div>' +
-            '</div>' +
+        // ---- settings modal body ----
+        var modal =
+            '<div class="voc-modal-backdrop" id="voc-settings-backdrop">' +
+                '<div class="voc-modal">' +
+                    '<div class="voc-modal-header">' +
+                        '<span class="voc-modal-title">\u2699\uFE0F Simulation &amp; Filter Controls</span>' +
+                        '<button class="voc-modal-close" id="voc-modal-close-btn">\u00D7</button>' +
+                    '</div>' +
+                    '<div class="voc-modal-body">' +
 
-            '<div class="voc-tab-bar">' +
-                tabButton('executive', 'Executive Insights', true) +
-                tabButton('vessels', 'Vessel Tracking Matrix', false) +
-                tabButton('terminals', 'Terminal &amp; Berth', false) +
-                tabButton('operations', 'Operations &amp; Cranes', false) +
-                tabButton('environment', 'Environmental Context', false) +
-            '</div>' +
+                        // Playback row
+                        '<div class="voc-pb-row">' +
+                            '<div class="voc-cg" style="flex:2;min-width:200px;">' +
+                                '<label for="voc-ts-select">Snapshot Timeline</label>' +
+                                '<select id="voc-ts-select"></select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label>Playback</label>' +
+                                '<div style="display:flex;gap:6px;">' +
+                                    '<button class="voc-btn" id="voc-play-btn">\u25B6 Play</button>' +
+                                    '<button class="voc-btn" id="voc-next-btn">Next \u2794</button>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="voc-cg" style="min-width:90px;">' +
+                                '<label for="voc-speed">Speed</label>' +
+                                '<select id="voc-speed">' +
+                                    '<option value="' + CONFIG.DEFAULT_INTERVAL_MS + '">Normal</option>' +
+                                    '<option value="' + CONFIG.FAST_INTERVAL_MS + '">Fast</option>' +
+                                '</select>' +
+                            '</div>' +
+                        '</div>' +
 
-            // ---- Executive tab ----
+                        // Filters grid
+                        '<div class="voc-filters-grid">' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-date-filter">Date Scope</label>' +
+                                '<select id="voc-date-filter">' +
+                                    '<option value="ALL" selected>All Simulation History</option>' +
+                                    '<option value="2026-02-28">2026-02-28 (Day 1)</option>' +
+                                    '<option value="2026-03-01">2026-03-01 (Day 2)</option>' +
+                                    '<option value="2026-03-02">2026-03-02 (Day 3)</option>' +
+                                    '<option value="2026-03-03">2026-03-03 (Day 4)</option>' +
+                                    '<option value="2026-03-04">2026-03-04 (Day 5)</option>' +
+                                    '<option value="2026-03-05">2026-03-05 (Day 6)</option>' +
+                                    '<option value="2026-03-06">2026-03-06 (Day 7)</option>' +
+                                    '<option value="2026-03-07">2026-03-07 (Day 8)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-shift-filter">Work Shift</label>' +
+                                '<select id="voc-shift-filter">' +
+                                    '<option value="ALL" selected>All Shifts (24 h)</option>' +
+                                    '<option value="MORNING">Morning (06:00-14:00)</option>' +
+                                    '<option value="AFTERNOON">Afternoon (14:00-22:00)</option>' +
+                                    '<option value="NIGHT">Night (22:00-06:00)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-status-filter">Vessel Pipeline</label>' +
+                                '<select id="voc-status-filter">' +
+                                    '<option value="IN_PORT" selected>In Port (Active Ops)</option>' +
+                                    '<option value="ALL">All Tracked Voyages</option>' +
+                                    '<option value="PRE_ARRIVAL">Pre-Arrival Only</option>' +
+                                    '<option value="DEPARTED">Departed Only</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-matrix-sort">Matrix Sort</label>' +
+                                '<select id="voc-matrix-sort">' +
+                                    '<option value="TOTAL_TIME_DESC">Total Time (Max\u2794Min)</option>' +
+                                    '<option value="RECENT_EVENT_DESC" selected>Most Recent Update</option>' +
+                                    '<option value="VESSEL_ID_ASC">Vessel ID (A\u2794Z)</option>' +
+                                    '<option value="CARGO_VOLUME_DESC">Cargo Volume (Max TEU)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg" style="grid-column:1/-1;">' +
+                                '<label for="voc-search-input">Quick Search</label>' +
+                                '<input type="text" id="voc-search-input" placeholder="Search vessel ID, line, substage\u2026">' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="voc-modal-footer">' +
+                        '<button class="voc-btn voc-btn-primary" id="voc-modal-apply-btn">Apply \u2714</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        // ---- tab content panes (unchanged) ----
+        var panes =
             '<div id="voc-tab-executive" class="voc-tab-content voc-tab-content-active">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#3b82f6', 'Total elapsed hours from port footprint entry to final open sea sail validation milestone.') +
-                    kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#10b981', 'Percentage ratio of active TEU exchange compared against total maximum vessel capacity sizes.') +
-                    kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#ef4444', 'Percentage share of total active vessel manifests reporting active disruption exception logs.') +
+                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#3b82f6', 'Total elapsed hours from port entry to open-sea departure.') +
+                    kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#10b981', 'Active TEU exchange vs total fleet capacity.') +
+                    kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#ef4444', 'Share of voyages reporting active disruption logs.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
-                    '<div class="voc-chart-card">' +
-                        '<div class="voc-chart-title">Congestion Gaps by Carrier Line (Hours)</div>' +
-                        '<div class="voc-chart-explanation">Tracks accumulated demurrage/idle hours spent waiting across operations by carrier account tags.</div>' +
-                        '<div id="voc-exe-demurrage-chart"></div>' +
-                    '</div>' +
-                    '<div class="voc-chart-card">' +
-                        '<div class="voc-chart-title">Primary Logistical Delay Factor Distribution (Pie)</div>' +
-                        '<div class="voc-chart-explanation">Frequencies breakdown showing the leading operational root cause bottlenecks across the system.</div>' +
-                        '<div id="voc-exe-delay-pie"></div>' +
-                    '</div>' +
+                    '<div class="voc-chart-card"><div class="voc-chart-title">Congestion Gaps by Carrier Line (Hours)</div><div class="voc-chart-explanation">Accumulated demurrage/idle hours by carrier.</div><div id="voc-exe-demurrage-chart"></div></div>' +
+                    '<div class="voc-chart-card"><div class="voc-chart-title">Delay Factor Distribution</div><div class="voc-chart-explanation">Leading operational bottleneck root-causes.</div><div id="voc-exe-delay-pie"></div></div>' +
                 '</div>' +
             '</div>' +
 
-            // ---- Vessels tab ----
             '<div id="voc-tab-vessels" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-vsl-active', 'Active Hulls In Port', '#2563eb', 'Vessels currently berthed or transiting within port operational limits.') +
-                    kpiCard('voc-kpi-vsl-plan', 'Pre-Arrival Pipeline', '#d97706', 'Vessels currently listed in the planning stages with active ETA receipts logged.') +
-                    kpiCard('voc-kpi-vsl-anch', 'Avg Anchorage Idle Time', '#dc2626', 'Average duration vessels sit at sea waiting for pilot channel access validation.') +
+                    kpiCard('voc-kpi-vsl-active', 'Active Hulls In Port', '#2563eb', 'Vessels currently berthed or transiting.') +
+                    kpiCard('voc-kpi-vsl-plan', 'Pre-Arrival Pipeline', '#d97706', 'Vessels in planning with active ETA receipts.') +
+                    kpiCard('voc-kpi-vsl-anch', 'Avg Anchorage Wait', '#dc2626', 'Average wait at anchorage for pilot access.') +
                 '</div>' +
                 '<div class="voc-vessel-panel-grid">' +
                     '<div class="voc-matrix-container">' +
-                        '<span class="voc-tip">\uD83D\uDCA1 Tip: Click on a row to expand its comprehensive sub-stage timeline. The 3D scene tracks whichever snapshot is selected above.</span>' +
+                        '<span class="voc-tip">\uD83D\uDCA1 Click a row to expand the sub-stage timeline.</span>' +
                         '<table><thead><tr id="voc-matrix-header"></tr></thead><tbody id="voc-matrix-body"></tbody></table>' +
                     '</div>' +
                     '<div class="voc-grid-col">' +
-                        '<div class="voc-chart-card"><div class="voc-chart-title">Vessel Fleet Mix Profile (Pie)</div><div id="voc-vsl-mix-donut"></div></div>' +
-                        '<div class="voc-chart-card"><div class="voc-chart-title">Capacity Threshold Allocation (TEU Capacity Ranges)</div><div id="voc-vsl-capacity-bar"></div></div>' +
-                        '<div class="voc-chart-card"><div class="voc-chart-title">Vessels Queue Count by Active Stage</div><div id="voc-vsl-stage-bar"></div></div>' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Fleet Mix Profile</div><div id="voc-vsl-mix-donut"></div></div>' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Capacity Ranges (TEU)</div><div id="voc-vsl-capacity-bar"></div></div>' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Queue Count by Stage</div><div id="voc-vsl-stage-bar"></div></div>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
 
-            // ---- Terminals tab ----
             '<div id="voc-tab-terminals" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-term-imp', 'Total Imports Handled', '#059669', 'Cumulative discharge container volume targets achieved up to the selected timestamp.') +
-                    kpiCard('voc-kpi-term-exp', 'Total Exports Handled', '#0891b2', 'Cumulative loaded container volume targets processed out to outbound manifests.') +
-                    kpiCard('voc-kpi-term-occupancy', 'Active Berth Occupancy Index', '#4f46e5', 'Percentage calculation of fixed mooring locations currently holding active hull weights.') +
+                    kpiCard('voc-kpi-term-imp', 'Total Imports Handled', '#059669', 'Cumulative discharge TEU up to selected timestamp.') +
+                    kpiCard('voc-kpi-term-exp', 'Total Exports Handled', '#0891b2', 'Cumulative load TEU processed outbound.') +
+                    kpiCard('voc-kpi-term-occupancy', 'Berth Occupancy Index', '#4f46e5', 'Percentage of berths currently occupied.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
-                    '<div class="voc-chart-card voc-span2">' +
-                        '<div class="voc-chart-title">Terminal \u2794 Berth Dynamic Usage: Side-by-Side Imports &amp; Exports Insights</div>' +
-                        '<div class="voc-chart-explanation">Provides clear visual asset evaluation showing exactly how much inbound (Import) vs outbound (Export) container counts passed through each independent structural berth node.</div>' +
-                        '<div id="voc-term-geo-bar"></div>' +
-                    '</div>' +
-                    '<div class="voc-chart-card voc-span2">' +
-                        '<div class="voc-chart-title">Physical Container Load Category Type Proportions (Pie)</div>' +
-                        '<div class="voc-chart-explanation">Tracks specialized distribution configurations (Dry Van vs. Reefer Cargo plug configurations).</div>' +
-                        '<div id="voc-term-type-pie"></div>' +
-                    '</div>' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Terminal \u2794 Berth Imports &amp; Exports</div><div class="voc-chart-explanation">Import vs Export TEU per berth node.</div><div id="voc-term-geo-bar"></div></div>' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Container Type Proportions</div><div class="voc-chart-explanation">Dry Van vs Reefer Cargo distribution.</div><div id="voc-term-type-pie"></div></div>' +
                 '</div>' +
             '</div>' +
 
-            // ---- Operations tab ----
             '<div id="voc-tab-operations" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-ops-cranes', 'Avg Cranes Assigned Intensity', '#7c3aed', 'Mean intensity volume of heavy machinery crane sets allocated per vessel loading phase.') +
-                    kpiCard('voc-kpi-ops-speed', 'Mean Crane Velocity Pace', '#2563eb', 'Calculated handling exchange velocity mapping cargo volumes directly against crane operational hours.') +
+                    kpiCard('voc-kpi-ops-cranes', 'Avg Cranes Assigned', '#7c3aed', 'Mean crane sets allocated per vessel cargo phase.') +
+                    kpiCard('voc-kpi-ops-speed', 'Mean Crane Velocity', '#2563eb', 'TEU/hr across cargo operations.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
-                    '<div class="voc-chart-card voc-span2">' +
-                        '<div class="voc-chart-title">Crane Allocation Count Density vs Handling Velocity Rate</div>' +
-                        '<div class="voc-chart-explanation">Scatter analysis checking whether high crane clustering actually maximizes operational speeds.</div>' +
-                        '<div id="voc-ops-efficiency-scatter"></div>' +
-                    '</div>' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Crane Density vs Handling Velocity</div><div class="voc-chart-explanation">Scatter: does more cranes = faster handling?</div><div id="voc-ops-efficiency-scatter"></div></div>' +
                 '</div>' +
             '</div>' +
 
-            // ---- Environment tab ----
             '<div id="voc-tab-environment" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-env-weather', 'Current Weather Metric', '#4b5563', 'Categorical atmospheric descriptor tracker (Clear, Rainy, Rough) logged at current timestamp.') +
-                    kpiCard('voc-kpi-env-tide', 'Real-Time Tide Water Level', '#06b6d4', 'Physical hydrographic water level displacement height logged in meters - also driving the 3D tide-gauge marker.') +
+                    kpiCard('voc-kpi-env-weather', 'Current Weather', '#4b5563', 'Atmospheric descriptor at current snapshot.') +
+                    kpiCard('voc-kpi-env-tide', 'Tide Water Level', '#06b6d4', 'Hydrographic level (m) \u2014 also drives the 3D tide marker.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
-                    '<div class="voc-chart-card voc-span2">' +
-                        '<div class="voc-chart-title">Environmental Correlation: Tide Level Fluctuations vs Active Port Disruptions</div>' +
-                        '<div class="voc-chart-explanation">Cross-references water level drops against active delay spike frequency logs across the channel.</div>' +
-                        '<div id="voc-env-tide-line"></div>' +
-                    '</div>' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Tide Fluctuations vs Active Disruptions</div><div class="voc-chart-explanation">Cross-references water level against delay spike frequency.</div><div id="voc-env-tide-line"></div></div>' +
                 '</div>' +
-            '</div>' +
+            '</div>';
 
-        '</div>';
+        return STYLE +
+            '<div class="voc-wrap">' +
+                '<div class="voc-inner">' +
+                    // top bar
+                    '<div class="voc-topbar">' +
+                        '<div class="voc-topbar-left">' +
+                            '<div class="voc-title">\u2693 Enterprise Port Command Center</div>' +
+                            '<div class="voc-subtitle">Synced live with the 3D port scene</div>' +
+                        '</div>' +
+                        '<div class="voc-topbar-right">' +
+                            '<span class="voc-active-badge" id="voc-active-badge">Executive Insights</span>' +
+                            '<button class="voc-icon-btn" id="voc-settings-btn" title="Simulation Controls">\u2699\uFE0F</button>' +
+                            '<button class="voc-icon-btn" id="voc-burger-btn" title="Navigate">\u2630</button>' +
+                        '</div>' +
+                        // burger dropdown (absolutely positioned inside topbar)
+                        '<div class="voc-burger-menu" id="voc-burger-menu">' + menuItems + '</div>' +
+                    '</div>' +
 
-        return html;
+                    // status bar
+                    '<div class="voc-status-bar" id="voc-status">Initializing\u2026</div>' +
+
+                    // tab panes
+                    panes +
+
+                    // settings modal (absolute overlay anchored to .voc-inner)
+                    modal +
+                '</div>' +
+            '</div>';
     }
 
+    // -----------------------------------------------------------------------
+    // initUi — wire up burger menu, settings modal, filter events, drilldown
+    // -----------------------------------------------------------------------
     function initUi() {
         widget.body.empty();
         UWA.createElement('div', { html: buildHtml() }).inject(widget.body);
 
+        // make .voc-inner position:relative so the absolute modal is contained within it
+        var inner = document.querySelector('.voc-inner');
+        if (inner) { inner.style.position = 'relative'; }
+
         app.statusBar = document.getElementById('voc-status');
 
+        // ---- burger menu ----
+        var burgerBtn  = document.getElementById('voc-burger-btn');
+        var burgerMenu = document.getElementById('voc-burger-menu');
+
+        burgerBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            burgerMenu.classList.toggle('voc-open');
+            burgerBtn.classList.toggle('voc-active');
+        });
+
+        // Tab navigation items inside burger menu
+        TAB_META.forEach(function (t) {
+            var item = document.getElementById('voc-menu-' + t.id);
+            if (!item) { return; }
+            item.addEventListener('click', function () {
+                switchTab(t.id);
+                burgerMenu.classList.remove('voc-open');
+                burgerBtn.classList.remove('voc-active');
+            });
+        });
+
+        // "Simulation Controls" item in burger opens the settings modal
+        document.getElementById('voc-menu-open-settings').addEventListener('click', function () {
+            burgerMenu.classList.remove('voc-open');
+            burgerBtn.classList.remove('voc-active');
+            openSettingsModal();
+        });
+
+        // ---- settings icon button (top-right) ----
+        document.getElementById('voc-settings-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            openSettingsModal();
+        });
+
+        // ---- settings modal close / apply ----
+        document.getElementById('voc-modal-close-btn').addEventListener('click', closeSettingsModal);
+        document.getElementById('voc-modal-apply-btn').addEventListener('click', function () {
+            renderActiveTab();
+            closeSettingsModal();
+        });
+        // clicking backdrop outside the modal card closes it
+        document.getElementById('voc-settings-backdrop').addEventListener('click', function (e) {
+            if (e.target === this) { closeSettingsModal(); }
+        });
+
+        // ---- timeline / filter change events (live — fire without needing Apply) ----
         document.getElementById('voc-ts-select').addEventListener('change', function () {
             var idx = app.times.indexOf(this.value);
             if (idx !== -1) { app.timeIndex = idx; }
@@ -708,14 +748,17 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         document.getElementById('voc-matrix-sort').addEventListener('change', renderActiveTab);
         document.getElementById('voc-search-input').addEventListener('input', renderActiveTab);
 
+        // ---- playback ----
         document.getElementById('voc-play-btn').addEventListener('click', togglePlayback);
         document.getElementById('voc-next-btn').addEventListener('click', function () { stepPlayback(1); });
 
-        TABS.forEach(function (t) {
-            document.getElementById('voc-btn-' + t).addEventListener('click', function () { switchTab(t); });
+        // ---- close burger when clicking anywhere else ----
+        document.addEventListener('click', function () {
+            burgerMenu.classList.remove('voc-open');
+            burgerBtn.classList.remove('voc-active');
         });
 
-        // Event delegation: expand/collapse a vessel's sub-stage timeline drilldown
+        // ---- vessel drilldown rows (event delegation on tbody) ----
         document.getElementById('voc-matrix-body').addEventListener('click', function (e) {
             var target = e.target;
             var row = null;
@@ -728,6 +771,16 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             var sub = document.getElementById('voc-sub-' + key);
             if (sub) { sub.style.display = (sub.style.display === 'table-row') ? 'none' : 'table-row'; }
         });
+    }
+
+    function openSettingsModal() {
+        var backdrop = document.getElementById('voc-settings-backdrop');
+        if (backdrop) { backdrop.classList.add('voc-open'); }
+    }
+
+    function closeSettingsModal() {
+        var backdrop = document.getElementById('voc-settings-backdrop');
+        if (backdrop) { backdrop.classList.remove('voc-open'); }
     }
 
     function populateTimelineSelect() {
@@ -818,11 +871,21 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function switchTab(tabId) {
         app.currentTab = tabId;
         TABS.forEach(function (t) {
-            document.getElementById('voc-btn-' + t).classList.remove('voc-tab-active');
-            document.getElementById('voc-tab-' + t).classList.remove('voc-tab-content-active');
+            var pane = document.getElementById('voc-tab-' + t);
+            if (pane) { pane.classList.remove('voc-tab-content-active'); }
+            var item = document.getElementById('voc-menu-' + t);
+            if (item) { item.classList.remove('voc-menu-active'); }
         });
-        document.getElementById('voc-btn-' + tabId).classList.add('voc-tab-active');
-        document.getElementById('voc-tab-' + tabId).classList.add('voc-tab-content-active');
+        var activePane = document.getElementById('voc-tab-' + tabId);
+        if (activePane) { activePane.classList.add('voc-tab-content-active'); }
+        var activeItem = document.getElementById('voc-menu-' + tabId);
+        if (activeItem) { activeItem.classList.add('voc-menu-active'); }
+        // update the badge in the top-right header
+        var badge = document.getElementById('voc-active-badge');
+        if (badge) {
+            var meta = TAB_META.filter(function (t) { return t.id === tabId; })[0];
+            if (meta) { badge.textContent = meta.icon + ' ' + meta.label; }
+        }
         renderActiveTab();
     }
 
