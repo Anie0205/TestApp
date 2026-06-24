@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JNPA Control Tower V6</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{font-family:Segoe UI,Arial;background:#eef2f7;margin:0}
+header{background:#0b2545;color:white;padding:18px}
+.tabs{display:flex;gap:8px;padding:10px;background:white;overflow:auto}
+.tab{padding:10px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer}
+.active{background:#1565c0;color:white}
+.page{display:none;padding:15px}.page.active{display:block}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:white;border-radius:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.kpi{font-size:34px;font-weight:700;color:#0b2545}
+.label{font-weight:700;color:#222}
+.desc{font-size:12px;color:#555;margin-top:8px;line-height:1.4}
+.chart{background:white;padding:15px;border-radius:10px;margin-top:15px}
+</style>
+</head>
+<body>
+<header>
+<h1>JNPA Enterprise Control Tower</h1>
+<div>Executive • Marine • Yard • Customs • Process Mining • Digital Twin • Data Quality</div>
+</header>
+
+<div class="tabs">
+<button class="tab active" onclick="showTab('exec',this)">Executive</button>
+<button class="tab" onclick="showTab('marine',this)">Marine</button>
+<button class="tab" onclick="showTab('yard',this)">Yard</button>
+<button class="tab" onclick="showTab('customs',this)">Customs</button>
+<button class="tab" onclick="showTab('process',this)">Process Mining</button>
+<button class="tab" onclick="showTab('quality',this)">Data Quality</button>
+</div>
+
+<div id="exec" class="page active">
+<div class="kpis">
+<div class="card"><div class="label">Total Containers</div><div id="c1" class="kpi">-</div><div class="desc">All import and export containers observed in the ecosystem.</div></div>
+<div class="card"><div class="label">Import Containers</div><div id="c2" class="kpi">-</div><div class="desc">Containers following vessel arrival → discharge → BOE → OOC lifecycle.</div></div>
+<div class="card"><div class="label">Export Containers</div><div id="c3" class="kpi">-</div><div class="desc">Containers following booking → LEO → gate-in → loading lifecycle.</div></div>
+<div class="card"><div class="label">Average Yard Dwell</div><div id="c4" class="kpi">-</div><div class="desc">Average time spent in terminal yard before exit/loading.</div></div>
+</div>
+<div class="chart"><div id="terminalChart"></div></div>
+</div>
+
+<div id="marine" class="page">
+<div class="chart"><div id="marineChart"></div></div>
+</div>
+
+<div id="yard" class="page">
+<div class="chart"><div id="yardChart"></div></div>
+</div>
+
+<div id="customs" class="page">
+<div class="chart"><div id="customsChart"></div></div>
+</div>
+
+<div id="process" class="page">
+<div class="chart"><div id="processChart"></div></div>
+</div>
+
+<div id="quality" class="page">
+<div class="kpis">
+<div class="card"><div class="label">Negative Dwell Records</div><div id="neg" class="kpi">-</div><div class="desc">Containers where yard exit occurred before yard entry. Operationally impossible and should be investigated.</div></div>
+</div>
+</div>
+
+<script>
+function showTab(id,b){
+document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+b.classList.add('active');
+}
+
+const files=['container_master.csv','yard_operations.csv','customs_events.csv','digital_twin_events.csv','berth_crane_operations.csv'];
+const D={};
+
+function load(f){
+ return fetch(f).then(r=>r.text()).then(t=>new Promise(res=>Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})));
+}
+
+Promise.all(files.map(load)).then(r=>{
+ files.forEach((f,i)=>D[f]=r[i]);
+ build();
+});
+
+function build(){
+ let cm=D['container_master.csv'];
+ let yard=D['yard_operations.csv'];
+ let customs=D['customs_events.csv'];
+ let events=D['digital_twin_events.csv'];
+ let berth=D['berth_crane_operations.csv'];
+
+ document.getElementById('c1').innerText=cm.length.toLocaleString();
+ document.getElementById('c2').innerText=cm.filter(x=>x.flow_type==='IMPORT').length.toLocaleString();
+ document.getElementById('c3').innerText=cm.filter(x=>x.flow_type==='EXPORT').length.toLocaleString();
+
+ let avg=yard.reduce((a,b)=>a+(+b.dwell_hours||0),0)/Math.max(1,yard.length);
+ document.getElementById('c4').innerText=avg.toFixed(1)+' h';
+
+ let neg=yard.filter(x=>(+x.dwell_hours||0)<0).length;
+ document.getElementById('neg').innerText=neg;
+
+ let term={};
+ cm.forEach(r=>{
+  if(!term[r.terminal]) term[r.terminal]=0;
+  term[r.terminal]++;
+ });
+
+ new ApexCharts(document.querySelector("#terminalChart"),{
+ chart:{type:'bar',height:400},
+ series:[{name:'Containers',data:Object.values(term)}],
+ xaxis:{categories:Object.keys(term)},
+ title:{text:'Terminal Throughput Ranking'}
+ }).render();
+
+ let m={};
+ berth.forEach(r=>{
+   if(!m[r.terminal]) m[r.terminal]=[];
+   m[r.terminal].push(+r.crane_moves_per_hour);
+ });
+ new ApexCharts(document.querySelector("#marineChart"),{
+ chart:{type:'bar',height:400},
+ series:[{name:'Crane Productivity',data:Object.values(m).map(v=>v.reduce((a,b)=>a+b,0)/v.length)}],
+ xaxis:{categories:Object.keys(m)},
+ title:{text:'Average Crane Moves Per Hour by Terminal'}
+ }).render();
+
+ new ApexCharts(document.querySelector("#yardChart"),{
+ chart:{type:'histogram',height:400},
+ series:[{name:'Dwell Hours',data:yard.slice(0,2000).map(x=>+x.dwell_hours)}],
+ title:{text:'Yard Dwell Distribution'}
+ }).render();
+
+ let exportCount=customs.filter(x=>!x.ooc_time).length;
+ let importCount=customs.length-exportCount;
+ new ApexCharts(document.querySelector("#customsChart"),{
+ chart:{type:'donut',height:400},
+ series:[exportCount,importCount],
+ labels:['Export Clearance','Import Clearance'],
+ title:{text:'Customs Processing Mix'}
+ }).render();
+
+ let e={};
+ events.forEach(r=>{e[r.event]=(e[r.event]||0)+1});
+ new ApexCharts(document.querySelector("#processChart"),{
+ chart:{type:'bar',height:400},
+ series:[{name:'Occurrences',data:Object.values(e)}],
+ xaxis:{categories:Object.keys(e)},
+ title:{text:'Digital Twin Event Flow Frequencies'}
+ }).render();
+}
+</script>
+</body>
+</html>
