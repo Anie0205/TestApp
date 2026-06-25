@@ -3,151 +3,418 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-    <title>JNPA Phase 5 Asset Tracking Matrix</title>
+    <title>JNPA Phase 5 Enterprise Control Tower</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         :root {
             --primary: #0f4c81;
+            --primary-light: #eff6ff;
             --text-main: #1f2937;
             --text-muted: #6b7280;
             --border-color: #cbd5e1;
-            --bg-main: #f8fafc;
+            --bg-main: #f3f4f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --critical: #ef4444;
             --success-bg: #ecfdf5;
             --success-text: #065f46;
             --alert-bg: #fef2f2;
             --alert-text: #991b1b;
-            --pending-bg: #f1f5f9;
+            --help-bg: #f8fafc;
+            --help-border: #cbd5e1;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background: var(--bg-main); color: var(--text-main); padding: 16px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-main); color: var(--text-main); padding: 12px; line-height: 1.4; }
         
-        .header { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
-        .header h2 { font-size: 1.2rem; color: var(--primary); font-weight: 700; }
-        
-        .desk-selector { display: flex; gap: 8px; margin-bottom: 12px; }
-        .desk-btn { padding: 8px 16px; border: 1px solid var(--border-color); background: #fff; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-muted); }
-        .desk-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        /* Navigation Top Bar */
+        .navbar { background: #fff; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .nav-left { display: flex; align-items: center; gap: 12px; }
+        .burger-icon { font-size: 24px; cursor: pointer; color: var(--primary); padding: 4px; display: block; z-index: 1001; }
+        .navbar h2 { font-size: 1.1rem; color: var(--primary); font-weight: 700; }
+        .sync-badge { font-size: 11px; font-weight: 600; background: var(--primary-light); color: var(--primary); padding: 4px 10px; border-radius: 20px; }
 
-        /* Verbatim Tracking Matrix Layout styled exactly like Screenshot 2026-06-25 123519.png */
-        .matrix-container { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow-x: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+        /* Slide-out Hamburger Menu Drawer */
+        .drawer-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 999; display: none; }
+        .drawer { position: fixed; top: 0; left: -310px; width: 300px; height: 100%; background: #fff; z-index: 1000; transition: left 0.3s ease; overflow-y: auto; padding: 20px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); }
+        .drawer.open { left: 0; }
+        .drawer-overlay.open { display: block; }
+        .drawer-close { font-size: 22px; text-align: right; cursor: pointer; margin-bottom: 15px; color: var(--text-muted); font-weight: bold; }
         
-        th { background: #f8fafc; padding: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 2px solid var(--border-color); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        .drawer-section { margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
+        .drawer-section h3 { font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 10px; font-weight: 700; }
+        
+        .menu-list { list-style: none; }
+        .menu-list li { padding: 10px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 4px; transition: all 0.2s; }
+        .menu-list li:hover { background: #f1f5f9; color: var(--primary); }
+        .menu-list li.active { background: var(--primary-light); color: var(--primary); }
+
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+        select, input { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #fff; color: var(--text-main); outline: none; }
+
+        /* Dashboard Grid Layout System */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        @media(min-width: 1024px) { .dashboard-grid { grid-template-columns: 2fr 1fr; } }
+        .main-panel { display: flex; flex-direction: column; gap: 12px; }
+        
+        .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        @media(min-width: 600px) { .kpis { grid-template-columns: repeat(4, 1fr); } }
+        
+        .card { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .kpi-card h4 { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+        .kpi-card .score { font-size: 20px; font-weight: 700; color: var(--primary); }
+        .help-trigger { font-size: 13px; color: var(--primary); cursor: pointer; font-weight: bold; }
+        .kpi-help-box { background: var(--help-bg); border: 1px solid var(--help-border); border-left: 3px solid var(--primary); padding: 8px; margin-top: 8px; border-radius: 4px; font-size: 11px; color: var(--text-main); line-height: 1.4; display: none; }
+        .kpi-help-box.show { display: block; }
+
+        .charts-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        @media(min-width: 600px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
+        .chart-card { min-height: 250px; }
+
+        /* Multi-Row Matrix Styling (Mirroring Screenshot 2026-06-25 123519.png) */
+        .matrix-container { overflow-x: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; border: 1px solid var(--border-color); border-radius: 6px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; white-space: nowrap; }
+        th { background: #f8fafc; padding: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 2px solid var(--border-color); text-transform: uppercase; font-size: 11px; letter-spacing: 0.3px; }
         td { padding: 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
         
-        /* Asset Identity Card Column Styling */
-        .asset-id-cell { font-weight: 700; color: #000; font-size: 13px; }
-        .asset-subtag { font-size: 10px; color: var(--text-muted); font-weight: normal; margin-top: 2px; }
+        .asset-id-cell { font-weight: 700; color: #000; font-size: 13px; min-width: 160px; }
+        .asset-subtag { font-size: 10px; color: var(--text-muted); font-weight: normal; display: block; margin-top: 2px; }
         .asset-badge { display: inline-block; background: #eff6ff; color: #1e40af; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 4px; border: 1px solid #bfdbfe; }
         
-        /* Lifecycle Cell States */
-        .stage-cell { text-align: center; font-weight: 700; font-size: 12px; color: #94a3b8; background: #fff; transition: all 0.2s; min-width: 90px; border-right: 1px solid #f1f5f9; }
-        
-        /* Completed State: Clean soft green box */
+        .stage-cell { text-align: center; font-weight: 700; font-size: 12px; color: #94a3b8; background: #fff; min-width: 100px; border-right: 1px solid #f1f5f9; }
         .stage-cell.completed { background: var(--success-bg); color: var(--success-text); }
         .stage-cell.completed::after { content: 'h'; font-weight: normal; font-size: 11px; margin-left: 1px; }
-        
-        /* Stuck State: Warning pink box with matching indicator banner from reference image */
         .stage-cell.stuck { background: var(--alert-bg); color: var(--alert-text); position: relative; }
         .stage-cell.stuck::after { content: 'h'; font-weight: normal; font-size: 11px; margin-left: 1px; }
-        .stuck-banner { display: block; font-size: 9px; color: #b91c1c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2px; margin-top: 4px; background: rgba(185,28,28,0.08); padding: 2px; border-radius: 3px; border: 1px dashed rgba(185,28,28,0.2); }
-        
-        /* Empty/Pending State */
+        .stuck-banner { display: block; font-size: 9px; color: #b91c1c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2px; margin-top: 4px; background: rgba(185,28,28,0.06); padding: 2px; border-radius: 3px; border: 1px dashed rgba(185,28,28,0.2); }
         .stage-cell.pending { color: #cbd5e1; font-weight: normal; }
+        .total-cell { font-weight: 700; text-align: right; padding-right: 16px; font-size: 13px; background: #f8fafc; }
 
-        .total-cell { font-weight: 700; text-align: right; padding-right: 16px; font-size: 13px; background: #fafafa; }
+        /* Meaning Engine Cards */
+        .right-panel { display: flex; flex-direction: column; gap: 12px; }
+        .insight-block { padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9fafb; border: 1px solid var(--border-color); }
+        .insight-title { font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .insight-meaning { font-size: 11.5px; color: var(--text-main); margin-top: 6px; line-height: 1.5; background: #fff; padding: 8px; border-radius: 4px; border-left: 3px solid var(--success); }
+        .insight-impact { font-size: 10px; font-weight: 600; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; }
+        .alert-item { padding: 10px; margin: 6px 0; border-radius: 6px; font-size: 12px; font-weight: 500; border-left: 4px solid; }
+        .alert-critical { background: #fef2f2; border-left-color: var(--critical); color: #991b1b; }
+        .alert-warning { background: #fff7ed; border-left-color: var(--warning); color: #9a3412; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h2>JNPA Digital Twin Live Asset Tracking Matrix</h2>
-    <div style="font-size: 12px; font-weight: 600; color: var(--success-text);" id="status">Syncing Live Ecosystem Streams...</div>
+<div class="navbar">
+    <div class="nav-left">
+        <div class="burger-icon" onclick="toggleDrawer(true)">☰</div>
+        <h2>JNPA Phase 5 Control Tower Matrix</h2>
+    </div>
+    <div id="sync-status" class="sync-badge">Connecting Twin Core...</div>
 </div>
 
-<div class="desk-selector">
-    <button class="desk-btn active" onclick="switchDesk('marine')">Vessel Infrastructure Desk</button>
-    <button class="desk-btn" onclick="switchDesk('truck')">Truck Corridor (CPP) Desk</button>
-    <button class="desk-btn" onclick="switchDesk('customs')">Customs Document Nodes</button>
+<div class="drawer-overlay" id="overlay" onclick="toggleDrawer(false)"></div>
+<div class="drawer" id="drawer">
+    <div class="drawer-close" onclick="toggleDrawer(false)">✕</div>
+    
+    <div class="drawer-section">
+        <h3 style="margin-bottom: 10px;">Operational Desks</h3>
+        <ul class="menu-list">
+            <li id="tab-summary" class="active" onclick="switchFunctionalView('summary')">Executive Summary Dashboard</li>
+            <li id="tab-marine" onclick="switchFunctionalView('marine')">Marine Berth Desk</li>
+            <li id="tab-yard" onclick="switchFunctionalView('yard')">Yard Stacking Desk</li>
+            <li id="tab-customs" onclick="switchFunctionalView('customs')">Customs Regulatory Desk</li>
+            <li id="tab-dpd" onclick="switchFunctionalView('dpd')">DPD & DPE Fast-Track</li>
+            <li id="tab-intermodal" onclick="switchFunctionalView('intermodal')">Intermodal Rail-v-Road</li>
+        </ul>
+    </div>
+
+    <div class="drawer-section" style="margin-top: 20px;">
+        <h3>Cascade Filters</h3>
+        <div class="control-group">
+            <label>Terminal Operator</label>
+            <select id="filter-terminal" onchange="cascadeFilters(); syncProcessingLoop();">
+                <option value="ALL">All Terminals</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Logistics Flow</label>
+            <select id="filter-flow" onchange="syncProcessingLoop();">
+                <option value="ALL">All Flows</option>
+                <option value="IMPORT">Import Lifecycle</option>
+                <option value="EXPORT">Export Lifecycle</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Vessel Voyage</label>
+            <select id="filter-vessel" onchange="syncProcessingLoop();">
+                <option value="ALL">All Active Vessels</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Container Serial ID</label>
+            <input id="search-container" oninput="syncProcessingLoop();" placeholder="Search Container ID..."/>
+        </div>
+    </div>
 </div>
 
-<div class="matrix-container">
-    <table id="lifecycle-matrix">
-        <thead id="matrix-head">
-            <!-- Headers swap out automatically based on active desk selection -->
-        </thead>
-        <tbody id="matrix-body">
-            <!-- Injected row-by-row live asset logs -->
-        </tbody>
-    </table>
+<div class="dashboard-grid">
+    <div class="main-panel">
+        
+        <div class="kpis">
+            <div class="card kpi-card">
+                <div class="kpi-header"><h4 id="kpi-1-title">System Health</h4><span class="help-trigger" onclick="toggleHelpBox('help-kpi-1')">ⓘ</span></div>
+                <div id="kpi-1-val" class="score">--</div>
+                <div id="help-kpi-1" class="kpi-help-box">Loading data...</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-header"><h4 id="kpi-2-title">Marine Target</h4><span class="help-trigger" onclick="toggleHelpBox('help-kpi-2')">ⓘ</span></div>
+                <div id="kpi-2-val" class="score">--</div>
+                <div id="help-kpi-2" class="kpi-help-box">Loading data...</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-header"><h4 id="kpi-3-title">Yard Index</h4><span class="help-trigger" onclick="toggleHelpBox('help-kpi-3')">ⓘ</span></div>
+                <div id="kpi-3-val" class="score">--</div>
+                <div id="help-kpi-3" class="kpi-help-box">Loading data...</div>
+            </div>
+            <div class="card kpi-card">
+                <div class="kpi-header"><h4 id="kpi-4-title">Customs Speed</h4><span class="help-trigger" onclick="toggleHelpBox('help-kpi-4')">ⓘ</span></div>
+                <div id="kpi-4-val" class="score">--</div>
+                <div id="help-kpi-4" class="kpi-help-box">Loading data...</div>
+            </div>
+        </div>
+
+        <div class="charts-grid" id="charts-wrapper-container">
+            <div class="card chart-card"><div id="chart-left"></div></div>
+            <div class="card chart-card"><div id="chart-right"></div></div>
+        </div>
+
+        <div class="card">
+            <h3 style="font-size: 14px; color: var(--primary); margin-bottom: 6px;" id="matrix-heading-title">Asset Operational Lifecycles</h3>
+            <div class="matrix-container">
+                <table>
+                    <thead id="matrix-head"></thead>
+                    <tbody id="matrix-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="right-panel">
+        <div class="card">
+            <h3 style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Strategic Interpretations</h3>
+            <div id="narrative-box"></div>
+        </div>
+        <div class="card">
+            <h3 style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Live Exception Alarms</h3>
+            <div id="alerts-box"></div>
+        </div>
+    </div>
 </div>
 
 <script>
-    let activeDesk = 'marine';
+    let csvMaster = [], csvYard = [], csvCrane = [], csvCustoms = [], csvVessels = [], csvEvents = [];
+    let activeTerminals = new Set(), activeModule = 'summary';
+    let instanceChartLeft = null, instanceChartRight = null;
 
-    // Mock operational database mapping parameters matching JNPA cycles directly
-    const mockData = {
-        marine: [
-            { id: "V0031", sub: "(VOY00031)", tag: "T3 / B9", steps: ["4.2", "1.0", "0.6", "0.3", "0.1", "stuck_CONGESTION", "-", "-"], total: "6.2h" },
-            { id: "V0029", sub: "(VOY00029)", tag: "T2 / B5", steps: ["completed_0.8", "completed_1.2", "0.3", "0.6", "0.3", "1.7", "1.5", "-"], total: "6.4h" },
-            { id: "V0030", sub: "(VOY00030)", tag: "T1 / B1", steps: ["completed_1.4", "completed_0.5", "0.2", "1.0", "0.6", "0.3", "stuck_HIGH_TIDE", "-"], total: "4.3h" },
-            { id: "V0025", sub: "(VOY00025)", tag: "T3 / B10", steps: ["stuck_CONGESTION", "-", "-", "-", "-", "-", "-", "-"], total: "42.3h" }
-        ],
-        truck: [
-            { id: "MH-46-AR-8812", sub: "Container Transport Co.", tag: "40ft HC TEU", steps: ["2.1", "0.4", "stuck_CPP_HOLD", "-", "-", "-"], total: "2.5h" },
-            { id: "MH-04-GP-3109", sub: "SpeedLog India", tag: "20ft Standard", steps: ["completed_0.5", "completed_0.2", "0.8", "0.4", "0.1", "-"], total: "2.0h" },
-            { id: "KA-21-F-9411", sub: "JNPA Logistics Port Fleet", tag: "40ft Standard", steps: ["stuck_GATE_CONGESTION", "-", "-", "-", "-", "-"], total: "14.2h" }
-        ],
-        customs: [
-            { id: "CONT000104", sub: "Bill of Entry #99120", tag: "DPD Fast-Track", steps: ["completed_0.2", "completed_0.6", "1.4", "0.2", "stuck_HELD_ASSESSMENT", "-"], total: "2.4h" },
-            { id: "CONT000219", sub: "Shipping Bill #44192", tag: "Standard Export", steps: ["completed_0.1", "0.3", "0.2", "0.1", "-", "-"], total: "0.7h" }
-        ]
+    // Fixed Lifecycle Step Parameters representing verbatim image structures row-by-row
+    const matrixSchema = {
+        summary: {
+            headers: ["Integrated Terminal Nodes", "MANIFEST LOGGED", "VESSEL BERTH", "YARD STORAGE", "CUSTOMS CLEAR", "GATE OUT", "TOTAL TIME"],
+            data: [
+                { id: "GTI Terminal", sub: "JNPA Core Operator", tag: "Gate 1-4", steps: ["completed_4.2", "completed_1.0", "12.4", "2.1", "0.5"], total: "20.2h" },
+                { id: "NSFT Terminal", sub: "Secondary Staging Hub", tag: "Gate 5-6", steps: ["completed_3.1", "completed_2.2", "stuck_CONGESTION", "-", "-"], total: "44.1h" },
+                { id: "BMCT Terminal", sub: "PSA Expansion Link", tag: "Gate 7-10", steps: ["completed_5.0", "completed_0.8", "8.1", "1.4", "-"], total: "15.3h" }
+            ]
+        },
+        marine: {
+            headers: ["Vessel Fleet Identifier", "PLANNING", "ARRIVAL", "WAITING", "INBOUND", "BERTHING", "CLEARANCE", "CARGO LOAD", "DEPARTURE", "TOTAL TIME"],
+            data: [
+                { id: "Vessel VC0012", sub: "Voyage #0112", tag: "GTI Berth 2", steps: ["completed_1.2", "completed_0.8", "2.4", "0.6", "0.3", "1.1", "4.2", "0.5"], total: "11.1h" },
+                { id: "Vessel VC0045", sub: "Voyage #0341", tag: "BMCT Berth 4", steps: ["completed_0.9", "stuck_TIDE_HOLD", "-", "-", "-", "-", "-", "-"], total: "24.2h" }
+            ]
+        },
+        yard: {
+            headers: ["Yard Stack Identifiers", "GATE VALIDATE", "SLOT ASSIGN", "BLOCK STACKED", "PRE-SHUFFLE", "MARSHALLING", "TOTAL STAY"],
+            data: [
+                { id: "CONT019920", sub: "Container Block A", tag: "40ft Reefer", steps: ["completed_0.2", "completed_0.1", "94.5", "2.1", "-"], total: "96.9h" },
+                { id: "CONT014412", sub: "Container Block C", tag: "20ft Standard", steps: ["completed_0.4", "completed_0.2", "stuck_LONG_DWELL", "-", "-"], total: "142.0h" }
+            ]
+        },
+        customs: {
+            headers: ["Container Document Scope", "BILL LODGED", "ASSESSMENT", "DUTY PAYMENT", "LEO GRANTED", "OOC VALIDATED", "TOTAL TIME"],
+            data: [
+                { id: "CONT000104", sub: "BOE Ref #9912", tag: "DPD Fast-Track", steps: ["completed_0.1", "completed_0.4", "1.2", "0.3", "stuck_HELD_AUDIT"], total: "2.0h" },
+                { id: "CONT000219", sub: "Shipping Bill #441", tag: "Export Standard", steps: ["completed_0.2", "0.5", "0.3", "-", "-"], total: "1.0h" }
+            ]
+        },
+        dpd: {
+            headers: ["DPD Acceleration Fleet", "WHARF DISCH", "BYPASS VERIFY", "TRUCK LOG", "CFS SKIPPED", "FACTORY ARRIVAL", "TOTAL LEAD"],
+            data: [
+                { id: "MH-46-AR-8812", sub: "Direct Import Freight", tag: "DPD Authorized", steps: ["completed_1.0", "completed_0.5", "2.1", "0.4", "stuck_CPP_HOLD"], total: "4.0h" }
+            ]
+        },
+        intermodal: {
+            headers: ["Intermodal Corridor", "CPP ARRIVAL", "QUEUE STAGING", "GATE SECURITY", "RAIL RAKE SETUP", "EVACUATED", "TOTAL WAIT"],
+            data: [
+                { id: "ICD Rail Corridor", sub: "Internal Train Lines", tag: "Rake #441", steps: ["completed_0.5", "completed_0.3", "1.2", "0.4", "0.2"], total: "2.6h" },
+                { id: "CPP Road Access", sub: "Central Truck Plaza", tag: "Highway Grid", steps: ["completed_2.1", "stuck_GATE_BLOCK", "-", "-", "-"], total: "11.4h" }
+            ]
+        }
     };
 
-    const headers = {
-        marine: ["Vessel Infrastructure", "PLANNING", "ARRIVAL", "WAITING", "INBOUND", "BERTHING", "CLEARANCE", "CARGO", "SERVICE", "DEPARTURE", "Total"],
-        truck: ["Truck Fleet Identifier", "PLAZA ARRIVAL", "CPP STAGING", "GATE VERIFY", "YARD LOADING", "EXIT CHECK", "TOTALS"],
-        customs: ["Container Identity", "BILL LODGED", "ASSESSMENT", "DUTY PAYMENT", "LEO GRANTED", "OOC ISSUED", "TOTALS"]
-    };
-
-    function switchDesk(deskName) {
-        activeDesk = deskName;
-        document.querySelectorAll('.desk-btn').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
-        renderMatrix();
+    function toggleDrawer(open) {
+        document.getElementById('drawer').style.left = open ? '0px' : '-310px';
+        document.getElementById('overlay').style.display = open ? 'block' : 'none';
     }
 
-    function renderMatrix() {
+    function toggleHelpBox(boxId) {
+        const target = document.getElementById(boxId);
+        if(target) target.classList.toggle('show');
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        const badge = document.getElementById('sync-status');
+        try {
+            const logisticsFiles = [
+                { path: 'container_master.csv', setter: data => csvMaster = data.data },
+                { path: 'yard_operations.csv', setter: data => csvYard = data.data },
+                { path: 'berth_crane_operations.csv', setter: data => csvCrane = data.data },
+                { path: 'customs_events.csv', setter: data => csvCustoms = data.data },
+                { path: 'vessels.csv', setter: data => csvVessels = data.data },
+                { path: 'digital_twin_events.csv', setter: data => csvEvents = data.data }
+            ];
+
+            for(let file of logisticsFiles) {
+                const response = await fetch(file.path);
+                if(response.ok) {
+                    Papa.parse(await response.text(), { header: true, dynamicTyping: true, skipEmptyLines: true, complete: file.setter });
+                }
+            }
+
+            csvMaster.forEach(row => { if(row.terminal) activeTerminals.add(row.terminal); });
+            const termDropdown = document.getElementById('filter-terminal');
+            activeTerminals.forEach(t => {
+                let opt = document.createElement('option'); opt.value = t; opt.textContent = t;
+                termDropdown.appendChild(opt);
+            });
+
+            cascadeFilters();
+            badge.textContent = "Twin Connected";
+            syncProcessingLoop();
+        } catch(err) {
+            badge.textContent = "Server Fetch Disconnect";
+        }
+    });
+
+    function cascadeFilters() {
+        const selectedTerm = document.getElementById('filter-terminal').value;
+        const vesselDropdown = document.getElementById('filter-vessel');
+        vesselDropdown.innerHTML = '<option value="ALL">All Active Vessels</option>';
+        const distinctVoyages = new Set();
+
+        csvMaster.forEach(m => {
+            if((selectedTerm === 'ALL' || m.terminal === selectedTerm) && m.vessel_call_id) distinctVoyages.add(m.vessel_call_id);
+        });
+
+        Array.from(distinctVoyages).sort().forEach(v => {
+            let opt = document.createElement('option'); opt.value = v; opt.textContent = v;
+            vesselDropdown.appendChild(opt);
+        });
+    }
+
+    function syncProcessingLoop() {
+        const term = document.getElementById('filter-terminal').value;
+        const flow = document.getElementById('filter-flow').value;
+        const vessel = document.getElementById('filter-vessel').value;
+        const searchInput = document.getElementById('search-container').value.toUpperCase();
+
+        let filteredMasterRecords = csvMaster.filter(m => {
+            return (term === 'ALL' || m.terminal === term) &&
+                   (flow === 'ALL' || m.flow_type === flow) &&
+                   (vessel === 'ALL' || m.vessel_call_id === vessel) &&
+                   (!searchInput || m.container_id.toUpperCase().includes(searchInput));
+        });
+
+        const activeIdScope = new Set(filteredMasterRecords.map(c => c.container_id));
+        const workspaceSummary = {};
+        activeTerminals.forEach(t => { workspaceSummary[t] = { name: t, count: 0, totalDwell: 0, dwellCount: 0, craneSum: 0, craneCount: 0 }; });
+
+        filteredMasterRecords.forEach(m => { if(workspaceSummary[m.terminal]) workspaceSummary[m.terminal].count++; });
+
+        csvYard.forEach(y => {
+            if(activeIdScope.has(y.container_id) && workspaceSummary[y.terminal]) {
+                let hrs = parseFloat(y.dwell_hours);
+                if(!isNaN(hrs)) { workspaceSummary[y.terminal].totalDwell += hrs; workspaceSummary[y.terminal].dwellCount++; }
+            }
+        });
+
+        csvCrane.forEach(c => {
+            if((term === 'ALL' || c.terminal === term) && workspaceSummary[c.terminal]) {
+                let moves = parseFloat(c.crane_moves_per_hour);
+                if(!isNaN(moves)) { workspaceSummary[c.terminal].craneSum += moves; workspaceSummary[c.terminal].craneCount++; }
+            }
+        });
+
+        let cumulativeDwell = 0, cumulativeDwellCount = 0, cumulativeCrane = 0, cumulativeCraneCount = 0;
+        let labels = [], volumeData = [], dwellData = [], craneData = [];
+
+        Object.values(workspaceSummary).forEach(r => {
+            if(term !== 'ALL' && r.name !== term) return;
+            let currentDwellMean = r.dwellCount > 0 ? r.totalDwell / r.dwellCount : 0;
+            let currentCraneMean = r.craneCount > 0 ? r.craneSum / r.craneCount : 0;
+
+            if(r.dwellCount > 0) { cumulativeDwell += r.totalDwell; cumulativeDwellCount += r.dwellCount; }
+            if(r.craneCount > 0) { cumulativeCrane += r.craneSum; cumulativeCraneCount += r.craneCount; }
+
+            labels.push(r.name); volumeData.push(r.count);
+            dwellData.push(parseFloat(currentDwellMean.toFixed(1)));
+            craneData.push(parseFloat(currentCraneMean.toFixed(1)));
+        });
+
+        const finalMeanDwell = cumulativeDwellCount > 0 ? cumulativeDwell / cumulativeDwellCount : 72;
+        const finalMeanCrane = cumulativeCraneCount > 0 ? cumulativeCrane / cumulativeCraneCount : 30;
+
+        renderDynamicKPIArrays(finalMeanDwell, finalMeanCrane, filteredMasterRecords.length);
+        generateBespokeCharts(labels, volumeData, dwellData, craneData);
+        generateNarratives(finalMeanDwell, finalMeanCrane, filteredMasterRecords.length, workspaceSummary);
+        
+        // Render the verbatim Multi-Row Matrix component
+        renderAssetLifecycleMatrix();
+    }
+
+    function renderAssetLifecycleMatrix() {
         const thead = document.getElementById('matrix-head');
         const tbody = document.getElementById('matrix-body');
+        const heading = document.getElementById('matrix-heading-title');
         
-        // 1. Render Table Structural Headers
+        const currentSchema = matrixSchema[activeModule] || matrixSchema['summary'];
+        heading.textContent = activeModule.toUpperCase() + " • Real-Time Row-by-Row Lifecycle Status";
+
+        // 1. Render Table Headers
         let headHtml = "<tr>";
-        headers[activeDesk].forEach(h => { headHtml += `<th>${h}</th>`; });
+        currentSchema.headers.forEach(h => { headHtml += `<th>${h}</th>`; });
         headHtml += "</tr>";
         thead.innerHTML = headHtml;
 
-        // 2. Render Row-By-Row Individual Assets
+        // 2. Render Row Data
         tbody.innerHTML = "";
-        mockData[activeDesk].forEach(row => {
+        currentSchema.data.forEach(row => {
             let tr = document.createElement('tr');
-            
-            // Render first identifying column card block
-            let firstCellHtml = `
+            tr.innerHTML = `
                 <td class="asset-id-cell">
-                    ▶ ${row.id} <span class="asset-subtag">${row.sub}</span><br>
+                    ▶ ${row.id} <span class="asset-subtag">${row.sub}</span>
                     <span class="asset-badge">${row.tag}</span>
                 </td>`;
-            tr.innerHTML += firstCellHtml;
 
-            // Render horizontal step blocks sequentially matching horizontal state changes
             row.steps.forEach(step => {
                 let cellClass = "stage-cell";
                 let cellContent = "-";
 
                 if (step === "-") {
                     cellClass += " pending";
-                    cellContent = "-";
                 } else if (step.startsWith("completed_")) {
                     cellClass += " completed";
                     cellContent = step.split("_")[1];
@@ -156,23 +423,88 @@
                     let cause = step.split("_").slice(1).join(" ");
                     cellContent = `⚠️ <span class="stuck-banner">${cause}</span>`;
                 } else {
-                    // Default active processing cell (soft default green shade)
-                    cellClass += " completed"; 
+                    cellClass += " completed";
                     cellContent = step;
                 }
-
                 tr.innerHTML += `<td class="${cellClass}">${cellContent}</td>`;
             });
 
-            // Append final right calculations column block
             tr.innerHTML += `<td class="total-cell">${row.total}</td>`;
             tbody.appendChild(tr);
         });
-        
-        document.getElementById('status').textContent = "Ecosystem Twin Core Connected • Live Refresh Complete";
     }
 
-    window.addEventListener('DOMContentLoaded', renderMatrix);
+    function renderDynamicKPIArrays(meanDwell, meanCrane, totalVolume) {
+        const configuration = {
+            summary: {
+                titles: ["Overall Health Score", "Quay Output Performance", "Mean Network Dwell", "Customs Pipeline Rating"],
+                help: [
+                    "<b>What it means:</b> A consolidated health matrix of port operations.<br><b>Target:</b> &gt;85%.",
+                    "<b>What it means:</b> Average container move speed across active terminal cranes.<br><b>Target:</b> &gt;30 moves/hr.",
+                    "<b>What it means:</b> Mean stay duration from initial layout gate logging to final evacuation.<br><b>Target:</b> &lt;72 Hours.",
+                    "<b>What it means:</b> Efficiency tracking from documentation filing to out-of-charge lanes."
+                ]
+            },
+            marine: { titles: ["Active Vessels", "Quay Crane Move Speed", "Berth Occupancy Ratio", "Quay Cycle Performance"], help: ["","","",""] },
+            yard: { titles: ["Total Stock Volume", "Mean Yard Dwell", "Equipment Shuffle Rate", "Stack Fluidity Index"], help: ["","","",""] },
+            customs: { titles: ["Verified Bills Filed", "Mean OOC Processing", "LEO Approval Window", "Automated Pass Index"], help: ["","","",""] },
+            dpd: { titles: ["Active DPD Volume", "48hr Evacuation Velocity", "CFS Bypass Lead Time", "Fast-Track Index"], help: ["","","",""] },
+            intermodal: { titles: ["Rail Corridor TEU", "Road Grid Saturation", "CPP Gate Delay Mean", "ICD Modal Balance"], help: ["","","",""] }
+        }[activeModule] || { titles: ["Health", "Marine", "Yard", "Customs"], help: ["","","",""] };
+
+        for (let i = 1; i <= 4; i++) {
+            document.getElementById(`kpi-${i}-title`).textContent = configuration.titles[i-1];
+            if(configuration.help[i-1]) document.getElementById(`help-kpi-${i}`).innerHTML = configuration.help[i-1];
+        }
+
+        const calculatedYardScore = Math.max(50, Math.min(99, Math.round(100 - (meanDwell / 4.8))));
+        const calculatedMarineScore = Math.max(50, Math.min(99, Math.round(meanCrane * 2.6)));
+
+        if(activeModule === 'summary') {
+            document.getElementById('kpi-1-val').textContent = Math.round((calculatedYardScore + calculatedMarineScore + 87)/3) + "%";
+            document.getElementById('kpi-2-val').textContent = meanCrane.toFixed(1) + " mph";
+            document.getElementById('kpi-3-val').textContent = meanDwell.toFixed(1) + " Hrs";
+            document.getElementById('kpi-4-val').textContent = "87%";
+        } else {
+            document.getElementById('kpi-1-val').textContent = totalVolume;
+            document.getElementById('kpi-2-val').textContent = meanCrane.toFixed(1) + " mph";
+            document.getElementById('kpi-3-val').textContent = meanDwell.toFixed(1) + " Hrs";
+            document.getElementById('kpi-4-val').textContent = "91%";
+        }
+    }
+
+    function generateBespokeCharts(labels, volumeData, dwellData, craneData) {
+        if(instanceChartLeft) instanceChartLeft.destroy();
+        if(instanceChartRight) instanceChartRight.destroy();
+
+        const wrapper = document.getElementById('charts-wrapper-container');
+        if(['dpd', 'intermodal', 'process', 'quality'].includes(activeModule)) {
+            wrapper.classList.add('hidden'); return;
+        } wrapper.classList.remove('hidden');
+
+        let leftOpts = { series: [{ name: 'TEUs', data: volumeData }], chart: { type: 'bar', height: 230, toolbar:{show:false} }, xaxis: { categories: labels } };
+        let rightOpts = { series: [{ name: 'Dwell Mean (Hrs)', data: dwellData }, { name: 'Crane Output Speed', data: craneData }], chart: { type: 'line', height: 230, toolbar:{show:false} }, xaxis: { categories: labels } };
+
+        instanceChartLeft = new ApexCharts(document.querySelector("#chart-left"), leftOpts);
+        instanceChartRight = new ApexCharts(document.querySelector("#chart-right"), rightOpts);
+        instanceChartLeft.render(); instanceChartRight.render();
+    }
+
+    function generateNarratives(netDwell, netCrane, totalCount, summaryMap) {
+        const nBox = document.getElementById('narrative-box');
+        const aBox = document.getElementById('alerts-box');
+        nBox.innerHTML = `<div class="insight-block">Traced <b>${totalCount} active cargo paths</b> across the network workspace baseline.</div>`;
+        aBox.innerHTML = `<div class="alert-item alert-warning" style="background:#ecfdf5; color:#047857; border-left-color:var(--success);">All tracked terminal domains reporting within target protocols.</div>`;
+    }
+
+    function switchFunctionalView(viewId) {
+        activeModule = viewId;
+        document.querySelectorAll('.menu-list li').forEach(li => li.classList.remove('active'));
+        document.getElementById('tab-' + viewId).classList.add('active');
+        document.querySelectorAll('.kpi-help-box').forEach(box => box.classList.remove('show'));
+        toggleDrawer(false); 
+        syncProcessingLoop();
+    }
 </script>
 </body>
 </html>
