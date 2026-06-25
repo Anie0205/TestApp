@@ -172,7 +172,7 @@ define('JNPAEnterpriseControlTower', [
                     '<div class="burger-btn" id="jnpa-burger-trigger">☰</div>' +
                     '<h2>JNPA Phase 5 Control Tower</h2>' +
                 '</div>' +
-                '<div class="sync-indicator" id="jnpa-sync-status">Syncing Twin...</div>' +
+                '<div class="sync-indicator" id="jnpa-sync-status">Injecting Runtime Libraries...</div>' +
             '</div>' +
             
             '<div class="overlay-drawer" id="jnpa-overlay-drawer"></div>' +
@@ -313,10 +313,39 @@ define('JNPAEnterpriseControlTower', [
         widget.body.querySelector('#jnpa-search-container').addEventListener('input', app.syncProcessingLoop);
     };
 
+    // Appends libraries smoothly into the global sandbox frame to bypass missing window property errors
+    app.ensureDependencies = function () {
+        return new Promise(function (resolve, reject) {
+            var loadScript = function (id, url) {
+                return new Promise(function (res) {
+                    if (document.getElementById(id)) {
+                        res(); return;
+                    }
+                    var s = document.createElement('script');
+                    s.id = id; s.src = url;
+                    s.onload = function () { res(); };
+                    s.onerror = function () { res(); };
+                    document.head.appendChild(s);
+                });
+            };
+
+            // Dynamic loader promise maps for both library packages
+            Promise.all([
+                loadScript('script-apexcharts', 'https://cdn.jsdelivr.net/npm/apexcharts'),
+                loadScript('script-papaparse', 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js')
+            ]).then(function () {
+                if (window.Papa && window.ApexCharts) {
+                    resolve();
+                } else {
+                    reject(new Error("External runtime dependency assets failed parsing."));
+                }
+            });
+        });
+    };
+
     app.loadAndParseCSVData = function () {
         var syncBadge = widget.body.querySelector('#jnpa-sync-status');
         
-        // Swapped parameters targeting your exact custom domain storage setup explicitly
         var files = [
             { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/container_master.csv', setter: function(d) { app.rawMaster = d.data; } },
             { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/yard_operations.csv', setter: function(d) { app.rawYard = d.data; } },
@@ -328,11 +357,11 @@ define('JNPAEnterpriseControlTower', [
 
         var promises = files.map(function(f) {
             return new Promise(function(resolve, reject) {
-                // CHANGED: Use proxifiedRequest to resolve all CORS constraints seamlessly
                 WAFData.proxifiedRequest(f.name, {
                     method: 'GET',
                     type: 'text',
                     onComplete: function(res) {
+                        // Accessing window.Papa now safely runs after resolve gates clear
                         window.Papa.parse(res, {
                             header: true,
                             dynamicTyping: true,
@@ -542,9 +571,15 @@ define('JNPAEnterpriseControlTower', [
     var myWidget = {
         onLoad: function () {
             app.initializeDOMStructure();
-            window.setTimeout(function() {
-                app.loadAndParseCSVData();
-            }, 50);
+            
+            // First clear dependency script checks, then initiate WAF data streams securely
+            app.ensureDependencies()
+                .then(function() {
+                    app.loadAndParseCSVData();
+                })
+                .catch(function(err) {
+                    widget.body.querySelector('#jnpa-sync-status').textContent = "Asset Dep. Fail";
+                });
         }
     };
 
