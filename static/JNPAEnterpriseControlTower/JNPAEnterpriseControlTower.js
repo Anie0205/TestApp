@@ -317,12 +317,12 @@ define('JNPAEnterpriseControlTower', [
         var syncBadge = widget.body.querySelector('#jnpa-sync-status');
         
         var files = [
-            { name: './container_master.csv', setter: function(d) { app.rawMaster = d.data; } },
-            { name: './yard_operations.csv', setter: function(d) { app.rawYard = d.data; } },
-            { name: './berth_crane_operations.csv', setter: function(d) { app.rawCrane = d.data; } },
-            { name: './customs_events.csv', setter: function(d) { app.rawCustoms = d.data; } },
-            { name: './vessels.csv', setter: function(d) { app.rawVessels = d.data; } },
-            { name: './digital_twin_events.csv', setter: function(d) { app.rawEvents = d.data; } }
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/container_master.csv', setter: function(d) { app.rawMaster = d.data; } },
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/yard_operations.csv', setter: function(d) { app.rawYard = d.data; } },
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/berth_crane_operations.csv', setter: function(d) { app.rawCrane = d.data; } },
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/customs_events.csv', setter: function(d) { app.rawCustoms = d.data; } },
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/vessels.csv', setter: function(d) { app.rawVessels = d.data; } },
+            { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/digital_twin_events.csv', setter: function(d) { app.rawEvents = d.data; } }
         ];
 
         var promises = files.map(function(f) {
