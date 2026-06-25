@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>JNPA Phase 5 Asset Tracking Matrix</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        :root {
+            --primary: #0f4c81;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #cbd5e1;
+            --bg-main: #f8fafc;
+            --success-bg: #ecfdf5;
+            --success-text: #065f46;
+            --alert-bg: #fef2f2;
+            --alert-text: #991b1b;
+            --pending-bg: #f1f5f9;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg-main); color: var(--text-main); padding: 16px; }
+        
+        .header { margin-bottom: 16px; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+        .header h2 { font-size: 1.2rem; color: var(--primary); font-weight: 700; }
+        
+        .desk-selector { display: flex; gap: 8px; margin-bottom: 12px; }
+        .desk-btn { padding: 8px 16px; border: 1px solid var(--border-color); background: #fff; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-muted); }
+        .desk-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        /* Verbatim Tracking Matrix Layout styled exactly like Screenshot 2026-06-25 123519.png */
+        .matrix-container { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow-x: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+        
+        th { background: #f8fafc; padding: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 2px solid var(--border-color); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        td { padding: 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+        
+        /* Asset Identity Card Column Styling */
+        .asset-id-cell { font-weight: 700; color: #000; font-size: 13px; }
+        .asset-subtag { font-size: 10px; color: var(--text-muted); font-weight: normal; margin-top: 2px; }
+        .asset-badge { display: inline-block; background: #eff6ff; color: #1e40af; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 4px; border: 1px solid #bfdbfe; }
+        
+        /* Lifecycle Cell States */
+        .stage-cell { text-align: center; font-weight: 700; font-size: 12px; color: #94a3b8; background: #fff; transition: all 0.2s; min-width: 90px; border-right: 1px solid #f1f5f9; }
+        
+        /* Completed State: Clean soft green box */
+        .stage-cell.completed { background: var(--success-bg); color: var(--success-text); }
+        .stage-cell.completed::after { content: 'h'; font-weight: normal; font-size: 11px; margin-left: 1px; }
+        
+        /* Stuck State: Warning pink box with matching indicator banner from reference image */
+        .stage-cell.stuck { background: var(--alert-bg); color: var(--alert-text); position: relative; }
+        .stage-cell.stuck::after { content: 'h'; font-weight: normal; font-size: 11px; margin-left: 1px; }
+        .stuck-banner { display: block; font-size: 9px; color: #b91c1c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2px; margin-top: 4px; background: rgba(185,28,28,0.08); padding: 2px; border-radius: 3px; border: 1px dashed rgba(185,28,28,0.2); }
+        
+        /* Empty/Pending State */
+        .stage-cell.pending { color: #cbd5e1; font-weight: normal; }
+
+        .total-cell { font-weight: 700; text-align: right; padding-right: 16px; font-size: 13px; background: #fafafa; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>JNPA Digital Twin Live Asset Tracking Matrix</h2>
+    <div style="font-size: 12px; font-weight: 600; color: var(--success-text);" id="status">Syncing Live Ecosystem Streams...</div>
+</div>
+
+<div class="desk-selector">
+    <button class="desk-btn active" onclick="switchDesk('marine')">Vessel Infrastructure Desk</button>
+    <button class="desk-btn" onclick="switchDesk('truck')">Truck Corridor (CPP) Desk</button>
+    <button class="desk-btn" onclick="switchDesk('customs')">Customs Document Nodes</button>
+</div>
+
+<div class="matrix-container">
+    <table id="lifecycle-matrix">
+        <thead id="matrix-head">
+            <!-- Headers swap out automatically based on active desk selection -->
+        </thead>
+        <tbody id="matrix-body">
+            <!-- Injected row-by-row live asset logs -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let activeDesk = 'marine';
+
+    // Mock operational database mapping parameters matching JNPA cycles directly
+    const mockData = {
+        marine: [
+            { id: "V0031", sub: "(VOY00031)", tag: "T3 / B9", steps: ["4.2", "1.0", "0.6", "0.3", "0.1", "stuck_CONGESTION", "-", "-"], total: "6.2h" },
+            { id: "V0029", sub: "(VOY00029)", tag: "T2 / B5", steps: ["completed_0.8", "completed_1.2", "0.3", "0.6", "0.3", "1.7", "1.5", "-"], total: "6.4h" },
+            { id: "V0030", sub: "(VOY00030)", tag: "T1 / B1", steps: ["completed_1.4", "completed_0.5", "0.2", "1.0", "0.6", "0.3", "stuck_HIGH_TIDE", "-"], total: "4.3h" },
+            { id: "V0025", sub: "(VOY00025)", tag: "T3 / B10", steps: ["stuck_CONGESTION", "-", "-", "-", "-", "-", "-", "-"], total: "42.3h" }
+        ],
+        truck: [
+            { id: "MH-46-AR-8812", sub: "Container Transport Co.", tag: "40ft HC TEU", steps: ["2.1", "0.4", "stuck_CPP_HOLD", "-", "-", "-"], total: "2.5h" },
+            { id: "MH-04-GP-3109", sub: "SpeedLog India", tag: "20ft Standard", steps: ["completed_0.5", "completed_0.2", "0.8", "0.4", "0.1", "-"], total: "2.0h" },
+            { id: "KA-21-F-9411", sub: "JNPA Logistics Port Fleet", tag: "40ft Standard", steps: ["stuck_GATE_CONGESTION", "-", "-", "-", "-", "-"], total: "14.2h" }
+        ],
+        customs: [
+            { id: "CONT000104", sub: "Bill of Entry #99120", tag: "DPD Fast-Track", steps: ["completed_0.2", "completed_0.6", "1.4", "0.2", "stuck_HELD_ASSESSMENT", "-"], total: "2.4h" },
+            { id: "CONT000219", sub: "Shipping Bill #44192", tag: "Standard Export", steps: ["completed_0.1", "0.3", "0.2", "0.1", "-", "-"], total: "0.7h" }
+        ]
+    };
+
+    const headers = {
+        marine: ["Vessel Infrastructure", "PLANNING", "ARRIVAL", "WAITING", "INBOUND", "BERTHING", "CLEARANCE", "CARGO", "SERVICE", "DEPARTURE", "Total"],
+        truck: ["Truck Fleet Identifier", "PLAZA ARRIVAL", "CPP STAGING", "GATE VERIFY", "YARD LOADING", "EXIT CHECK", "TOTALS"],
+        customs: ["Container Identity", "BILL LODGED", "ASSESSMENT", "DUTY PAYMENT", "LEO GRANTED", "OOC ISSUED", "TOTALS"]
+    };
+
+    function switchDesk(deskName) {
+        activeDesk = deskName;
+        document.querySelectorAll('.desk-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        renderMatrix();
+    }
+
+    function renderMatrix() {
+        const thead = document.getElementById('matrix-head');
+        const tbody = document.getElementById('matrix-body');
+        
+        // 1. Render Table Structural Headers
+        let headHtml = "<tr>";
+        headers[activeDesk].forEach(h => { headHtml += `<th>${h}</th>`; });
+        headHtml += "</tr>";
+        thead.innerHTML = headHtml;
+
+        // 2. Render Row-By-Row Individual Assets
+        tbody.innerHTML = "";
+        mockData[activeDesk].forEach(row => {
+            let tr = document.createElement('tr');
+            
+            // Render first identifying column card block
+            let firstCellHtml = `
+                <td class="asset-id-cell">
+                    ▶ ${row.id} <span class="asset-subtag">${row.sub}</span><br>
+                    <span class="asset-badge">${row.tag}</span>
+                </td>`;
+            tr.innerHTML += firstCellHtml;
+
+            // Render horizontal step blocks sequentially matching horizontal state changes
+            row.steps.forEach(step => {
+                let cellClass = "stage-cell";
+                let cellContent = "-";
+
+                if (step === "-") {
+                    cellClass += " pending";
+                    cellContent = "-";
+                } else if (step.startsWith("completed_")) {
+                    cellClass += " completed";
+                    cellContent = step.split("_")[1];
+                } else if (step.startsWith("stuck_")) {
+                    cellClass += " stuck";
+                    let cause = step.split("_").slice(1).join(" ");
+                    cellContent = `⚠️ <span class="stuck-banner">${cause}</span>`;
+                } else {
+                    // Default active processing cell (soft default green shade)
+                    cellClass += " completed"; 
+                    cellContent = step;
+                }
+
+                tr.innerHTML += `<td class="${cellClass}">${cellContent}</td>`;
+            });
+
+            // Append final right calculations column block
+            tr.innerHTML += `<td class="total-cell">${row.total}</td>`;
+            tbody.appendChild(tr);
+        });
+        
+        document.getElementById('status').textContent = "Ecosystem Twin Core Connected • Live Refresh Complete";
+    }
+
+    window.addEventListener('DOMContentLoaded', renderMatrix);
+</script>
+</body>
+</html>
