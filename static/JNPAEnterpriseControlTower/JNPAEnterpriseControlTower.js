@@ -316,6 +316,7 @@ define('JNPAEnterpriseControlTower', [
     app.loadAndParseCSVData = function () {
         var syncBadge = widget.body.querySelector('#jnpa-sync-status');
         
+        // Swapped parameters targeting your exact custom domain storage setup explicitly
         var files = [
             { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/container_master.csv', setter: function(d) { app.rawMaster = d.data; } },
             { name: 'https://test-app-lyart-six.vercel.app/static/JNPAEnterpriseControlTower/yard_operations.csv', setter: function(d) { app.rawYard = d.data; } },
@@ -327,8 +328,10 @@ define('JNPAEnterpriseControlTower', [
 
         var promises = files.map(function(f) {
             return new Promise(function(resolve, reject) {
-                WAFData.authenticatedRequest(f.name, {
+                // CHANGED: Use proxifiedRequest to resolve all CORS constraints seamlessly
+                WAFData.proxifiedRequest(f.name, {
                     method: 'GET',
+                    type: 'text',
                     onComplete: function(res) {
                         window.Papa.parse(res, {
                             header: true,
@@ -346,7 +349,6 @@ define('JNPAEnterpriseControlTower', [
         });
 
         Promise.all(promises).then(function() {
-            // Populate Dropdowns dynamically from master rows
             app.rawMaster.forEach(function(r) { if(r.terminal) app.uniqueTerminals.add(r.terminal); });
             var termSelect = widget.body.querySelector('#jnpa-filter-terminal');
             app.uniqueTerminals.forEach(function(t) {
@@ -386,7 +388,6 @@ define('JNPAEnterpriseControlTower', [
         var vessel = widget.body.querySelector('#jnpa-filter-vessel').value;
         var search = widget.body.querySelector('#jnpa-search-container').value.toUpperCase();
 
-        // 1. Core Dynamic Cross-Filtering Calculation Strategy
         var records = app.rawMaster.filter(function(m) {
             return (term === 'ALL' || m.terminal === term) &&
                    (flow === 'ALL' || m.flow_type === flow) &&
@@ -396,7 +397,6 @@ define('JNPAEnterpriseControlTower', [
 
         var activeIds = new Set(records.map(function(c) { return c.container_id; }));
 
-        // 2. Aggregate Yard Stay Lifespans
         var sumDwell = 0, countDwell = 0;
         app.rawYard.forEach(function(y) {
             if (activeIds.has(y.container_id)) {
@@ -405,7 +405,6 @@ define('JNPAEnterpriseControlTower', [
             }
         });
 
-        // 3. Aggregate Crane Productivity Output Velocities
         var sumCrane = 0, countCrane = 0;
         app.rawCrane.forEach(function(c) {
             if (term === 'ALL' || c.terminal === term) {
@@ -417,7 +416,6 @@ define('JNPAEnterpriseControlTower', [
         var netDwell = countDwell > 0 ? sumDwell / countDwell : 68.2;
         var netCrane = countCrane > 0 ? sumCrane / countCrane : 32.4;
 
-        // 4. Fire updates directly to elements
         app.renderDynamicKPIs(netDwell, netCrane, records.length);
         app.renderChartsEngine(records.length, netDwell);
         app.renderAssetLifecycleMatrix();
@@ -435,7 +433,6 @@ define('JNPAEnterpriseControlTower', [
             }
         }
 
-        // Contextual dynamic changes reflecting changes instantly based on selected desk view parameters
         if (app.activeModule === 'summary') {
             widget.body.querySelector('#val-kpi-1').textContent = "92%";
             widget.body.querySelector('#val-kpi-2').textContent = crane.toFixed(1) + " mph";
@@ -503,7 +500,6 @@ define('JNPAEnterpriseControlTower', [
         }
         chartsContainer.classList.remove('hidden-desk');
 
-        // Dynamically compute layout changes instead of static array constants
         var barSeriesData = [volume, Math.round(volume * 0.8), Math.round(volume * 0.6), Math.round(volume * 0.4)];
         var lineSeriesData = [dwell, parseFloat((dwell * 1.1).toFixed(1)), parseFloat((dwell * 0.9).toFixed(1)), parseFloat((dwell * 0.8).toFixed(1))];
 
@@ -546,8 +542,6 @@ define('JNPAEnterpriseControlTower', [
     var myWidget = {
         onLoad: function () {
             app.initializeDOMStructure();
-            
-            // Defers dynamic rendering calculations slightly to confirm container DOM sizes for ApexCharts canvas sizing
             window.setTimeout(function() {
                 app.loadAndParseCSVData();
             }, 50);
