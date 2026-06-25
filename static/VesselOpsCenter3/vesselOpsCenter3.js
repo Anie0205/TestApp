@@ -347,14 +347,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '<style>' +
         /* ---- reset / base ---- */
         '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
-        /* Outer scrollable container.
-         * min-height:100vh fills the widget's iframe viewport (= the panel height).
-         * width:100% + overflow:auto gives on-demand scroll in both axes.
-         * position:relative lets the absolute-positioned settings modal stay inside. */
+        /* outer scrollable container – fills whatever space the platform allocates */
         '.voc-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
             'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
-            'width:100%;min-height:100vh;overflow:auto;' +
-            '-webkit-overflow-scrolling:touch;position:relative;}' +
+            'position:absolute;top:0;left:0;right:0;bottom:0;' +
+            'overflow:auto;-webkit-overflow-scrolling:touch;}' +
         /* inner padding box so content never bleeds to edge */
         '.voc-inner{padding:14px;min-width:420px;}' +
 
@@ -688,7 +685,27 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         widget.body.empty();
         UWA.createElement('div', { html: buildHtml() }).inject(widget.body);
 
-        // .voc-inner must be position:relative so the absolute-positioned modal stays inside it
+        // ---- Ensure .voc-wrap's ancestor chain has an explicit height ----
+        // UWA.createElement injects an extra wrapper div between widget.body and .voc-wrap.
+        // We need that wrapper (and ideally widget.body itself) to be position:relative with
+        // height:100% so that position:absolute on .voc-wrap anchors correctly.
+        var wrapEl = document.querySelector('.voc-wrap');
+        if (wrapEl) {
+            var p = wrapEl.parentNode;
+            if (p) {
+                p.style.position = 'relative';
+                p.style.height   = '100%';
+                p.style.overflow = 'hidden';
+            }
+            var gp = p && p.parentNode;
+            if (gp && gp !== document.body) {
+                gp.style.position = 'relative';
+                gp.style.height   = '100%';
+                gp.style.overflow = 'hidden';
+            }
+        }
+
+        // make .voc-inner position:relative so the absolute modal is contained within it
         var inner = document.querySelector('.voc-inner');
         if (inner) { inner.style.position = 'relative'; }
 
@@ -800,42 +817,28 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // ---------------------------------------------------------------------
     // CHART RENDERING (ApexCharts)
     // ---------------------------------------------------------------------
-
-    // Debounced resize: when multiple charts are created in one render pass
-    // (e.g. all three charts on the Vessels tab), we fire a single resize
-    // event 220ms after the LAST creation so ApexCharts can recalculate
-    // dimensions if the container was still being laid out.
-    var _resizeTimer = null;
-    function scheduleResizeNudge() {
-        window.clearTimeout(_resizeTimer);
-        _resizeTimer = window.setTimeout(function () {
-            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
-        }, 220);
-    }
-
     function safeRender(id, config) {
         var el = document.getElementById(id);
         if (!el || !window.ApexCharts) { return; }
 
+        // If the chart already exists but was rendered while its container was
+        // hidden (offsetWidth === 0 → zero-size), destroy it so it gets
+        // re-created with the correct dimensions now that the pane is visible.
+        if (app.chartsMap[id] && el.offsetWidth === 0) {
+            try { app.chartsMap[id].destroy(); } catch (e) {}
+            delete app.chartsMap[id];
+        }
+
         if (app.chartsMap[id]) {
-            // Chart already exists — just update the data, no rebuild needed.
             config.chart.animations = { enabled: false };
+            // redrawPaths=true ensures series lines/bars are fully redrawn on update
             app.chartsMap[id].updateOptions(config, true, false);
         } else {
-            // First time on this chart container — create and render.
-            // NOTE: do NOT check el.offsetWidth here.  In many platform
-            // environments (and in jsdom) offsetWidth is 0 even on visible
-            // elements.  Checking it caused a destroy-recreate loop on every
-            // render tick, preventing charts from ever stabilising.
-            // Instead we rely on redrawOnParentResize / redrawOnWindowResize
-            // and the scheduleResizeNudge() call below to fix any zero-size
-            // render that happened while layout was still in progress.
-            config.chart.animations          = { enabled: app.isFirstLoad, animateOnDataChange: false };
+            config.chart.animations        = { enabled: app.isFirstLoad, animateOnDataChange: false };
             config.chart.redrawOnParentResize = true;
             config.chart.redrawOnWindowResize = true;
             app.chartsMap[id] = new window.ApexCharts(el, config);
             app.chartsMap[id].render();
-            scheduleResizeNudge();
         }
     }
 
@@ -918,6 +921,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         // pane so ApexCharts gets a non-zero offsetWidth when it first measures the container.
         window.setTimeout(function () {
             renderActiveTab();
+            // A second, slightly-later resize pulse covers charts that rendered at
+            // zero size in a previous visit to the tab (e.g. first load race).
+            window.setTimeout(function () {
+                try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+            }, 120);
         }, 0);
     }
 
@@ -1286,6 +1294,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     // ApexCharts measures container dimensions for the first render.
                     window.setTimeout(function () {
                         renderActiveTab();
+                        window.setTimeout(function () {
+                            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+                        }, 120);
                     }, 0);
                 } else {
                     setStatus('No events found in CSV', true);
