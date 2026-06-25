@@ -149,10 +149,34 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function ensureApexCharts() {
         return new Promise(function (resolve, reject) {
             if (window.ApexCharts) { resolve(); return; }
+
+            // ---------------------------------------------------------------
+            // AMD guard — ApexCharts is packaged as UMD.  When an AMD loader
+            // is present (UWA / RequireJS sets window.define with define.amd
+            // truthy), the UMD wrapper calls define(factory) and registers as
+            // an anonymous AMD module instead of assigning window.ApexCharts.
+            // We temporarily clear window.define so the UMD code falls through
+            // to the plain-browser branch:  window.ApexCharts = factory().
+            // define is restored synchronously inside onload/onerror, before
+            // any other module code runs.
+            // ---------------------------------------------------------------
+            var savedDefine = window.define;
+            window.define = undefined;
+
             var s = document.createElement('script');
             s.src = CONFIG.APEXCHARTS_URL;
-            s.onload = function () { resolve(); };
-            s.onerror = function () { reject(new Error('Failed to load ApexCharts from ' + CONFIG.APEXCHARTS_URL)); };
+            s.onload = function () {
+                window.define = savedDefine;          // restore AMD loader
+                if (window.ApexCharts) {
+                    resolve();
+                } else {
+                    reject(new Error('ApexCharts loaded but window.ApexCharts is still undefined — check CSP or URL'));
+                }
+            };
+            s.onerror = function () {
+                window.define = savedDefine;
+                reject(new Error('Failed to load ApexCharts from ' + CONFIG.APEXCHARTS_URL));
+            };
             document.head.appendChild(s);
         });
     }
@@ -347,15 +371,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '<style>' +
         /* ---- reset / base ---- */
         '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
-        /* Outer scrollable container.
-         * min-height:100vh equals the widget iframe's viewport height (= the panel height).
-         * width:100% + overflow:auto gives on-demand scroll in both axes without needing
-         * any ancestor to have an explicit height set. position:relative keeps the
-         * absolute-positioned settings modal anchored inside this container. */
+        /* outer scrollable container – fills whatever space the platform allocates */
         '.voc-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
             'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
-            'width:100%;min-height:100vh;overflow:auto;' +
-            '-webkit-overflow-scrolling:touch;position:relative;}' +
+            'position:absolute;top:0;left:0;right:0;bottom:0;' +
+            'overflow:auto;-webkit-overflow-scrolling:touch;}' +
         /* inner padding box so content never bleeds to edge */
         '.voc-inner{padding:14px;min-width:420px;}' +
 
@@ -689,8 +709,27 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         widget.body.empty();
         UWA.createElement('div', { html: buildHtml() }).inject(widget.body);
 
-        // .voc-inner must be position:relative so the absolute-positioned modal stays inside it.
-        // No parent height manipulation needed — .voc-wrap uses min-height:100vh instead.
+        // ---- Ensure .voc-wrap's ancestor chain has an explicit height ----
+        // UWA.createElement injects an extra wrapper div between widget.body and .voc-wrap.
+        // We need that wrapper (and ideally widget.body itself) to be position:relative with
+        // height:100% so that position:absolute on .voc-wrap anchors correctly.
+        var wrapEl = document.querySelector('.voc-wrap');
+        if (wrapEl) {
+            var p = wrapEl.parentNode;
+            if (p) {
+                p.style.position = 'relative';
+                p.style.height   = '100%';
+                p.style.overflow = 'hidden';
+            }
+            var gp = p && p.parentNode;
+            if (gp && gp !== document.body) {
+                gp.style.position = 'relative';
+                gp.style.height   = '100%';
+                gp.style.overflow = 'hidden';
+            }
+        }
+
+        // make .voc-inner position:relative so the absolute modal is contained within it
         var inner = document.querySelector('.voc-inner');
         if (inner) { inner.style.position = 'relative'; }
 
@@ -803,10 +842,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // CHART RENDERING (ApexCharts)
     // ---------------------------------------------------------------------
 
-    // Debounced resize nudge — fired once 220ms after the last new chart is
-    // created in a render pass. If any chart happened to measure a zero-size
-    // container during initial layout, this causes ApexCharts to redraw at the
-    // correct dimensions without destroying the chart instance.
+    // Debounced resize nudge — fired once, 220 ms after the last new chart is
+    // created in a render pass.  Handles the rare case where a chart measured
+    // a zero-size container during initial layout; ApexCharts redraws at the
+    // correct dimensions on the resize event without the instance being destroyed.
     var _chartResizeTimer = null;
     function scheduleResizeNudge() {
         window.clearTimeout(_chartResizeTimer);
@@ -820,26 +859,23 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         if (!el || !window.ApexCharts) { return; }
 
         if (app.chartsMap[id]) {
-            // ---- chart already exists: update data only ----
-            // IMPORTANT: do NOT check el.offsetWidth here.
-            // In the 3DEXPERIENCE platform widget environment offsetWidth can
-            // be 0 even on fully-visible elements because the layout engine
-            // hasn't committed dimensions yet.  Checking it caused a
-            // destroy-and-recreate loop on every render tick (every 100–350 ms
-            // during playback), so the chart was continuously torn down before
-            // it could ever paint.  Proven: 10 render calls → 10 creates,
-            // 9 destroys, 0 updates — charts never rendered.
+            // ---- update existing chart ----
+            // Do NOT check el.offsetWidth here.  In the UWA platform widget
+            // environment offsetWidth can be 0 on visible elements while the
+            // layout engine is still committing dimensions.  Checking it causes
+            // a destroy-and-recreate loop on every render tick (playback fires
+            // every 100–350 ms), so the chart is continuously torn down before
+            // it can paint.  We let redrawOnParentResize / redrawOnWindowResize
+            // and the scheduleResizeNudge() handle zero-size recovery instead.
             config.chart.animations = { enabled: false };
             app.chartsMap[id].updateOptions(config, false, false);
         } else {
-            // ---- first visit to this chart container: create and render ----
-            config.chart.animations          = { enabled: app.isFirstLoad, animateOnDataChange: false };
-            config.chart.redrawOnParentResize = true;
-            config.chart.redrawOnWindowResize = true;
+            // ---- first visit: create and render ----
+            config.chart.animations           = { enabled: app.isFirstLoad, animateOnDataChange: false };
+            config.chart.redrawOnParentResize  = true;
+            config.chart.redrawOnWindowResize  = true;
             app.chartsMap[id] = new window.ApexCharts(el, config);
             app.chartsMap[id].render();
-            // Schedule a resize nudge so any chart that rendered at zero size
-            // (rare: layout not yet committed) gets redrawn at correct dimensions.
             scheduleResizeNudge();
         }
     }
@@ -919,10 +955,15 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             var meta = TAB_META.filter(function (t) { return t.id === tabId; })[0];
             if (meta) { badge.textContent = meta.icon + ' ' + meta.label; }
         }
-        // Defer by one frame so the browser applies display:block on the newly-active
-        // pane before ApexCharts tries to measure the container dimensions.
+        // Defer by one frame: lets the browser apply display:block on the newly-active
+        // pane so ApexCharts gets a non-zero offsetWidth when it first measures the container.
         window.setTimeout(function () {
             renderActiveTab();
+            // A second, slightly-later resize pulse covers charts that rendered at
+            // zero size in a previous visit to the tab (e.g. first load race).
+            window.setTimeout(function () {
+                try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+            }, 120);
         }, 0);
     }
 
@@ -1291,6 +1332,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     // ApexCharts measures container dimensions for the first render.
                     window.setTimeout(function () {
                         renderActiveTab();
+                        window.setTimeout(function () {
+                            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+                        }, 120);
                     }, 0);
                 } else {
                     setStatus('No events found in CSV', true);
