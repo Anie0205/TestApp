@@ -22,7 +22,7 @@
  * ---------------------------------------------------------------------
  */
 
-define('VesselOpsCenter',
+define('VesselOpsCenter3',
 [
     'UWA/Core',
     'UWA/Promise',
