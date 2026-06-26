@@ -116,15 +116,14 @@
                     <span id="truckQueue" class="text-amber-600 font-bold text-[11px]">0 Active</span>
                 </div>
                 <div class="flex gap-1.5 pl-1">
-                    <!-- File Uploader Hidden/Custom Input -->
-                    <label class="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm cursor-pointer">
-                        📂 Load Telemetry CSV
-                        <input id="csvFileInput" type="file" accept=".csv" class="hidden">
-                    </label>
-                    <label class="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm cursor-pointer" title="Load vessels_master.csv for draft data">
-                        🚢 Vessels Master
-                        <input id="vesselsMasterInput" type="file" accept=".csv" class="hidden">
-                    </label>
+                    <!-- Auto-load trigger button -->
+                    <button id="btnAutoLoad" onclick="autoLoadAllCSVs()" class="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm">
+                        ⚡ Auto-Load Data
+                    </button>
+                    <button onclick="openModal('loadStatusModal')" class="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition" id="btnLoadStatus">
+                        <span id="loadStatusDot" class="inline-block w-2 h-2 rounded-full bg-slate-300 mr-0.5"></span>
+                        <span id="loadStatusLabel">Data Status</span>
+                    </button>
                     <button onclick="openModal('searchModal')" class="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition">
                         🔍 Trace Finder
                     </button>
@@ -385,6 +384,42 @@
          MODALS & POPUPS CONTAINER (Tailwind Sandbox Layer)
          ------------------------------------------------------------- -->
     
+    <!-- 0. Data Load Status Modal -->
+    <div id="loadStatusModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-200 p-6 overflow-y-auto max-h-[90vh] space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    📡 Data Source Status
+                </h3>
+                <button onclick="closeModal('loadStatusModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
+            </div>
+
+            <!-- Overall progress bar -->
+            <div>
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Overall Load Progress</span>
+                    <span id="overallLoadPct" class="text-[10px] font-bold text-blue-600 mono-font">0 / 5 files</span>
+                </div>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="overallLoadBar" class="h-2 bg-blue-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                </div>
+            </div>
+
+            <!-- Per-file status rows -->
+            <div class="space-y-2" id="fileStatusList">
+                <!-- Populated dynamically -->
+            </div>
+
+            <!-- Action row -->
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                <p class="text-[9px] text-slate-400 leading-normal">Files are fetched from the same directory as this HTML file on the server.</p>
+                <button onclick="autoLoadAllCSVs()" class="shrink-0 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition">
+                    ↺ Reload All
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. Settings & Control Room Modal -->
     <div id="settingsModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-200 p-6 overflow-y-auto max-h-[90vh] space-y-5">
@@ -500,28 +535,348 @@
         const shippingLineDistribution = { 'HAPAG': 0, 'ONE': 0, 'MSC': 0, 'CMA CGM': 0, 'MAERSK': 0, 'EVERGREEN': 0 };
 
         // -------------------------------------------------------------
-        // FIX 1: VESSELS MASTER CSV LOADER (for draft_design_m data)
         // -------------------------------------------------------------
-        document.getElementById('vesselsMasterInput').onchange = function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                const parsed = parseCSVText(evt.target.result);
-                parsed.forEach(row => {
-                    if (row.vessel_id) {
-                        vessels_master_registry[row.vessel_id] = {
-                            draft: parseFloat(row.draft_design_m) || 12.0,
-                            teu_capacity: row.teu_capacity,
-                            vessel_class: row.vessel_class,
-                            shipping_line: row.shipping_line
-                        };
-                    }
-                });
-                console.log(`Loaded ${Object.keys(vessels_master_registry).length} vessel master records.`);
+        // AUTO-FETCH ENGINE: loads all CSVs from server relative paths
+        // -------------------------------------------------------------
+
+        // Manifest of all CSV files, their roles, and load state
+        const CSV_MANIFEST = [
+            {
+                key: 'lifecycle',
+                filename: 'vessel_lifecycle_simulation.csv',
+                label: 'Vessel Lifecycle Simulation',
+                icon: '📋',
+                description: '96,000 multi-domain event rows — primary telemetry feed',
+                required: true,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'vessels',
+                filename: 'vessels_master.csv',
+                label: 'Vessels Master Registry',
+                icon: '🚢',
+                description: '50 ship records with draft, class, and TEU capacity',
+                required: true,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'berths',
+                filename: 'berths_master.csv',
+                label: 'Berths Infrastructure',
+                icon: '⚓',
+                description: '10 berth records with terminal mapping and dredge depths',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'containers',
+                filename: 'containers_master.csv',
+                label: 'Containers Master',
+                icon: '📦',
+                description: '10,000 container asset records (export + import)',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'trucks',
+                filename: 'trucks_master.csv',
+                label: 'Trucks Master Registry',
+                icon: '🚛',
+                description: '5,000 unique truck registrations with operator and fuel type',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            }
+        ];
+
+        // Render the status modal rows from current manifest state
+        function renderLoadStatusModal() {
+            const list = document.getElementById('fileStatusList');
+            if (!list) return;
+
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const pct = Math.round((loadedCount / total) * 100);
+
+            const overallBar = document.getElementById('overallLoadBar');
+            const overallPct = document.getElementById('overallLoadPct');
+            if (overallBar) overallBar.style.width = pct + '%';
+            if (overallPct) overallPct.innerText = `${loadedCount} / ${total} files`;
+
+            // Change bar color on full load
+            if (overallBar) {
+                overallBar.className = `h-2 rounded-full transition-all duration-500 ${loadedCount === total ? 'bg-emerald-500' : loadedCount > 0 ? 'bg-blue-500' : 'bg-slate-300'}`;
+            }
+
+            list.innerHTML = CSV_MANIFEST.map(f => {
+                let statusIcon, statusClass, statusText;
+                if (f.loaded) {
+                    statusIcon = '✅';
+                    statusClass = 'bg-emerald-50 border-emerald-200';
+                    statusText = `<span class="text-emerald-700 font-bold">${f.rows.toLocaleString()} rows loaded</span>`;
+                } else if (f.error) {
+                    statusIcon = '❌';
+                    statusClass = 'bg-red-50 border-red-200';
+                    statusText = `<span class="text-red-600 font-bold">${f.error}</span>`;
+                } else {
+                    statusIcon = f.required ? '⏳' : '○';
+                    statusClass = 'bg-slate-50 border-slate-200';
+                    statusText = `<span class="text-slate-400">${f.required ? 'Pending...' : 'Not loaded'}</span>`;
+                }
+
+                return `
+                    <div class="flex items-start gap-3 p-2.5 rounded-xl border ${statusClass}">
+                        <span class="text-base shrink-0 mt-0.5">${statusIcon}</span>
+                        <div class="flex-grow min-w-0">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] font-extrabold text-slate-800">${f.icon} ${f.label}</span>
+                                ${f.required ? '<span class="text-[8px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">Required</span>' : '<span class="text-[8px] bg-slate-100 text-slate-500 px-1.5 rounded font-bold uppercase">Optional</span>'}
+                            </div>
+                            <div class="text-[9px] text-slate-400 mt-0.5 truncate">${f.filename}</div>
+                            <div class="text-[9px] mt-0.5">${statusText}</div>
+                            <div class="text-[9px] text-slate-400 mt-0.5 leading-normal">${f.description}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update the compact header status dot + label
+        function updateHeaderLoadBadge() {
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const hasError = CSV_MANIFEST.some(f => f.error);
+            const dot = document.getElementById('loadStatusDot');
+            const lbl = document.getElementById('loadStatusLabel');
+            if (!dot || !lbl) return;
+
+            if (loadedCount === total) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-emerald-500 mr-0.5';
+                lbl.innerText = `All ${total} Files OK`;
+            } else if (hasError) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-red-500 mr-0.5 animate-pulse';
+                lbl.innerText = `Load Error`;
+            } else if (loadedCount > 0) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-amber-400 mr-0.5 animate-pulse';
+                lbl.innerText = `${loadedCount}/${total} Loaded`;
+            } else {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-slate-300 mr-0.5';
+                lbl.innerText = 'Data Status';
+            }
+        }
+
+        // Show a brief toast notification at top-right
+        function showToast(message, type = 'info') {
+            const colorMap = {
+                success: 'bg-emerald-600 text-white',
+                error:   'bg-red-600 text-white',
+                info:    'bg-blue-600 text-white',
+                warning: 'bg-amber-500 text-white'
             };
-            reader.readAsText(file);
-        };
+            const toast = document.createElement('div');
+            toast.className = `fixed top-16 right-4 z-[9999] px-4 py-2.5 rounded-xl shadow-lg text-xs font-bold transition-all duration-300 ${colorMap[type] || colorMap.info}`;
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-8px)';
+            toast.innerText = message;
+            document.body.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            });
+
+            // Auto-dismiss after 3.5s
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-8px)';
+                setTimeout(() => toast.remove(), 350);
+            }, 3500);
+        }
+
+        // Core fetch-and-parse function for a single CSV file
+        async function fetchCSV(filename) {
+            const response = await fetch(filename, { cache: 'no-cache' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            return parseCSVText(text);
+        }
+
+        // Main orchestrator: loads all CSVs in parallel with status tracking
+        async function autoLoadAllCSVs() {
+            // Reset all manifest states
+            CSV_MANIFEST.forEach(f => { f.loaded = false; f.rows = 0; f.error = null; });
+            renderLoadStatusModal();
+            updateHeaderLoadBadge();
+
+            const btnAutoLoad = document.getElementById('btnAutoLoad');
+            if (btnAutoLoad) {
+                btnAutoLoad.disabled = true;
+                btnAutoLoad.innerText = '⏳ Loading...';
+                btnAutoLoad.className = btnAutoLoad.className.replace('bg-emerald-600 hover:bg-emerald-700', 'bg-slate-400 cursor-not-allowed');
+            }
+
+            showToast('🔄 Fetching all CSV data files from server...', 'info');
+
+            // Load all files concurrently
+            const loadTasks = CSV_MANIFEST.map(async (manifest) => {
+                try {
+                    const parsed = await fetchCSV(manifest.filename);
+                    if (parsed.length === 0) throw new Error('0 rows parsed');
+
+                    manifest.loaded = true;
+                    manifest.rows = parsed.length;
+                    manifest.error = null;
+
+                    // Route each file to its handler
+                    if (manifest.key === 'lifecycle') {
+                        ingestLifecycleCSV(parsed);
+                    } else if (manifest.key === 'vessels') {
+                        ingestVesselsMasterCSV(parsed);
+                    } else if (manifest.key === 'berths') {
+                        ingestBerthsMasterCSV(parsed);
+                    } else if (manifest.key === 'containers') {
+                        ingestContainersMasterCSV(parsed);
+                    } else if (manifest.key === 'trucks') {
+                        ingestTrucksMasterCSV(parsed);
+                    }
+
+                    showToast(`✅ ${manifest.label}: ${parsed.length.toLocaleString()} rows`, 'success');
+                } catch (err) {
+                    manifest.loaded = false;
+                    manifest.error = err.message || 'Failed';
+                    showToast(`❌ ${manifest.label}: ${manifest.error}`, 'error');
+                }
+
+                // Re-render after each file resolves (progressive updates)
+                renderLoadStatusModal();
+                updateHeaderLoadBadge();
+            });
+
+            await Promise.allSettled(loadTasks);
+
+            // Final summary toast
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const requiredMissing = CSV_MANIFEST.filter(f => f.required && !f.loaded);
+
+            if (requiredMissing.length > 0) {
+                showToast(`⚠️ ${requiredMissing.length} required file(s) failed to load`, 'warning');
+            } else if (loadedCount === total) {
+                showToast(`🟢 All ${total} data files loaded successfully!`, 'success');
+            } else {
+                showToast(`⚠️ ${loadedCount}/${total} files loaded (optional files missing)`, 'warning');
+            }
+
+            if (btnAutoLoad) {
+                btnAutoLoad.disabled = false;
+                btnAutoLoad.innerText = '⚡ Auto-Load Data';
+                btnAutoLoad.className = btnAutoLoad.className.replace('bg-slate-400 cursor-not-allowed', 'bg-emerald-600 hover:bg-emerald-700');
+            }
+        }
+
+        // -------------------------------------------------------------
+        // PER-FILE INGEST HANDLERS
+        // -------------------------------------------------------------
+        function ingestLifecycleCSV(parsed) {
+            let rows = parsed.filter(row => row.event_time && row.event_time.trim() !== '');
+            if (rows.length === 0) return;
+
+            rows.sort((a, b) => {
+                const tA = new Date(a.event_time.replace(' ', 'T'));
+                const tB = new Date(b.event_time.replace(' ', 'T'));
+                return tA - tB;
+            });
+
+            csvEvents = rows;
+            playbackIndex = 0;
+
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.max = csvEvents.length - 1;
+                slider.value = 0;
+                slider.disabled = false;
+            }
+
+            setElementText('lblPlaybackStatus', `Live Playback - ${csvEvents.length.toLocaleString()} Events`);
+            document.getElementById('eventConsole').innerHTML = `
+                <div class="p-2.5 rounded-lg text-emerald-800 bg-emerald-50 text-center border border-emerald-200">
+                    🟢 <b>${csvEvents.length.toLocaleString()}</b> relational events loaded from server. Click <b>Play</b> or <b>Step</b> to start the digital twin.
+                </div>
+            `;
+            resetDigitalTwinState();
+        }
+
+        function ingestVesselsMasterCSV(parsed) {
+            vessels_master_registry = {};
+            parsed.forEach(row => {
+                if (row.vessel_id) {
+                    vessels_master_registry[row.vessel_id] = {
+                        draft: parseFloat(row.draft_design_m) || 12.0,
+                        teu_capacity: row.teu_capacity,
+                        vessel_class: row.vessel_class,
+                        shipping_line: row.shipping_line
+                    };
+                }
+            });
+        }
+
+        function ingestBerthsMasterCSV(parsed) {
+            // Enrich TERMINAL_BERTH_MAP with live dredge depths from the master file
+            parsed.forEach(row => {
+                const tid = row.terminal_id;
+                if (tid && TERMINAL_BERTH_MAP[tid]) {
+                    TERMINAL_BERTH_MAP[tid].depth = parseFloat(row.dredge_depth_m) || TERMINAL_BERTH_MAP[tid].depth;
+                }
+            });
+        }
+
+        function ingestContainersMasterCSV(parsed) {
+            // Pre-populate containers_registry with master asset data
+            parsed.forEach(row => {
+                if (row.container_id) {
+                    containers_registry[row.container_id] = {
+                        id: row.container_id,
+                        vessel_id: row.vessel_id,
+                        voyage: row.voyage_no,
+                        container_type: row.container_type,
+                        direction: row.direction,
+                        yard_block: row.assigned_yard_block,
+                        yard_bay: row.assigned_yard_bay,
+                        stage: 'MANIFEST'
+                    };
+                }
+            });
+        }
+
+        function ingestTrucksMasterCSV(parsed) {
+            // Pre-populate trucks_registry with master registration data
+            parsed.forEach(row => {
+                if (row.truck_id) {
+                    trucks_registry[row.truck_id] = {
+                        id: row.truck_id,
+                        tare_weight: row.tare_weight_kg,
+                        operator: row.operator_code,
+                        fuel: row.fuel_type,
+                        vessel_id: '',
+                        stage: 'REGISTERED'
+                    };
+                }
+            });
+        }
+
+        // -------------------------------------------------------------
+        // FIX 1: VESSELS MASTER CSV LOADER (kept as fallback manual loader)
+        // (vesselsMasterInput hidden input removed - auto-fetch replaces it)
 
         // -------------------------------------------------------------
         // MODALS WINDOW CONTROLS
@@ -540,8 +895,10 @@
         window.onclick = function(event) {
             const settingsModal = document.getElementById('settingsModal');
             const searchModal = document.getElementById('searchModal');
+            const loadStatusModal = document.getElementById('loadStatusModal');
             if (event.target === settingsModal) settingsModal.classList.add('hidden');
             if (event.target === searchModal) searchModal.classList.add('hidden');
+            if (event.target === loadStatusModal) loadStatusModal.classList.add('hidden');
         };
 
         // -------------------------------------------------------------
@@ -602,52 +959,7 @@
             return result;
         }
 
-        // -------------------------------------------------------------
-        // FILE UPLOADER HANDLER
-        // -------------------------------------------------------------
-        document.getElementById('csvFileInput').onchange = function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                let parsed = parseCSVText(evt.target.result);
-                
-                // Keep only rows with valid event times to avoid sorting crashes on empty spaces
-                parsed = parsed.filter(row => row.event_time && row.event_time.trim() !== "");
-                
-                if (parsed.length === 0) {
-                    alert("Parsed 0 valid rows. Please check that the vessel_lifecycle_simulation.csv has correct headers.");
-                    return;
-                }
-
-                // Safari-compliant sorting converter: space " " -> "T"
-                parsed.sort((a, b) => {
-                    const tA = new Date(a.event_time.replace(' ', 'T'));
-                    const tB = new Date(b.event_time.replace(' ', 'T'));
-                    return tA - tB;
-                });
-                
-                csvEvents = parsed;
-                playbackIndex = 0;
-
-                // Update Seeker Timeline Slider bounds
-                const slider = document.getElementById('timelineSlider');
-                slider.max = csvEvents.length - 1;
-                slider.value = 0;
-                slider.disabled = false;
-
-                setElementText('lblPlaybackStatus', `Live Playback - ${csvEvents.length} Events`);
-                document.getElementById('eventConsole').innerHTML = `
-                    <div class="p-2.5 rounded-lg text-emerald-800 bg-emerald-50 text-center border border-emerald-200">
-                        🟢 Successfully parsed <b>${csvEvents.length.toLocaleString()}</b> relational events from telemetry registry! Click <b>Play</b> or <b>Step</b> to view the digital twin.
-                    </div>
-                `;
-
-                resetDigitalTwinState();
-            };
-            reader.readAsText(file);
-        };
+        // (Manual file uploader replaced by autoLoadAllCSVs fetch engine above)
 
         // -------------------------------------------------------------
         // PHYSICAL STATE MUTATION RESET
@@ -1380,6 +1692,11 @@
             initializeTelemetryCharts();
             initializeEvents();
             renderBerthMapGrid();
+            // Render initial empty status modal state
+            renderLoadStatusModal();
+            updateHeaderLoadBadge();
+            // Auto-fetch all CSVs from server on page load
+            autoLoadAllCSVs();
         };
 
     </script>
