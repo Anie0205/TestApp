@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JNPA Control Tower Dashboard - CSV Playback</title>
+    <!-- Precompiled CSS Stylesheet to completely avoid local file:/// origin security errors -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <!-- Chart.js for high-fidelity canvas metrics plotting -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        
+        .mono-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom scrollbar configurations */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Range slider styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 9999px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #1d4ed8;
+        }
+
+        /* Chart constraints */
+        .chart-container-wrapper {
+            position: relative;
+            width: 100%;
+            height: 120px;
+        }
+
+        /* Fallback utilities for Slate in Tailwind v2 */
+        .bg-slate-50 { background-color: #f8fafc; }
+        .bg-slate-100 { background-color: #f1f5f9; }
+        .bg-slate-900 { background-color: #0f172a; }
+        .bg-slate-950 { background-color: #020617; }
+        .border-slate-100 { border-color: #f1f5f9; }
+        .border-slate-200 { border-color: #e2e8f0; }
+        .text-slate-400 { color: #94a3b8; }
+        .text-slate-500 { color: #64748b; }
+        .text-slate-600 { color: #475569; }
+        .text-slate-700 { color: #334155; }
+        .text-slate-800 { color: #1e293b; }
+        .text-slate-900 { color: #0f172a; }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
+
+    <!-- Top Navigation Ribbon -->
+    <header class="border-b border-slate-200 bg-white sticky top-0 z-40 px-6 py-3 shadow-xs shrink-0">
+        <div class="max-w-7xl mx-auto flex flex-col lg:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2.5">
+                <span class="text-2xl">🏢</span>
+                <div>
+                    <h1 class="text-lg font-extrabold tracking-tight text-slate-900 font-sans leading-none">JNPA Control Tower</h1>
+                    <p class="text-[10px] text-slate-400 font-bold tracking-wider uppercase mt-1">Data-Driven Playback Engine</p>
+                </div>
+            </div>
+            
+            <!-- Global Telemetry Status Bar & Settings Access Buttons -->
+            <div class="flex flex-wrap items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Simulated Clock</span>
+                    <span id="globalClock" class="text-blue-600 font-bold mono-font text-[11px]">No File Loaded</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Dynamic Tide</span>
+                    <span id="tideGauge" class="text-indigo-600 font-black text-[11px]">0.00m</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Active Fleet</span>
+                    <span id="vesselsInPort" class="text-emerald-600 font-bold text-[11px]">0 In Port</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Gated Trucks</span>
+                    <span id="truckQueue" class="text-amber-600 font-bold text-[11px]">0 Active</span>
+                </div>
+                <div class="flex gap-1.5 pl-1">
+                    <!-- File Uploader Hidden/Custom Input -->
+                    <label class="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm cursor-pointer">
+                        📂 Load Telemetry CSV
+                        <input id="csvFileInput" type="file" accept=".csv" class="hidden">
+                    </label>
+                    <label class="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm cursor-pointer" title="Load vessels_master.csv for draft data">
+                        🚢 Vessels Master
+                        <input id="vesselsMasterInput" type="file" accept=".csv" class="hidden">
+                    </label>
+                    <button onclick="openModal('searchModal')" class="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition">
+                        🔍 Trace Finder
+                    </button>
+                    <button onclick="openModal('settingsModal')" class="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm">
+                        ⚙️ Control Room
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Master Desktop Screen Heights Limit Layout -->
+    <main class="max-w-7xl mx-auto p-4 flex-grow w-full grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[calc(100vh-70px)] lg:overflow-hidden">
+        
+        <!-- Left Section (All core visual states, pillars, matrix, graphs - 8 Columns) -->
+        <section class="lg:col-span-8 flex flex-col space-y-4 lg:overflow-y-auto lg:pr-2 h-full pb-4">
+            
+            <!-- Timeline Playback Seek Bar -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0 flex flex-col md:flex-row items-center gap-4">
+                <div class="flex gap-1.5 shrink-0">
+                    <button id="btnPlay" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm">
+                        Play
+                    </button>
+                    <button id="btnStep" class="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition">
+                        Step Event
+                    </button>
+                    <button id="btnReset" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs font-semibold rounded-lg border border-slate-200 transition">
+                        Restart
+                    </button>
+                </div>
+                
+                <div class="flex-grow w-full flex items-center gap-3">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Timeline Seek:</span>
+                    <input id="timelineSlider" type="range" min="0" max="0" value="0" class="flex-grow cursor-pointer" disabled>
+                    <span id="lblTimelineProgress" class="text-xs font-bold text-blue-600 mono-font shrink-0">0 / 0</span>
+                </div>
+            </div>
+
+            <!-- KPI Counters Row -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Processed Events</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiScheduled" class="text-xl font-extrabold text-slate-800">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">rows</span>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Moored / Operating</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiMoored" class="text-xl font-extrabold text-blue-600">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">active</span>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Outbound / Sailed</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiSailed" class="text-xl font-extrabold text-emerald-600">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">cleared</span>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Active Relational Registry</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiSync" class="text-xl font-extrabold text-slate-800">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">entities</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Core Infrastructure Pillars (Maritime, Yards, Gates) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
+                
+                <!-- Pillar 1: Marine anchorage & pilotage -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-blue-500 bg-blue-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-blue-700 block">I. Maritime Status</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Scheduled Fleet:</span>
+                                <span id="lblShipScheduled" class="font-extrabold text-slate-800">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Anchorage Waiting:</span>
+                                <span id="lblShipAnchored" class="font-extrabold text-amber-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Moored / At Berth:</span>
+                                <span id="lblShipMoored" class="font-extrabold text-blue-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center border-t border-slate-100 pt-1.5 mt-1">
+                                <span class="text-slate-500 font-semibold">Avg Anchorage Wait:</span>
+                                <span id="lblAvgAnchorWait" class="font-extrabold text-amber-600">0.0 h</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Avg Cargo Hours:</span>
+                                <span id="lblAvgCargoHours" class="font-extrabold text-slate-700">0.0 h</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 2: Yards space management -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-emerald-700 block">II. Yard Allocations</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard A (Dry Cargo):</span>
+                                <span id="lblYardADry" class="font-extrabold text-slate-800">4,500 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard B (Dry Cargo):</span>
+                                <span id="lblYardBDry" class="font-extrabold text-slate-800">3,800 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard C (Reefer Plugs):</span>
+                                <span id="lblYardCReefer" class="font-extrabold text-emerald-600">1,200 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard D (Reefer Plugs):</span>
+                                <span id="lblYardDReefer" class="font-extrabold text-emerald-600">900 TEU</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 3: Entry & Exit Gates -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-amber-500 bg-amber-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-amber-700 block">III. Port Boundaries</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Inbound Gate (OCR):</span>
+                                <span id="lblEntryGate" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">North Exit (Outbound):</span>
+                                <span id="lblExitNorth" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">South Exit (Outbound):</span>
+                                <span id="lblExitSouth" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Spatial Berth Allocations Grid -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0">
+                <div class="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+                    <h2 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        <span>⚓</span> JNPA Berth Matrix (State Allocation Map)
+                    </h2>
+                    
+                    <div>
+                        <select id="filterTerminal" class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 focus:outline-none cursor-pointer">
+                            <option value="ALL">All Terminals (T1, T2, T3, T4)</option>
+                            <option value="T1">T1 Dry (Berths: B1, B2, B3)</option>
+                            <option value="T2">T2 Dry (Berths: B4, B5, B6)</option>
+                            <option value="T3">T3 Reefer (Berths: B7, B8)</option>
+                            <option value="T4">T4 Reefer (Berths: B9, B10)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3" id="berthLayoutContainer">
+                    <!-- Renders dynamically with perfect spatial allocation mapping -->
+                </div>
+            </div>
+
+            <!-- Dynamic Telemetry Graphs -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2 mb-3">
+                    📈 Control Tower Live Telemetry Plots
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="chart-container-wrapper">
+                        <canvas id="bottleneckChart"></canvas>
+                    </div>
+                    <div class="chart-container-wrapper">
+                        <canvas id="customsDistributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Section (Event Logger and Stage counter - 4 Columns) -->
+        <section class="lg:col-span-4 flex flex-col space-y-4 h-full">
+            
+            <!-- Compact Fleet Lifecycle State-Machine Grid -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs shrink-0">
+                <h3 class="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mb-2.5">
+                    🔄 Fleet Stage Distribution
+                </h3>
+                <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">1. Scheduled</span>
+                        <span id="stage_eta" class="text-sm font-extrabold text-slate-800 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">2. Anchored</span>
+                        <span id="stage_anch" class="text-sm font-extrabold text-amber-500 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">3. Moored</span>
+                        <span id="stage_moored" class="text-sm font-extrabold text-indigo-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">4. Crane Ops</span>
+                        <span id="stage_ops" class="text-sm font-extrabold text-blue-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">5. Done</span>
+                        <span id="stage_done" class="text-sm font-extrabold text-emerald-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">6. Sailed</span>
+                        <span id="stage_sailed" class="text-sm font-extrabold text-slate-400 block mt-0.5">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Event Logger Card (Contrast-Optimized Dark text on light BG) -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex-grow flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-2.5 shrink-0">
+                    <h2 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        <span id="livePulseSignal" class="text-emerald-500 animate-pulse">●</span> Simulated Telemetry Stream
+                    </h2>
+                    <span id="lblPlaybackStatus" class="mono-font text-[8px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500 font-bold uppercase">
+                        no file loaded
+                    </span>
+                </div>
+                <!-- Scrolling Terminal Core: Crisp, high contrast white/slate-50 background -->
+                <div id="eventConsole" class="bg-white border border-slate-200 rounded-xl p-2.5 overflow-y-auto font-mono text-[11px] space-y-2 shadow-inner flex-grow min-h-0">
+                    <div class="text-slate-400 text-center py-10">
+                        <span class="text-3xl block mb-2">📂</span>
+                        <p class="font-bold text-slate-700">Please select and load the vessel_lifecycle_simulation.csv</p>
+                        <p class="text-[10px] mt-1 text-slate-400">File is generated using the Python simulation engine script.</p>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- -------------------------------------------------------------
+         MODALS & POPUPS CONTAINER (Tailwind Sandbox Layer)
+         ------------------------------------------------------------- -->
+    
+    <!-- 1. Settings & Control Room Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-200 p-6 overflow-y-auto max-h-[90vh] space-y-5">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    ⚙️ Control Room Parameters
+                </h3>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
+            </div>
+
+            <!-- Playback speed override -->
+            <div class="space-y-3 pt-2 text-xs">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">1. Playback Velocity</span>
+                
+                <div>
+                    <div class="flex justify-between mb-1 items-center">
+                        <span class="text-slate-500 font-semibold">Speed Modifier:</span>
+                        <span id="lblPlaybackSpeed" class="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">1 Event / Cycle</span>
+                    </div>
+                    <input id="overrideSpeed" type="range" min="1" max="50" step="1" value="1" class="w-full cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Verification Agent Diagnostic Card -->
+            <div class="pt-3 border-t border-slate-100 space-y-2">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">2. Playback Security Checks</span>
+                <div class="flex items-center gap-2.5 p-2.5 bg-green-50 rounded-xl border border-green-100">
+                    <span class="text-lg">✔️</span>
+                    <div>
+                        <span class="text-[11px] font-bold text-green-800 block">DES Sequence Verified</span>
+                        <span class="text-[9px] text-green-600">State machines update cleanly from CSV headers</span>
+                    </div>
+                </div>
+                <div class="text-[9px] text-slate-400 leading-normal space-y-1 pl-1">
+                    <p>• Ensures vessel drafts respect $Draft \le Depth_{chart} + Tide$ at mooring requests.</p>
+                    <p>• Confirms shipping bills ($T_{LEO} < T_{Load}$) and customs releases ($T_{OOC} < T_{GateOut}$).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Search & Traceability Finder Modal -->
+    <div id="searchModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 p-6 space-y-4">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    🔍 Trace Relational Registry
+                </h3>
+                <button onclick="closeModal('searchModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
+            </div>
+
+            <!-- Query Entry field -->
+            <div class="space-y-3">
+                <p class="text-[10px] text-slate-400 leading-normal">
+                    Enter any valid ID across the digital twin database — vessels (<code class="bg-slate-100 px-1 rounded text-blue-600">V0001</code>), containers (<code class="bg-slate-100 px-1 rounded text-emerald-600">JNPU-EX-V0001-001</code>), or trucks (<code class="bg-slate-100 px-1 rounded text-amber-600">MH-46-TRK-0001</code>):
+                </p>
+                <div class="flex gap-2">
+                    <input id="txtQuery" type="text" placeholder="e.g. V0001, JNPU-EX-V0001-001, MH-46-TRK-0001" class="flex-grow p-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+                    <button onclick="traceEntity()" class="px-3.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition">Search</button>
+                </div>
+                <div id="searchResult" class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1.5 hidden shadow-inner">
+                    <!-- Dynamic Search outcomes -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Master Simulation & Chart Logic -->
+    <script>
+        // -------------------------------------------------------------
+        // DYNAMIC STATE-MACHINE REGISTRY FOR CSV PARSING
+        // -------------------------------------------------------------
+        let csvEvents = []; // Populated via user CSV file reader
+        let playbackIndex = 0;
+        let simLoop = null;
+
+        // FIX 1: vessels_master registry - loaded from vessels_master.csv for draft data
+        let vessels_master_registry = {}; // keyed by vessel_id -> { draft_design_m, teu_capacity, ... }
+
+        // In-memory telemetry datasets
+        let vessels_registry = {};
+        let simulated_truck_count = 0;
+        let simulated_container_count = 0;
+
+        // FIX 8: Container and Truck registries for Trace Finder
+        let containers_registry = {}; // keyed by container_id
+        let trucks_registry = {};     // keyed by truck plate
+
+        // FIX 4: Added Yard D for T4 reefer terminal
+        let yard_inventories = { 'Yard A': 4500, 'Yard B': 3800, 'Yard C': 1200, 'Yard D': 900 };
+
+        // FIX 5: For anchorage_wait_hours and cargo_hours tracking
+        let anchor_wait_sum = 0;
+        let anchor_wait_count = 0;
+        let cargo_hours_sum = 0;
+        let cargo_hours_count = 0;
+
+        // Stacking volumes across Yard blocks (Dry term = T1/T2, Reefer term = T3/T4)
+
+        // Terminal Berth maps tracking state based on container_type_pools mapping
+        const TERMINAL_BERTH_MAP = {
+            'T1':  { depth: 16.5, berths: ['B1', 'B2', 'B3'], activeShips: [null, null, null] },
+            'T2':  { depth: 15.0, berths: ['B4', 'B5', 'B6'], activeShips: [null, null, null] },
+            'T3':  { depth: 13.5, berths: ['B7', 'B8'], activeShips: [null, null] },
+            'T4':  { depth: 12.5, berths: ['B9', 'B10'], activeShips: [null, null] }
+        };
+
+        // Graph data points
+        const timeLogLabels = [];
+        const queueMetrics = [];
+        const shippingLineDistribution = { 'HAPAG': 0, 'ONE': 0, 'MSC': 0, 'CMA CGM': 0, 'MAERSK': 0, 'EVERGREEN': 0 };
+
+        // -------------------------------------------------------------
+        // FIX 1: VESSELS MASTER CSV LOADER (for draft_design_m data)
+        // -------------------------------------------------------------
+        document.getElementById('vesselsMasterInput').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const parsed = parseCSVText(evt.target.result);
+                parsed.forEach(row => {
+                    if (row.vessel_id) {
+                        vessels_master_registry[row.vessel_id] = {
+                            draft: parseFloat(row.draft_design_m) || 12.0,
+                            teu_capacity: row.teu_capacity,
+                            vessel_class: row.vessel_class,
+                            shipping_line: row.shipping_line
+                        };
+                    }
+                });
+                console.log(`Loaded ${Object.keys(vessels_master_registry).length} vessel master records.`);
+            };
+            reader.readAsText(file);
+        };
+
+        // -------------------------------------------------------------
+        // MODALS WINDOW CONTROLS
+        // -------------------------------------------------------------
+        function openModal(id) {
+            const target = document.getElementById(id);
+            if (target) target.classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            const target = document.getElementById(id);
+            if (target) target.classList.add('hidden');
+        }
+
+        // Close Modals on Outer Backdrop Clicks
+        window.onclick = function(event) {
+            const settingsModal = document.getElementById('settingsModal');
+            const searchModal = document.getElementById('searchModal');
+            if (event.target === settingsModal) settingsModal.classList.add('hidden');
+            if (event.target === searchModal) searchModal.classList.add('hidden');
+        };
+
+        // -------------------------------------------------------------
+        // DOM MUTATION SAFE HELPER
+        // -------------------------------------------------------------
+        function setElementText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+
+        // -------------------------------------------------------------
+        // ROBUST REVOLUTIONARY PARSER FOR HIGH-VOLUME CSV DATA
+        // -------------------------------------------------------------
+        function parseCSVText(text) {
+            const lines = text.split(/\r?\n/);
+            let result = [];
+            if (lines.length < 2) return result;
+
+            // Clean header parser - clean hidden BOM and whitespace, convert to lowercase
+            const headers = lines[0].split(',')
+                .map(h => h.trim()
+                    .replace(/^\ufeff/, '') 
+                    .replace(/^"|"$/g, '')
+                    .toLowerCase()
+                );
+            
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line) continue;
+
+                const row = [];
+                let inQuotes = false;
+                let currentField = '';
+                for (let c = 0; c < line.length; c++) {
+                    const char = line[c];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        row.push(currentField.trim());
+                        currentField = '';
+                    } else {
+                        currentField += char;
+                    }
+                }
+                row.push(currentField.trim());
+
+                if (row.length >= headers.length) {
+                    const rowObj = {};
+                    headers.forEach((h, index) => {
+                        let val = row[index] || '';
+                        // Strip quotes and carriage return artifacts (\r)
+                        val = val.replace(/^"|"$/g, '').trim();
+                        rowObj[h] = val;
+                    });
+                    result.push(rowObj);
+                }
+            }
+            return result;
+        }
+
+        // -------------------------------------------------------------
+        // FILE UPLOADER HANDLER
+        // -------------------------------------------------------------
+        document.getElementById('csvFileInput').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                let parsed = parseCSVText(evt.target.result);
+                
+                // Keep only rows with valid event times to avoid sorting crashes on empty spaces
+                parsed = parsed.filter(row => row.event_time && row.event_time.trim() !== "");
+                
+                if (parsed.length === 0) {
+                    alert("Parsed 0 valid rows. Please check that the vessel_lifecycle_simulation.csv has correct headers.");
+                    return;
+                }
+
+                // Safari-compliant sorting converter: space " " -> "T"
+                parsed.sort((a, b) => {
+                    const tA = new Date(a.event_time.replace(' ', 'T'));
+                    const tB = new Date(b.event_time.replace(' ', 'T'));
+                    return tA - tB;
+                });
+                
+                csvEvents = parsed;
+                playbackIndex = 0;
+
+                // Update Seeker Timeline Slider bounds
+                const slider = document.getElementById('timelineSlider');
+                slider.max = csvEvents.length - 1;
+                slider.value = 0;
+                slider.disabled = false;
+
+                setElementText('lblPlaybackStatus', `Live Playback - ${csvEvents.length} Events`);
+                document.getElementById('eventConsole').innerHTML = `
+                    <div class="p-2.5 rounded-lg text-emerald-800 bg-emerald-50 text-center border border-emerald-200">
+                        🟢 Successfully parsed <b>${csvEvents.length.toLocaleString()}</b> relational events from telemetry registry! Click <b>Play</b> or <b>Step</b> to view the digital twin.
+                    </div>
+                `;
+
+                resetDigitalTwinState();
+            };
+            reader.readAsText(file);
+        };
+
+        // -------------------------------------------------------------
+        // PHYSICAL STATE MUTATION RESET
+        // -------------------------------------------------------------
+        function resetDigitalTwinState() {
+            playbackIndex = 0;
+            vessels_registry = {};
+            simulated_truck_count = 0;
+            simulated_container_count = 0;
+            // FIX 4: Reset Yard D too
+            yard_inventories = { 'Yard A': 4500, 'Yard B': 3800, 'Yard C': 1200, 'Yard D': 900 };
+            // FIX 8: Reset container/truck registries
+            containers_registry = {};
+            trucks_registry = {};
+            // FIX 5: Reset anchorage/cargo stats
+            anchor_wait_sum = 0;
+            anchor_wait_count = 0;
+            cargo_hours_sum = 0;
+            cargo_hours_count = 0;
+
+            // Reset terminal active slots
+            Object.keys(TERMINAL_BERTH_MAP).forEach(k => {
+                TERMINAL_BERTH_MAP[k].activeShips.fill(null);
+            });
+
+            // Reset Charts & Logs
+            timeLogLabels.length = 0;
+            queueMetrics.length = 0;
+            Object.keys(shippingLineDistribution).forEach(k => {
+                shippingLineDistribution[k] = 0;
+            });
+
+            document.getElementById('timelineSlider').value = 0;
+            setElementText('lblEntryGate', "Inactive");
+            setElementText('lblExitNorth', "Inactive");
+            setElementText('lblExitSouth', "Inactive");
+
+            updateUIComponents();
+            refreshCharts();
+        }
+
+        // -------------------------------------------------------------
+        // SEQUENTIAL TIMESTEP ITERATOR
+        // -------------------------------------------------------------
+        function stepPlayback() {
+            if (csvEvents.length === 0) return;
+            if (playbackIndex >= csvEvents.length) {
+                // End of timeline reached
+                if (simLoop) {
+                    clearInterval(simLoop);
+                    simLoop = null;
+                    const btn = document.getElementById('btnPlay');
+                    if (btn) btn.innerText = "Play";
+                }
+                const lastEvent = csvEvents[csvEvents.length - 1];
+                appendLocalConsoleLog("SYSTEM", "END_OF_STREAM", "PORT_SYS", "Playback sequence completed. Loaded simulation run finished.", lastEvent ? lastEvent.event_time : "");
+                return;
+            }
+
+            // Read Speed Modifiers from Settings Modal
+            const overrideSpeed = document.getElementById('overrideSpeed');
+            const cycleSteps = overrideSpeed ? parseInt(overrideSpeed.value) : 1;
+
+            for (let i = 0; i < cycleSteps; i++) {
+                if (playbackIndex >= csvEvents.length) break;
+                
+                const event = csvEvents[playbackIndex];
+                evaluateEventStateMutations(event);
+                playbackIndex++;
+            }
+
+            // Sync visual Seeker Slider
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.value = playbackIndex;
+            }
+
+            updateUIComponents();
+        }
+
+        // -------------------------------------------------------------
+        // STATE RESOLVER - PARSES ACTUAL CSV COLUMNS & MAPS THEM
+        // -------------------------------------------------------------
+        function evaluateEventStateMutations(event) {
+            if (!event) return;
+            const time = event.event_time || '';
+            const vId = event.vessel_id || '';
+            const line = event.shipping_line || '';
+            const vClass = event.vessel_class || '';
+            const cap = event.teu_capacity || '';
+            const impTeu = parseInt(event.import_teu) || 0;
+            const expTeu = parseInt(event.export_teu) || 0;
+            const cType = event.container_type || '';
+            const term = event.terminal || '';
+            const berth = event.berth || '';
+            const stage = event.stage || '';
+            const substage = event.substage || '';
+            const cranes = event.cranes_assigned || '0';
+            const tide = parseFloat(event.tide_level) || 0.0;
+            const delay = event.delay_reason || '';
+            const entityType = event.entity_type || '';
+            const entityId = event.entity_id || '';
+            // FIX 3: Use actual status_details from CSV instead of computed description
+            const statusDetails = event.status_details || '';
+            // FIX 5: Read anchorage and cargo hours
+            const anchorWait = parseFloat(event.anchorage_wait_hours) || 0;
+            const cargoHrs = parseFloat(event.cargo_hours) || 0;
+            // FIX 7: voyage number
+            const voyageNo = event.voyage_no || '';
+
+            // Track unique shipping line occurrences in telemetry
+            if (shippingLineDistribution[line] !== undefined) {
+                shippingLineDistribution[line] += 1;
+            }
+
+            // FIX 2: Handle CONTAINER entity events
+            if (entityType === 'CONTAINER') {
+                if (!containers_registry[entityId]) {
+                    containers_registry[entityId] = {
+                        id: entityId,
+                        vessel_id: vId,
+                        voyage: voyageNo,
+                        container_type: cType,
+                        stage: substage,
+                        terminal: term
+                    };
+                } else {
+                    containers_registry[entityId].stage = substage;
+                }
+                if (substage === 'CONTAINER_DISCHARGED' || substage === 'CONTAINER_LOADED') {
+                    simulated_container_count++;
+                }
+                appendLocalConsoleLog(substage, entityType, entityId, statusDetails || `Container ${entityId}: ${substage}`, time);
+                return;
+            }
+
+            // FIX 2 & 6: Handle TRUCK entity events with real plate numbers and gate pillar updates
+            if (entityType === 'TRUCK') {
+                if (!trucks_registry[entityId]) {
+                    trucks_registry[entityId] = { id: entityId, stage: substage, vessel_id: vId };
+                } else {
+                    trucks_registry[entityId].stage = substage;
+                }
+                // FIX 6: Real truck gate events update the gate pillar displays
+                if (substage === 'TRUCK_CPP_GATE_IN' || substage === 'TRUCK_TERMINAL_GATE_IN' || substage === 'TRUCK_IMPORT_GATE_IN') {
+                    simulated_truck_count++;
+                    setElementText('lblEntryGate', `${entityId} (Entry)`);
+                } else if (substage === 'TRUCK_TERMINAL_GATE_OUT') {
+                    setElementText('lblExitNorth', `${entityId} (Cleared)`);
+                } else if (substage === 'TRUCK_IMPORT_GATE_OUT') {
+                    setElementText('lblExitSouth', `${entityId} (Cleared)`);
+                }
+                appendLocalConsoleLog(substage, entityType, entityId, statusDetails || `Truck ${entityId}: ${substage}`, time);
+                return;
+            }
+
+            // --- VESSEL entity processing below ---
+
+            // Initialize vessel state
+            if (vId && !vessels_registry[vId]) {
+                // FIX 1: Look up draft from vessels_master_registry if available
+                const masterDraft = vessels_master_registry[vId] ? vessels_master_registry[vId].draft : null;
+                vessels_registry[vId] = {
+                    id: vId,
+                    line: line,
+                    class: vClass,
+                    capacity: cap,
+                    importTeu: impTeu,
+                    exportTeu: expTeu,
+                    containerType: cType,
+                    terminal: term,
+                    berth: null,
+                    // FIX 7: Store voyage number
+                    voyage: voyageNo,
+                    stage: "SCHEDULED",
+                    tide: tide,
+                    cranes: 0,
+                    // FIX 1: draft from master CSV or fallback to vessel class defaults
+                    draft: masterDraft
+                };
+            }
+
+            const vessel = vessels_registry[vId];
+            if (vessel) {
+                vessel.tide = tide;
+                vessel.cranes = cranes;
+
+                // FIX 5: Accumulate anchorage and cargo stats on ETA_RECEIVED (once per vessel)
+                if (substage === "ETA_RECEIVED") {
+                    if (anchorWait > 0) { anchor_wait_sum += anchorWait; anchor_wait_count++; }
+                    if (cargoHrs > 0) { cargo_hours_sum += cargoHrs; cargo_hours_count++; }
+                }
+
+                // Stage Transitions
+                if (substage === "ETA_RECEIVED") {
+                    vessel.stage = "SCHEDULED";
+                } else if (substage === "ANCHORAGE_ENTERED") {
+                    vessel.stage = "ANCHORED";
+                } else if (substage === "ANCHORAGE_EXITED") {
+                    vessel.stage = "TRANSIT";
+                } else if (substage === "BERTHED") {
+                    vessel.stage = "MOORED";
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                } else if (substage === "DISCHARGE_STARTED") {
+                    vessel.stage = "DISCHARGING";
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                    simulateYardDeposit(cType, impTeu);
+                } else if (substage === "DISCHARGE_COMPLETED") {
+                    // FIX 9: DISCHARGING_DONE was missing from stage_done counts
+                    vessel.stage = "DISCHARGING_DONE";
+                } else if (substage === "LOAD_STARTED") {
+                    vessel.stage = "LOADING";
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                    simulateYardWithdrawal(cType, expTeu);
+                } else if (substage === "LOAD_COMPLETED") {
+                    // FIX 9: LOADING_DONE was missing from stage_done counts
+                    vessel.stage = "LOADING_DONE";
+                } else if (substage === "UNBERTHED") {
+                    vessel.stage = "UNBERTHED";
+                    vessel.berth = null;
+                } else if (substage === "SAILED") {
+                    vessel.stage = "SAILED";
+                    vessel.berth = null;
+                }
+            }
+
+            // FIX 3: Use actual status_details from the CSV row
+            const desc = statusDetails || `Vessel ${vId} (${line} - ${vClass}) stage: ${stage} - ${substage}.${berth ? ' Berth: ' + berth + ' (' + term + ').' : ''}${cranes && cranes !== '0' ? ' Cranes: ' + cranes + '.' : ''}${delay ? ' Delay: ' + delay + '.' : ''}`;
+            appendLocalConsoleLog(substage, "VESSEL", vId, desc, time);
+        }
+
+        // -------------------------------------------------------------
+        // AUXILIARY STATE SOLVING UTILITIES
+        // -------------------------------------------------------------
+        function simulateYardDeposit(cType, teus) {
+            const increment = Math.round(teus / 10);
+            simulated_container_count += teus;
+            if (cType === 'REEFER_CARGO') {
+                // FIX 4: Split reefer cargo between Yard C and Yard D
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard C'] += increment;
+                } else {
+                    yard_inventories['Yard D'] += increment;
+                }
+            } else {
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard A'] += increment;
+                } else {
+                    yard_inventories['Yard B'] += increment;
+                }
+            }
+        }
+
+        function simulateYardWithdrawal(cType, teus) {
+            const decrement = Math.round(teus / 10);
+            if (cType === 'REEFER_CARGO') {
+                // FIX 4: Split reefer withdrawal between Yard C and Yard D
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard C'] = Math.max(0, yard_inventories['Yard C'] - decrement);
+                } else {
+                    yard_inventories['Yard D'] = Math.max(0, yard_inventories['Yard D'] - decrement);
+                }
+            } else {
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard A'] = Math.max(0, yard_inventories['Yard A'] - decrement);
+                } else {
+                    yard_inventories['Yard B'] = Math.max(0, yard_inventories['Yard B'] - decrement);
+                }
+            }
+        }
+
+        // FIX 6: simulateGateActivity removed - real TRUCK entity events now handle gate pillar updates directly
+
+        // -------------------------------------------------------------
+        // PLAYBACK UNIFIED DISPLAY SOLVER
+        // -------------------------------------------------------------
+        function updateUIComponents() {
+            if (csvEvents.length === 0) return;
+            const currentEvent = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
+            if (!currentEvent) return;
+
+            // Global Metadata Sync
+            setElementText('globalClock', currentEvent.event_time || '');
+            setElementText('tideGauge', (parseFloat(currentEvent.tide_level) || 0.0).toFixed(2) + "m");
+            setElementText('lblTimelineProgress', `${playbackIndex.toLocaleString()} / ${csvEvents.length.toLocaleString()}`);
+
+            // Counter KPIs
+            const totalShips = Object.keys(vessels_registry).length;
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in moored/operating count
+            const mooredShips = Object.values(vessels_registry).filter(v => 
+                v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || 
+                v.stage === 'DONE' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE'
+            ).length;
+            const sailedShips = Object.values(vessels_registry).filter(v => v.stage === 'SAILED').length;
+            
+            // Total Active Relational Entities in dashboard registry
+            const totalEntities = totalShips + simulated_container_count + simulated_truck_count;
+
+            setElementText('kpiScheduled', playbackIndex.toLocaleString());
+            setElementText('kpiMoored', mooredShips);
+            setElementText('kpiSailed', sailedShips);
+            setElementText('kpiSync', totalEntities.toLocaleString());
+
+            // Pillars
+            const scheduledCount = Object.values(vessels_registry).filter(v => v.stage === 'SCHEDULED').length;
+            const anchoredCount = Object.values(vessels_registry).filter(v => v.stage === 'ANCHORED').length;
+            setElementText('lblShipScheduled', scheduledCount);
+            setElementText('lblShipAnchored', anchoredCount);
+            setElementText('lblShipMoored', mooredShips);
+
+            setElementText('stage_eta', scheduledCount);
+            setElementText('stage_anch', anchoredCount);
+            setElementText('stage_moored', Object.values(vessels_registry).filter(v => v.stage === 'MOORED').length);
+            setElementText('stage_ops', Object.values(vessels_registry).filter(v => v.stage === 'DISCHARGING' || v.stage === 'LOADING').length);
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in "Done" stage count
+            setElementText('stage_done', Object.values(vessels_registry).filter(v => v.stage === 'DONE' || v.stage === 'UNBERTHED' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE').length);
+            setElementText('stage_sailed', sailedShips);
+
+            setElementText('vesselsInPort', `${mooredShips} In Port`);
+
+            // Yard Allocations
+            setElementText('lblYardADry', `${yard_inventories['Yard A'].toLocaleString()} TEU`);
+            setElementText('lblYardBDry', `${yard_inventories['Yard B'].toLocaleString()} TEU`);
+            setElementText('lblYardCReefer', `${yard_inventories['Yard C'].toLocaleString()} TEU`);
+            // FIX 4: Update Yard D
+            setElementText('lblYardDReefer', `${yard_inventories['Yard D'].toLocaleString()} TEU`);
+
+            // FIX 5: Update anchorage wait and cargo hours averages
+            if (anchor_wait_count > 0) {
+                setElementText('lblAvgAnchorWait', `${(anchor_wait_sum / anchor_wait_count).toFixed(1)} h`);
+            }
+            if (cargo_hours_count > 0) {
+                setElementText('lblAvgCargoHours', `${(cargo_hours_sum / cargo_hours_count).toFixed(1)} h`);
+            }
+
+            // Active Queue lengths
+            const queueInbound = Math.round(simulated_truck_count % 11);
+            setElementText('truckQueue', `${queueInbound} Active`);
+
+            // Append Chart Trackers - Safe Substring parsing
+            const timeStr = currentEvent.event_time && currentEvent.event_time.length >= 16 ? currentEvent.event_time.substring(11, 16) : '00:00';
+            if (timeLogLabels.length === 0 || timeLogLabels[timeLogLabels.length - 1] !== timeStr) {
+                timeLogLabels.push(timeStr);
+                queueMetrics.push(queueInbound);
+                if (timeLogLabels.length > 15) {
+                    timeLogLabels.shift();
+                    queueMetrics.shift();
+                }
+            }
+
+            renderBerthMapGrid();
+            refreshCharts();
+        }
+
+        function renderBerthMapGrid() {
+            const grid = document.getElementById('berthLayoutContainer');
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            const filterTerminalEl = document.getElementById('filterTerminal');
+            const filterTerminal = filterTerminalEl ? filterTerminalEl.value : 'ALL';
+
+            Object.entries(TERMINAL_BERTH_MAP).forEach(([termName, termObj]) => {
+                if (filterTerminal !== 'ALL' && filterTerminal !== termName) return;
+
+                termObj.berths.forEach((bName) => {
+                    // Direct solver: dynamic lookup into vessels_registry
+                    const ship = Object.values(vessels_registry).find(v => 
+                        v.berth === bName && 
+                        (v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || v.stage === 'DONE')
+                    );
+                    const isOccupied = !!ship;
+
+                    // Compute dynamic depth based on current clock tide values
+                    let activeTide = 0;
+                    if (csvEvents.length > 0) {
+                        const currentEvent = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
+                        if (currentEvent) {
+                            activeTide = parseFloat(currentEvent.tide_level) || 0;
+                        }
+                    }
+                    const liveWaterDepth = termObj.depth + activeTide;
+
+                    const berthCard = document.createElement('div');
+                    berthCard.className = `p-3 border rounded-xl shadow-xs transition duration-300 flex flex-col justify-between ${isOccupied ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`;
+
+                    let cardHTML = `
+                        <div>
+                            <span class="text-[8px] uppercase font-black text-slate-400 block leading-none">${termName}</span>
+                            <span class="text-[11px] font-bold block mt-0.5 leading-none ${isOccupied ? 'text-blue-700' : 'text-slate-700'}">${bName}</span>
+                            <div class="text-[9px] text-slate-500 mt-1.5">Dredge: ${termObj.depth}m</div>
+                            <div class="text-[9px] font-bold text-slate-800">Dynamic: ${liveWaterDepth.toFixed(1)}m</div>
+                        </div>
+                    `;
+
+                    if (isOccupied && ship) {
+                        // FIX 1: Look up real draft from vessels_master_registry
+                        const masterInfo = vessels_master_registry[ship.id];
+                        const displayDraft = ship.draft ? ship.draft.toFixed(1) : (masterInfo ? masterInfo.draft.toFixed(1) : '12.0');
+                        cardHTML += `
+                            <div class="mt-2 pt-2 border-t border-slate-200 text-[9px] text-slate-600 space-y-0.5">
+                                <div class="font-extrabold text-blue-800 truncate">🚢 ${ship.id} (${ship.line})</div>
+                                <div>Draft: <b>${displayDraft}m</b></div>
+                                <span class="inline-block mt-1 px-1 py-0.2 bg-blue-100 text-blue-800 rounded font-bold text-[7px] uppercase leading-none">${ship.stage}</span>
+                            </div>
+                        `;
+                    } else {
+                        cardHTML += `
+                            <div class="mt-2 text-center py-1 text-[8px] text-slate-400 font-bold uppercase tracking-wider bg-white border border-slate-100 rounded-md">
+                                Available
+                            </div>
+                        `;
+                    }
+
+                    berthCard.innerHTML = cardHTML;
+                    grid.appendChild(berthCard);
+                });
+            });
+        }
+
+        // -------------------------------------------------------------
+        // UNIFIED PLAYBACK LOGGER (Crisp Legibility Highlight Blocks)
+        // -------------------------------------------------------------
+        function appendLocalConsoleLog(type, domain, entity, desc, timestamp) {
+            const consoleBox = document.getElementById('eventConsole');
+            if (!consoleBox) return;
+
+            const styleColorMap = {
+                'ETA_RECEIVED': 'text-blue-900 bg-blue-50 border-blue-200',
+                'ANCHORAGE_ENTERED': 'text-blue-900 bg-blue-100/60 border-blue-200',
+                'ANCHORAGE_EXITED': 'text-indigo-900 bg-indigo-50/50 border-indigo-200',
+                'BERTHED': 'text-indigo-900 bg-indigo-50 border-indigo-200',
+                'DISCHARGE_STARTED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'DISCHARGE_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'LOAD_STARTED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'LOAD_COMPLETED': 'text-emerald-900 bg-emerald-100 border-emerald-200',
+                'SAILED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'UNBERTHED': 'text-slate-800 bg-slate-50 border-slate-200',
+                'BUNKERING_STARTED': 'text-purple-900 bg-purple-50 border-purple-200',
+                'BUNKERING_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'PROGRESS_20': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_40': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_60': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_80': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                // FIX 2: Container substage colors
+                'CONTAINER_BOOKED': 'text-sky-900 bg-sky-50 border-sky-200',
+                'CONTAINER_SB_FILED': 'text-sky-900 bg-sky-100 border-sky-200',
+                'CONTAINER_CUSTOMS_LEO': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_YARD_STACK_START': 'text-slate-800 bg-slate-50 border-slate-200',
+                'CONTAINER_YARD_STACKED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'CONTAINER_LOADED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'CONTAINER_DISCHARGED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'CONTAINER_IMPORT_OOC_START': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_CUSTOMS_OOC': 'text-violet-900 bg-violet-100 border-violet-200',
+                'CONTAINER_IMPORT_DISPATCH': 'text-teal-900 bg-teal-50 border-teal-200',
+                // FIX 2: Truck substage colors
+                'TRUCK_CPP_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_CPP_GATE_OUT': 'text-amber-900 bg-amber-100 border-amber-200',
+                'TRUCK_TERMINAL_PRE_GATE': 'text-orange-900 bg-orange-50 border-orange-200',
+                'TRUCK_TERMINAL_GATE_IN': 'text-orange-900 bg-orange-100 border-orange-200',
+                'TRUCK_TERMINAL_GATE_OUT': 'text-orange-800 bg-orange-50/60 border-orange-100',
+                'TRUCK_IMPORT_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_IMPORT_GATE_OUT': 'text-amber-800 bg-amber-50/60 border-amber-100',
+            };
+
+            const blockClass = styleColorMap[type] || 'text-slate-800 bg-slate-50/60 border-slate-200';
+            const logTime = (timestamp && timestamp.length >= 19) ? timestamp.substring(11, 19) : '00:00:00';
+
+            const logLine = document.createElement('div');
+            logLine.innerHTML = `
+                <div class="flex items-start gap-2.5 p-2.5 border rounded-xl ${blockClass} text-xs shadow-2xs leading-relaxed">
+                    <span class="text-slate-400 font-mono font-bold shrink-0">${logTime}</span>
+                    <div class="flex-grow">
+                        <span class="font-extrabold tracking-wide uppercase text-[9px] mr-1">[${type}]</span>
+                        <span class="font-mono font-bold text-slate-950">(${entity})</span>
+                        <p class="text-slate-800 mt-0.5 font-medium">${desc}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Remove helper initial note if present
+            if (consoleBox.children.length === 1 && consoleBox.children[0].innerText.includes('//')) {
+                consoleBox.innerHTML = '';
+            }
+
+            consoleBox.appendChild(logLine);
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        // -------------------------------------------------------------
+        // SAFE NATIVE CHART.JS PLOTS
+        // -------------------------------------------------------------
+        let scaleChart = null;
+        let distChart = null;
+
+        function initializeTelemetryCharts() {
+            Chart.defaults.color = '#64748b';
+            Chart.defaults.font.family = 'Plus Jakarta Sans, sans-serif';
+
+            // Chart 1: Pre-Gate Queue Length Tracking
+            const scaleCtxEl = document.getElementById('bottleneckChart');
+            if (scaleCtxEl) {
+                const scaleCtx = scaleCtxEl.getContext('2d');
+                scaleChart = new Chart(scaleCtx, {
+                    type: 'line',
+                    data: {
+                        labels: timeLogLabels,
+                        datasets: [{
+                            label: 'Gated Trucks Inside Terminals',
+                            data: queueMetrics,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 1.5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
+                            x: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                        }
+                    }
+                });
+            }
+
+            // Chart 2: Telemetry Shipping Line Distribution
+            const distCtxEl = document.getElementById('customsDistributionChart');
+            if (distCtxEl) {
+                const distCtx = distCtxEl.getContext('2d');
+                distChart = new Chart(distCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ["HAPAG", "ONE", "MSC", "CMA CGM", "MAERSK", "EVERGREEN"],
+                        datasets: [{
+                            label: 'Log Transactions Count',
+                            data: [0, 0, 0, 0, 0, 0],
+                            backgroundColor: ['#10b981', '#2563eb', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
+                            x: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function refreshCharts() {
+            if (scaleChart) {
+                scaleChart.update();
+            }
+            if (distChart) {
+                distChart.data.datasets[0].data = [
+                    shippingLineDistribution['HAPAG'] || 0,
+                    shippingLineDistribution['ONE'] || 0,
+                    shippingLineDistribution['MSC'] || 0,
+                    shippingLineDistribution['CMA CGM'] || 0,
+                    shippingLineDistribution['MAERSK'] || 0,
+                    shippingLineDistribution['EVERGREEN'] || 0
+                ];
+                distChart.update();
+            }
+        }
+
+        // -------------------------------------------------------------
+        // UNIFIED PLAYBACK SEARCH TRACEABILITY ENGINE
+        // -------------------------------------------------------------
+        function traceEntity() {
+            const txtQuery = document.getElementById('txtQuery');
+            const rawQuery = txtQuery ? txtQuery.value.trim().toUpperCase() : '';
+            const resultBox = document.getElementById('searchResult');
+            if (!resultBox) return;
+            resultBox.classList.remove('hidden');
+            resultBox.innerHTML = '';
+
+            if (!rawQuery) {
+                resultBox.innerHTML = `<span class="text-red-500 font-semibold">Please enter a valid ID (e.g., V0001, JNPU-EX-V0001-001, MH-46-TRK-0001).</span>`;
+                return;
+            }
+
+            // Vessel check
+            const vMatch = vessels_registry[rawQuery];
+            if (vMatch) {
+                // FIX 1: Show draft from vessels_master if loaded, else from vessel class
+                const draftVal = vMatch.draft ? vMatch.draft.toFixed(1) : (vessels_master_registry[rawQuery] ? vessels_master_registry[rawQuery].draft.toFixed(1) : '12.0');
+                resultBox.innerHTML = `
+                    <div class="font-bold text-blue-800 bg-blue-50 p-2.5 rounded-lg border border-blue-100">🚢 Vessel: ${vMatch.id} (${vMatch.line})</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-xs">
+                        <div>Vessel Class: <b>${vMatch.class}</b></div>
+                        <div>Design Capacity: <b>${vMatch.capacity} TEU</b></div>
+                        <div>Assigned Port: <b>Terminal ${vMatch.terminal} / Berth ${vMatch.berth || 'Unscheduled'}</b></div>
+                        <div>Design Draft: <b>${draftVal}m</b></div>
+                        <div>Voyage No: <b>${vMatch.voyage || 'N/A'}</b></div>
+                        <div class="border-t border-slate-100 pt-1.5 mt-1">Cargo Planned: 📥 ${vMatch.importTeu} Imports | 📤 ${vMatch.exportTeu} Exports</div>
+                        <div>Current Playback State: <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold uppercase text-[9px]">${vMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            // FIX 8: Container ID lookup
+            const cMatch = containers_registry[rawQuery];
+            if (cMatch) {
+                resultBox.innerHTML = `
+                    <div class="font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-100">📦 Container: ${cMatch.id}</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-xs">
+                        <div>Vessel: <b>${cMatch.vessel_id}</b> | Voyage: <b>${cMatch.voyage}</b></div>
+                        <div>Type: <b>${cMatch.container_type}</b> | Terminal: <b>${cMatch.terminal || 'N/A'}</b></div>
+                        <div>Current Stage: <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold uppercase text-[9px]">${cMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            // FIX 8: Truck ID lookup (normalize input for partial match)
+            const tMatch = trucks_registry[rawQuery];
+            if (tMatch) {
+                resultBox.innerHTML = `
+                    <div class="font-bold text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-100">🚛 Truck: ${tMatch.id}</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-xs">
+                        <div>Last Vessel: <b>${tMatch.vessel_id}</b></div>
+                        <div>Last Stage: <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold uppercase text-[9px]">${tMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            resultBox.innerHTML = `<span class="text-red-500 font-bold">❌ ID not found. Try vessel IDs (V0001–V0050), container IDs (JNPU-EX-V0001-001), or truck plates (MH-46-TRK-0001).</span>`;
+        }
+
+        // -------------------------------------------------------------
+        // SAFE EVENT BINDING INITIALIZER
+        // -------------------------------------------------------------
+        function initializeEvents() {
+            const btnStep = document.getElementById('btnStep');
+            if (btnStep) {
+                btnStep.onclick = () => {
+                    stepPlayback();
+                };
+            }
+
+            const btnPlay = document.getElementById('btnPlay');
+            if (btnPlay) {
+                btnPlay.onclick = function() {
+                    if (csvEvents.length === 0) {
+                        alert("Please load a simulated vessel_lifecycle_simulation.csv file first.");
+                        return;
+                    }
+                    if (simLoop) {
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        this.innerText = 'Play';
+                        this.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
+                    } else {
+                        simLoop = setInterval(stepPlayback, 40); // Fast interval
+                        this.innerText = 'Pause';
+                        this.className = 'px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition shadow-sm';
+                    }
+                };
+            }
+
+            const btnReset = document.getElementById('btnReset');
+            if (btnReset) {
+                btnReset.onclick = () => {
+                    if (simLoop) {
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        const btnPlayEl = document.getElementById('btnPlay');
+                        if (btnPlayEl) {
+                            btnPlayEl.innerText = 'Play';
+                            btnPlayEl.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
+                        }
+                    }
+                    resetDigitalTwinState();
+                };
+            }
+
+            const filterTerminal = document.getElementById('filterTerminal');
+            if (filterTerminal) {
+                filterTerminal.onchange = () => renderBerthMapGrid();
+            }
+
+            const overrideSpeed = document.getElementById('overrideSpeed');
+            if (overrideSpeed) {
+                overrideSpeed.oninput = function() {
+                    setElementText('lblPlaybackSpeed', `${this.value} Events / Cycle`);
+                };
+            }
+
+            // Timeline Seeker slider scrubbing logic
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.oninput = function() {
+                    const targetIndex = parseInt(this.value);
+                    if (targetIndex < playbackIndex) {
+                        // Sliding backwards: reset states and replay to point
+                        resetDigitalTwinState();
+                        document.getElementById('eventConsole').innerHTML = '';
+                        while (playbackIndex < targetIndex) {
+                            evaluateEventStateMutations(csvEvents[playbackIndex]);
+                            playbackIndex++;
+                        }
+                    } else {
+                        // Sliding forwards: incremental state evaluation
+                        while (playbackIndex < targetIndex) {
+                            evaluateEventStateMutations(csvEvents[playbackIndex]);
+                            playbackIndex++;
+                        }
+                    }
+                    updateUIComponents();
+                };
+            }
+        }
+
+        window.onload = () => {
+            initializeTelemetryCharts();
+            initializeEvents();
+            renderBerthMapGrid();
+        };
+
+    </script>
+</body>
+</html>
