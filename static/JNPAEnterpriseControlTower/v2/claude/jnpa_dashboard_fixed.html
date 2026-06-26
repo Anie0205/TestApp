@@ -82,13 +82,24 @@
         .text-slate-700 { color: #334155; }
         .text-slate-800 { color: #1e293b; }
         .text-slate-900 { color: #0f172a; }
+        /* Alert banner severity themes */
+        .alert-congestion  { background:#fef3c7; border-color:#fcd34d; color:#92400e; }
+        .alert-tide        { background:#eff6ff; border-color:#93c5fd; color:#1e3a8a; }
+        .alert-customs     { background:#f5f3ff; border-color:#c4b5fd; color:#3b0764; }
+        .alert-inspection  { background:#fff7ed; border-color:#fed7aa; color:#7c2d12; }
+        .alert-end         { background:#f0fdf4; border-color:#86efac; color:#14532d; }
+        .alert-btn-congestion  { background:#f59e0b; color:#fff; border-color:#d97706; }
+        .alert-btn-tide        { background:#3b82f6; color:#fff; border-color:#2563eb; }
+        .alert-btn-customs     { background:#8b5cf6; color:#fff; border-color:#7c3aed; }
+        .alert-btn-inspection  { background:#f97316; color:#fff; border-color:#ea580c; }
+        .alert-btn-end         { background:#22c55e; color:#fff; border-color:#16a34a; }
     </style>
 </head>
 <body class="antialiased min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
 
     <!-- Top Navigation Ribbon -->
-    <header class="border-b border-slate-200 bg-white sticky top-0 z-40 px-6 py-3 shadow-xs shrink-0">
-        <div class="max-w-7xl mx-auto flex flex-col lg:flex-row justify-between items-center gap-4">
+    <header class="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 py-2.5 shadow-xs shrink-0">
+        <div class="flex flex-col lg:flex-row justify-between items-center gap-3">
             <div class="flex items-center gap-2.5">
                 <span class="text-2xl">🏢</span>
                 <div>
@@ -135,11 +146,30 @@
         </div>
     </header>
 
-    <!-- Master Desktop Screen Heights Limit Layout -->
-    <main class="max-w-7xl mx-auto p-4 flex-grow w-full grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[calc(100vh-70px)] lg:overflow-hidden">
+    <!-- ============================================================
+         ALERT BANNER — injected dynamically when playback pauses
+         ============================================================ -->
+    <div id="alertBanner" class="hidden sticky top-[57px] z-30 w-full px-4 py-0">
+        <div id="alertBannerInner" class="flex items-center gap-3 px-4 py-2.5 rounded-b-xl border-x border-b shadow-md text-xs font-semibold">
+            <span id="alertIcon" class="text-base shrink-0">⚠️</span>
+            <div class="flex-grow min-w-0">
+                <span id="alertTitle" class="font-extrabold uppercase tracking-wide text-[10px] mr-2"></span>
+                <span id="alertMessage"></span>
+            </div>
+            <button id="btnContinue" onclick="continuePlayback()"
+                class="shrink-0 px-3 py-1 rounded-lg text-[11px] font-extrabold border transition">
+                ▶ Continue
+            </button>
+            <button onclick="dismissAlert()"
+                class="shrink-0 text-lg font-bold leading-none opacity-60 hover:opacity-100 transition">✕</button>
+        </div>
+    </div>
+
+    <!-- Master Layout — full viewport width, no max-w cap -->
+    <main class="w-full px-4 py-3 flex-grow grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-58px)] lg:overflow-hidden">
         
         <!-- Left Section (All core visual states, pillars, matrix, graphs - 8 Columns) -->
-        <section class="lg:col-span-8 flex flex-col space-y-4 lg:overflow-y-auto lg:pr-2 h-full pb-4">
+        <section class="lg:col-span-8 flex flex-col space-y-3 lg:overflow-y-auto lg:pr-2 h-full pb-3">
             
             <!-- Timeline Playback Seek Bar -->
             <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0 flex flex-col md:flex-row items-center gap-4">
@@ -321,7 +351,7 @@
         </section>
 
         <!-- Right Section (Event Logger and Stage counter - 4 Columns) -->
-        <section class="lg:col-span-4 flex flex-col space-y-4 h-full">
+        <section class="lg:col-span-4 flex flex-col space-y-3 h-full">
             
             <!-- Compact Fleet Lifecycle State-Machine Grid -->
             <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs shrink-0">
@@ -361,13 +391,14 @@
                 <div class="flex justify-between items-center mb-2.5 shrink-0">
                     <h2 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
                         <span id="livePulseSignal" class="text-emerald-500 animate-pulse">●</span> Simulated Telemetry Stream
+                        <span class="text-[9px] text-slate-400 font-normal ml-1 normal-case">↑ newest first</span>
                     </h2>
                     <span id="lblPlaybackStatus" class="mono-font text-[8px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500 font-bold uppercase">
                         no file loaded
                     </span>
                 </div>
-                <!-- Scrolling Terminal Core: Crisp, high contrast white/slate-50 background -->
-                <div id="eventConsole" class="bg-white border border-slate-200 rounded-xl p-2.5 overflow-y-auto font-mono text-[11px] space-y-2 shadow-inner flex-grow min-h-0">
+                <!-- Scrolling Terminal Core: fixed height, newest entries prepended at top -->
+                <div id="eventConsole" class="bg-white border border-slate-200 rounded-xl p-2.5 overflow-y-auto font-mono text-[11px] space-y-2 shadow-inner" style="height:340px; max-height:340px;">
                     <div class="text-slate-400 text-center py-10">
                         <span class="text-3xl block mb-2">📂</span>
                         <p class="font-bold text-slate-700">Please select and load the vessel_lifecycle_simulation.csv</p>
@@ -533,6 +564,11 @@
         const timeLogLabels = [];
         const queueMetrics = [];
         const shippingLineDistribution = { 'HAPAG': 0, 'ONE': 0, 'MSC': 0, 'CMA CGM': 0, 'MAERSK': 0, 'EVERGREEN': 0 };
+
+        // Alert engine state — declared here so resetDigitalTwinState can reference them
+        let alertPaused = false;
+        let pendingResume = false;
+        const firedAlerts = new Set();
 
         // -------------------------------------------------------------
         // -------------------------------------------------------------
@@ -997,45 +1033,182 @@
             setElementText('lblExitNorth', "Inactive");
             setElementText('lblExitSouth', "Inactive");
 
+            // Reset alert engine state
+            alertPaused = false;
+            pendingResume = false;
+            firedAlerts.clear();
+            dismissAlert();
+
             updateUIComponents();
             refreshCharts();
         }
 
         // -------------------------------------------------------------
-        // SEQUENTIAL TIMESTEP ITERATOR
+        // ALERT ENGINE — detects blocking conditions, pauses playback
+        // (alertPaused, pendingResume, firedAlerts declared at top of script)
+        // -------------------------------------------------------------
+
+        // Conditions that trigger an alert pause — tuned to actual CSV data patterns
+        const ALERT_RULES = [
+            {
+                id: 'CONGESTION',
+                test: (event) => event.delay_reason === 'CONGESTION',
+                severity: 'congestion',
+                icon: '🚨',
+                title: 'Anchorage Congestion Hold',
+                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line} — ${e.vessel_class}) is waiting at outer anchorage due to berth congestion. No slot available at ${e.terminal}. Estimated anchorage wait: ${parseFloat(e.anchorage_wait_hours || 0).toFixed(1)}h.`
+            },
+            {
+                id: 'TIDE_HOLD',
+                test: (event) => event.delay_reason === 'TIDE_HOLD',
+                severity: 'tide',
+                icon: '🌊',
+                title: 'Tide Hold — UKC Safety Check',
+                message: (e) => `Vessel ${e.vessel_id} is being held at berth. Tide penalty assessed before unberthing — Under-Keel Clearance margin insufficient at current tide ${parseFloat(e.tide_level || 0).toFixed(2)}m. Waiting for rising tide window.`
+            },
+            {
+                id: 'CUSTOMS_OOC',
+                test: (event) => event.substage === 'CONTAINER_IMPORT_OOC_START',
+                severity: 'customs',
+                icon: '📋',
+                title: 'Import Customs Assessment — OOC Pending',
+                message: (e) => `Container ${e.entity_id} has entered Customs OOC (Out-of-Charge) assessment. Bill of Entry filed — clearance pending from ICEGATE. Consignee pickup is blocked until assessment is resolved.`
+            },
+            {
+                id: 'LEO_GREEN',
+                test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO' && (event.status_details || '').includes('GREEN_CHANNEL'),
+                severity: 'end',
+                icon: '✅',
+                title: 'Customs LEO — Green Channel Cleared',
+                message: (e) => `Container ${e.entity_id} received Let Export Order (LEO) via GREEN_CHANNEL. Customs RMS cleared for direct loading — no examination required.`
+            }
+        ];
+
+        // Fired-alert tracking: deduped per rule+entity (declared at top of script)
+
+        function checkEventForAlerts(event) {
+            for (const rule of ALERT_RULES) {
+                if (!rule.test(event)) continue;
+                // Build a dedupe key: rule id + entity id
+                const dedupeKey = `${rule.id}::${event.entity_id}`;
+                if (firedAlerts.has(dedupeKey)) continue;
+                firedAlerts.add(dedupeKey);
+
+                return {
+                    severity: rule.severity,
+                    icon: rule.icon,
+                    title: rule.title,
+                    message: rule.message(event)
+                };
+            }
+            return null;
+        }
+
+        function showAlertBanner(alert) {
+            const banner      = document.getElementById('alertBanner');
+            const inner       = document.getElementById('alertBannerInner');
+            const iconEl      = document.getElementById('alertIcon');
+            const titleEl     = document.getElementById('alertTitle');
+            const messageEl   = document.getElementById('alertMessage');
+            const continueBtn = document.getElementById('btnContinue');
+            if (!banner || !inner) return;
+
+            // Apply severity theme
+            inner.className = `flex items-center gap-3 px-4 py-2.5 rounded-b-xl border-x border-b shadow-md text-xs font-semibold alert-${alert.severity}`;
+            continueBtn.className = `shrink-0 px-3 py-1 rounded-lg text-[11px] font-extrabold border transition alert-btn-${alert.severity}`;
+
+            iconEl.innerText    = alert.icon;
+            titleEl.innerText   = alert.title;
+            messageEl.innerText = alert.message;
+
+            banner.classList.remove('hidden');
+        }
+
+        function dismissAlert() {
+            const banner = document.getElementById('alertBanner');
+            if (banner) banner.classList.add('hidden');
+        }
+
+        function continuePlayback() {
+            dismissAlert();
+            alertPaused = false;
+            // Resume auto-play if it was running before
+            if (pendingResume) {
+                pendingResume = false;
+                const btn = document.getElementById('btnPlay');
+                if (btn) {
+                    simLoop = setInterval(stepPlayback, 40);
+                    btn.innerText = 'Pause';
+                    btn.className = 'px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition shadow-sm';
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // SEQUENTIAL TIMESTEP ITERATOR (alert-aware)
         // -------------------------------------------------------------
         function stepPlayback() {
             if (csvEvents.length === 0) return;
+            if (alertPaused) return; // blocked by an active alert
+
             if (playbackIndex >= csvEvents.length) {
-                // End of timeline reached
+                // End of timeline
                 if (simLoop) {
                     clearInterval(simLoop);
                     simLoop = null;
                     const btn = document.getElementById('btnPlay');
                     if (btn) btn.innerText = "Play";
                 }
-                const lastEvent = csvEvents[csvEvents.length - 1];
-                appendLocalConsoleLog("SYSTEM", "END_OF_STREAM", "PORT_SYS", "Playback sequence completed. Loaded simulation run finished.", lastEvent ? lastEvent.event_time : "");
+                appendLocalConsoleLog("SYSTEM", "END_OF_STREAM", "PORT_SYS", "Playback sequence completed. All simulation events processed.", csvEvents[csvEvents.length - 1] ? csvEvents[csvEvents.length - 1].event_time : "");
+                // Show end-of-stream banner
+                showAlertBanner({
+                    severity: 'end',
+                    icon: '✅',
+                    title: 'Simulation Complete',
+                    message: `All ${csvEvents.length.toLocaleString()} events processed. Restart to replay the full simulation.`
+                });
                 return;
             }
 
-            // Read Speed Modifiers from Settings Modal
             const overrideSpeed = document.getElementById('overrideSpeed');
             const cycleSteps = overrideSpeed ? parseInt(overrideSpeed.value) : 1;
 
             for (let i = 0; i < cycleSteps; i++) {
                 if (playbackIndex >= csvEvents.length) break;
-                
+
                 const event = csvEvents[playbackIndex];
                 evaluateEventStateMutations(event);
+
+                // Check this event for blocking alert conditions
+                const alert = checkEventForAlerts(event);
+                if (alert) {
+                    alertPaused = true;
+                    // Pause auto-play loop if running
+                    if (simLoop) {
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        pendingResume = true;
+                        const btn = document.getElementById('btnPlay');
+                        if (btn) {
+                            btn.innerText = 'Play';
+                            btn.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
+                        }
+                    }
+                    playbackIndex++;
+                    showAlertBanner(alert);
+                    updateUIComponents();
+                    // Sync slider
+                    const slider = document.getElementById('timelineSlider');
+                    if (slider) slider.value = playbackIndex;
+                    return; // stop this cycle, wait for user
+                }
+
                 playbackIndex++;
             }
 
-            // Sync visual Seeker Slider
+            // Sync slider
             const slider = document.getElementById('timelineSlider');
-            if (slider) {
-                slider.value = playbackIndex;
-            }
+            if (slider) slider.value = playbackIndex;
 
             updateUIComponents();
         }
@@ -1448,8 +1621,13 @@
                 consoleBox.innerHTML = '';
             }
 
-            consoleBox.appendChild(logLine);
-            consoleBox.scrollTop = consoleBox.scrollHeight;
+            // Prepend so newest entry appears at the top
+            consoleBox.insertBefore(logLine, consoleBox.firstChild);
+
+            // Cap log entries at 300 to prevent DOM bloat
+            while (consoleBox.children.length > 300) {
+                consoleBox.removeChild(consoleBox.lastChild);
+            }
         }
 
         // -------------------------------------------------------------
@@ -1611,6 +1789,11 @@
             const btnStep = document.getElementById('btnStep');
             if (btnStep) {
                 btnStep.onclick = () => {
+                    // Manual step always clears alert pause — user explicitly advances
+                    if (alertPaused) {
+                        alertPaused = false;
+                        dismissAlert();
+                    }
                     stepPlayback();
                 };
             }
@@ -1623,12 +1806,19 @@
                         return;
                     }
                     if (simLoop) {
+                        // Pause
                         clearInterval(simLoop);
                         simLoop = null;
+                        pendingResume = false;
                         this.innerText = 'Play';
                         this.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
                     } else {
-                        simLoop = setInterval(stepPlayback, 40); // Fast interval
+                        // Play — if alert is shown, dismiss it first
+                        if (alertPaused) {
+                            alertPaused = false;
+                            dismissAlert();
+                        }
+                        simLoop = setInterval(stepPlayback, 40);
                         this.innerText = 'Pause';
                         this.className = 'px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition shadow-sm';
                     }
@@ -1668,6 +1858,10 @@
             if (slider) {
                 slider.oninput = function() {
                     const targetIndex = parseInt(this.value);
+                    // Dismiss any active alert when scrubbing
+                    alertPaused = false;
+                    pendingResume = false;
+                    dismissAlert();
                     if (targetIndex < playbackIndex) {
                         // Sliding backwards: reset states and replay to point
                         resetDigitalTwinState();
