@@ -1075,8 +1075,9 @@
                 message: (e) => `Container ${e.entity_id} has entered Customs OOC (Out-of-Charge) assessment. Bill of Entry filed — clearance pending from ICEGATE. Consignee pickup is blocked until assessment is resolved.`
             },
             {
-                id: 'LEO_GREEN1',
-                test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO' && (event.status_details || '').includes('GREEN_CHANNEL'),
+                id: 'LEO_GREEN',
+                //test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO' && (event.status_details || '').includes('GREEN_CHANNEL'),
+                test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO1' && (event.status_details || '').includes('GREEN_CHANNEL1'),
                 severity: 'end',
                 icon: '✅',
                 title: 'Customs LEO — Green Channel Cleared',
