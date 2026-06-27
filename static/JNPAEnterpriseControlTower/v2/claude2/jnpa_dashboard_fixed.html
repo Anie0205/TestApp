@@ -9,567 +9,406 @@
     <!-- Chart.js for high-fidelity canvas metrics plotting -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:wght@700;800&display=swap');
-
-        /* ── Design tokens ─────────────────────────────────────────── */
-        :root {
-            --bg-page:      #12151c;      /* near-black page canvas */
-            --bg-panel:     #1b2033;      /* panel / card surface  */
-            --bg-panel-alt: #212840;      /* slightly lighter panel */
-            --bg-inset:     #161929;      /* inset / terminal bg   */
-            --bg-header:    #0f1422;      /* header bar            */
-
-            --border:       #2a3352;      /* standard border       */
-            --border-light: #222a42;      /* subtle inner rule     */
-            --border-brass: #7c6a3d;      /* brass/gold accent border */
-
-            --text-primary:  #e8e4d8;     /* warm off-white text   */
-            --text-secondary:#8b95b0;     /* muted label text      */
-            --text-muted:    #4f5b7a;     /* very muted            */
-            --text-brass:    #c9a84c;     /* brass / gold accent   */
-            --text-brass-lt: #e0c16e;     /* lighter brass         */
-
-            --accent-navy:   #1e3a6e;     /* deep navy accent      */
-            --accent-blue:   #4a7fd4;     /* ocean blue            */
-            --accent-steel:  #6b8db8;     /* steel blue            */
-            --accent-amber:  #c8863a;     /* warm amber            */
-            --accent-emerald:#3a8f6a;     /* muted green           */
-            --accent-red:    #b84a4a;     /* muted red             */
-            --accent-purple: #7a5fc0;     /* muted purple          */
-            --accent-sky:    #4a9ab8;     /* muted sky             */
-        }
-
-        /* ── Base ───────────────────────────────────────────────────── */
-        *, *::before, *::after { box-sizing: border-box; }
-
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background-color: var(--bg-page);
-            background-image:
-                linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
-            background-size: 32px 32px;
-            color: var(--text-primary);
-            min-height: 100vh;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
         }
-
-        .mono-font { font-family: 'JetBrains Mono', monospace; }
-        .serif-font { font-family: 'Playfair Display', Georgia, serif; }
-
-        /* ── Scrollbars ──────────────────────────────────────────────── */
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: var(--bg-inset); }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--border-brass); }
-
-        /* ── Range slider ────────────────────────────────────────────── */
-        input[type="range"] {
-            -webkit-appearance: none; appearance: none;
-            width: 100%; height: 3px;
-            background: var(--border);
-            border-radius: 9999px; outline: none;
-        }
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; appearance: none;
-            width: 13px; height: 13px; border-radius: 50%;
-            background: var(--text-brass);
-            border: 2px solid var(--border-brass);
-            cursor: pointer; transition: background 0.15s;
-        }
-        input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-brass-lt); }
-        input[type="range"]:disabled { opacity: 0.35; }
-
-        /* ── Card / Panel ────────────────────────────────────────────── */
-        .ct-card {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-        }
-        .ct-card-inset {
-            background: var(--bg-inset);
-            border: 1px solid var(--border-light);
-            border-radius: 8px;
-        }
-
-        /* ── Section header bands ────────────────────────────────────── */
-        .pillar-header-maritime  { border-left: 3px solid var(--accent-blue);   background: rgba(74,127,212,0.08); }
-        .pillar-header-yard      { border-left: 3px solid var(--accent-emerald);background: rgba(58,143,106,0.08); }
-        .pillar-header-gate      { border-left: 3px solid var(--accent-amber);  background: rgba(200,134,58,0.08); }
-
-        /* ── KPI number cards ────────────────────────────────────────── */
-        .kpi-card {
-            background: var(--bg-panel-alt);
-            border: 1px solid var(--border);
-            border-top: 2px solid var(--border-brass);
-            border-radius: 8px;
-            padding: 10px 12px;
-            position: relative;
-            overflow: hidden;
-        }
-        .kpi-card::after {
-            content: '';
-            position: absolute; inset: 0;
-            background: linear-gradient(135deg, rgba(201,168,76,0.04) 0%, transparent 60%);
-            pointer-events: none;
-        }
-        .kpi-label {
-            color: var(--text-muted);
-            font-size: 8px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.12em;
-            display: block; margin-bottom: 3px;
-        }
-        .kpi-value {
-            font-size: 22px; font-weight: 800; line-height: 1;
-            letter-spacing: -0.02em;
-        }
-        .kpi-unit {
-            font-size: 10px; font-weight: 500;
-            color: var(--text-muted); margin-left: 3px;
-        }
-
-        /* ── Stage distribution cells ────────────────────────────────── */
-        .stage-cell {
-            background: var(--bg-inset);
-            border: 1px solid var(--border-light);
-            border-radius: 7px;
-            padding: 7px 4px;
-            text-align: center;
-        }
-        .stage-label {
-            font-size: 7.5px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.1em;
-            color: var(--text-muted); display: block; line-height: 1.2;
-        }
-        .stage-value {
-            font-size: 16px; font-weight: 800;
-            display: block; margin-top: 3px; line-height: 1;
-        }
-
-        /* ── Pillar row items ────────────────────────────────────────── */
-        .pillar-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 4px 0;
-            border-bottom: 1px solid var(--border-light);
-            font-size: 11px;
-        }
-        .pillar-row:last-child { border-bottom: none; }
-        .pillar-key { color: var(--text-secondary); font-weight: 500; }
-        .pillar-val { font-weight: 700; }
-
-        /* ── Berth cards ─────────────────────────────────────────────── */
-        .berth-empty {
-            background: var(--bg-inset);
-            border: 1px solid var(--border-light);
-            border-radius: 8px; padding: 10px;
-        }
-        .berth-occupied {
-            background: linear-gradient(135deg, #162040 0%, #1a2a50 100%);
-            border: 1px solid #2d4a8a;
-            border-top: 2px solid var(--accent-blue);
-            border-radius: 8px; padding: 10px;
-        }
-        .berth-label { font-size: 7px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); }
-        .berth-name  { font-size: 12px; font-weight: 800; margin-top: 2px; }
-        .berth-depth { font-size: 9px; color: var(--text-secondary); margin-top: 5px; }
-        .berth-dynamic { font-size: 9px; font-weight: 700; color: var(--accent-steel); }
-        .berth-ship   { font-size: 9px; font-weight: 700; color: #7baae8; margin-top: 6px; padding-top: 6px; border-top: 1px solid #2d4a8a; }
-        .berth-avail  { text-align: center; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-light); font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); font-weight: 700; }
-
-        /* ── Header ──────────────────────────────────────────────────── */
-        .ct-header {
-            background: var(--bg-header);
-            border-bottom: 1px solid var(--border-brass);
-            position: sticky; top: 0; z-index: 40;
-            padding: 8px 16px;
-        }
-        .ct-header-title { font-size: 15px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.01em; line-height: 1; }
-        .ct-header-sub   { font-size: 8px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.15em; margin-top: 3px; }
-
-        /* ── Status bar ──────────────────────────────────────────────── */
-        .ct-status-bar {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 5px 8px;
-            display: flex; flex-wrap: wrap; align-items: center; gap: 0;
-        }
-        .ct-status-item {
-            padding: 2px 12px; border-right: 1px solid var(--border);
-        }
-        .ct-status-item:last-of-type { border-right: none; }
-        .ct-status-key { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); font-weight: 600; display: block; }
-        .ct-status-val { font-size: 11px; font-weight: 700; }
-
-        /* ── Buttons ─────────────────────────────────────────────────── */
-        .btn-primary {
-            padding: 5px 14px; font-size: 11px; font-weight: 700;
-            background: var(--accent-navy); color: var(--text-brass);
-            border: 1px solid var(--border-brass);
-            border-radius: 6px; cursor: pointer; transition: all 0.15s;
-            letter-spacing: 0.03em;
-        }
-        .btn-primary:hover { background: #274885; border-color: var(--text-brass); }
-        .btn-ghost {
-            padding: 5px 12px; font-size: 11px; font-weight: 600;
-            background: var(--bg-panel-alt); color: var(--text-secondary);
-            border: 1px solid var(--border);
-            border-radius: 6px; cursor: pointer; transition: all 0.15s;
-        }
-        .btn-ghost:hover { background: var(--bg-panel); color: var(--text-primary); border-color: var(--border-brass); }
-        .btn-action {
-            padding: 5px 12px; font-size: 11px; font-weight: 700;
-            background: #1d3a28; color: #6bba8a;
-            border: 1px solid #2d6040;
-            border-radius: 6px; cursor: pointer; transition: all 0.15s;
-        }
-        .btn-action:hover { background: #234530; border-color: #3d8060; }
-        .btn-warn {
-            padding: 5px 12px; font-size: 11px; font-weight: 700;
-            background: #3a2a10; color: var(--text-brass);
-            border: 1px solid var(--border-brass);
-            border-radius: 6px; cursor: pointer; transition: all 0.15s;
-        }
-        .btn-warn:hover { background: #4a3618; }
-
-        /* ── Section header rule ─────────────────────────────────────── */
-        .section-rule {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em;
-            color: var(--text-muted);
-        }
-        .section-rule::after {
-            content: ''; flex: 1; height: 1px;
-            background: linear-gradient(90deg, var(--border) 0%, transparent 100%);
-        }
-
-        /* ── Charts ──────────────────────────────────────────────────── */
-        .chart-container-wrapper { position: relative; width: 100%; height: 110px; }
-
-        /* ── Telemetry console log entries ───────────────────────────── */
-        .log-entry { border-radius: 5px; padding: 5px 8px; margin-bottom: 4px; border-left: 3px solid; }
-        .log-vessel   { background: rgba(74,127,212,0.08); border-color: var(--accent-blue);   color: #9ab8e0; }
-        .log-container{ background: rgba(58,143,106,0.08); border-color: var(--accent-emerald);color: #7abf9a; }
-        .log-truck    { background: rgba(200,134,58,0.08); border-color: var(--accent-amber);  color: #d4a060; }
-        .log-system   { background: rgba(122,95,192,0.08); border-color: var(--accent-purple); color: #a090d8; }
-        .log-end      { background: rgba(58,143,106,0.12); border-color: #3a8f6a;              color: #6bba8a; }
-
-        /* ── Playback status badge ───────────────────────────────────── */
-        .playback-badge {
+        
+        .mono-font {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
-            background: var(--bg-inset); border: 1px solid var(--border);
-            color: var(--text-muted); padding: 2px 7px; border-radius: 4px;
         }
 
-        /* ── Select / input ──────────────────────────────────────────── */
-        select, input[type="text"] {
-            background: var(--bg-inset);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            border-radius: 6px; outline: none;
-            font-family: inherit;
+        /* Custom scrollbar configurations */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
         }
-        select:focus, input[type="text"]:focus { border-color: var(--border-brass); }
-
-        /* ── Modal ───────────────────────────────────────────────────── */
-        .ct-modal-overlay {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,0.65);
-            backdrop-filter: blur(4px);
-            z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px;
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
         }
-        .ct-modal {
-            background: var(--bg-panel);
-            border: 1px solid var(--border-brass);
-            border-radius: 12px;
-            box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(201,168,76,0.1);
-            max-height: 90vh; overflow: hidden;
-            display: flex; flex-direction: column;
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
         }
-        .ct-modal-header {
-            background: var(--bg-header);
-            border-bottom: 1px solid var(--border-brass);
-            padding: 14px 20px;
-            display: flex; justify-content: space-between; align-items: center;
-            flex-shrink: 0;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
-        .ct-modal-title { font-size: 13px; font-weight: 800; color: var(--text-brass); letter-spacing: 0.02em; }
-        .ct-modal-close { color: var(--text-muted); font-size: 18px; font-weight: 700; cursor: pointer; transition: color 0.15s; background: none; border: none; }
-        .ct-modal-close:hover { color: var(--text-primary); }
-        .ct-modal-body { overflow-y: auto; padding: 18px 20px; flex-grow: 1; }
 
-        /* ── Tab bar ─────────────────────────────────────────────────── */
-        .ct-tab-bar { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; gap: 0; flex-shrink: 0; background: var(--bg-header); }
-        .ct-tab-btn {
-            padding: 10px 16px; font-size: 11px; font-weight: 600;
-            color: var(--text-muted); border-bottom: 2px solid transparent;
-            cursor: pointer; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none;
-            letter-spacing: 0.04em;
+        /* Range slider styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 9999px;
+            outline: none;
         }
-        .ct-tab-btn:hover { color: var(--text-secondary); }
-        .ct-tab-btn.active { color: var(--text-brass); border-bottom-color: var(--text-brass); }
 
-        /* ── Alert banner themes ─────────────────────────────────────── */
-        .alert-congestion  { background:#2a1f06; border-color:#6b4e12; color:#d4a060; }
-        .alert-tide        { background:#061828; border-color:#1a4060; color:#6aaed8; }
-        .alert-customs     { background:#1a0e2a; border-color:#4a2c6a; color:#a88ad8; }
-        .alert-inspection  { background:#1e1206; border-color:#5c3010; color:#c0844a; }
-        .alert-end         { background:#061a10; border-color:#1a4a28; color:#6aba8a; }
-        .alert-btn-congestion  { background:#6b4e12; color:#f5d78e; border-color:#8a6820; }
-        .alert-btn-tide        { background:#1a4060; color:#8acce8; border-color:#2a6080; }
-        .alert-btn-customs     { background:#4a2c6a; color:#c0a0e8; border-color:#6a4a8a; }
-        .alert-btn-inspection  { background:#5c3010; color:#e0a060; border-color:#7a4820; }
-        .alert-btn-end         { background:#1a4a28; color:#8ad8a8; border-color:#2a6a40; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #1d4ed8;
+        }
 
-        /* ── Tailwind overrides (Tailwind v2 slate gap-fill) ──────────── */
-        .bg-slate-50  { background-color: var(--bg-panel-alt) !important; }
-        .bg-slate-100 { background-color: var(--bg-inset) !important; }
-        .bg-white     { background-color: var(--bg-panel) !important; }
-        .border-slate-100 { border-color: var(--border-light) !important; }
-        .border-slate-200 { border-color: var(--border) !important; }
-        .text-slate-400 { color: var(--text-muted) !important; }
-        .text-slate-500 { color: var(--text-secondary) !important; }
-        .text-slate-700 { color: var(--text-primary) !important; }
-        .text-slate-800 { color: var(--text-primary) !important; }
-        .text-slate-900 { color: var(--text-primary) !important; }
-        .shadow-xs { box-shadow: 0 1px 6px rgba(0,0,0,0.35) !important; }
-        .shadow-inner { box-shadow: inset 0 2px 8px rgba(0,0,0,0.4) !important; }
-        .animate-pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        /* Chart constraints */
+        .chart-container-wrapper {
+            position: relative;
+            width: 100%;
+            height: 120px;
+        }
 
-        /* ── Accent colour aliases (used inline in HTML spans) ────────── */
-        .text-blue-600   { color: var(--accent-blue) !important; }
-        .text-emerald-600{ color: var(--accent-emerald) !important; }
-        .text-amber-600  { color: var(--accent-amber) !important; }
-        .text-indigo-600 { color: #7a7fd8 !important; }
-        .text-purple-600 { color: var(--accent-purple) !important; }
-        .text-sky-600    { color: var(--accent-sky) !important; }
-        .text-amber-500  { color: var(--accent-amber) !important; }
-        .text-sky-500    { color: var(--accent-sky) !important; }
-        .text-emerald-500{ color: var(--accent-emerald) !important; }
-        .text-purple-500 { color: var(--accent-purple) !important; }
-        .text-slate-400  { color: var(--text-muted) !important; }
-
-        /* Progress bar override */
-        .bg-blue-500  { background-color: var(--accent-blue) !important; }
-        .bg-emerald-500 { background-color: var(--accent-emerald) !important; }
+        /* Fallback utilities for Slate in Tailwind v2 */
+        .bg-slate-50 { background-color: #f8fafc; }
+        .bg-slate-100 { background-color: #f1f5f9; }
+        .bg-slate-900 { background-color: #0f172a; }
+        .bg-slate-950 { background-color: #020617; }
+        .border-slate-100 { border-color: #f1f5f9; }
+        .border-slate-200 { border-color: #e2e8f0; }
+        .text-slate-400 { color: #94a3b8; }
+        .text-slate-500 { color: #64748b; }
+        .text-slate-600 { color: #475569; }
+        .text-slate-700 { color: #334155; }
+        .text-slate-800 { color: #1e293b; }
+        .text-slate-900 { color: #0f172a; }
+        /* Alert banner severity themes */
+        .alert-congestion  { background:#fef3c7; border-color:#fcd34d; color:#92400e; }
+        .alert-tide        { background:#eff6ff; border-color:#93c5fd; color:#1e3a8a; }
+        .alert-customs     { background:#f5f3ff; border-color:#c4b5fd; color:#3b0764; }
+        .alert-inspection  { background:#fff7ed; border-color:#fed7aa; color:#7c2d12; }
+        .alert-end         { background:#f0fdf4; border-color:#86efac; color:#14532d; }
+        .alert-btn-congestion  { background:#f59e0b; color:#fff; border-color:#d97706; }
+        .alert-btn-tide        { background:#3b82f6; color:#fff; border-color:#2563eb; }
+        .alert-btn-customs     { background:#8b5cf6; color:#fff; border-color:#7c3aed; }
+        .alert-btn-inspection  { background:#f97316; color:#fff; border-color:#ea580c; }
+        .alert-btn-end         { background:#22c55e; color:#fff; border-color:#16a34a; }
     </style>
 </head>
-<body class="antialiased min-h-screen flex flex-col overflow-x-hidden" style="background-color:var(--bg-page)">
+<body class="antialiased min-h-screen flex flex-col bg-slate-50 overflow-x-hidden">
 
     <!-- Top Navigation Ribbon -->
-    <header class="ct-header shrink-0">
+    <header class="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 py-2.5 shadow-xs shrink-0">
         <div class="flex flex-col lg:flex-row justify-between items-center gap-3">
-            <div class="flex items-center gap-3">
-                <div style="width:36px;height:36px;background:var(--accent-navy);border:1px solid var(--border-brass);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏢</div>
+            <div class="flex items-center gap-2.5">
+                <span class="text-2xl">🏢</span>
                 <div>
-                    <h1 class="ct-header-title serif-font">JNPA Control Tower</h1>
-                    <p class="ct-header-sub">Data-Driven Playback Engine</p>
-                </div>
-                <div style="width:1px;height:32px;background:var(--border-brass);opacity:0.4;margin:0 4px"></div>
-                <!-- Inline telemetry vitals -->
-                <div style="display:flex;gap:0" class="ct-status-bar">
-                    <div class="ct-status-item">
-                        <span class="ct-status-key">Simulated Clock</span>
-                        <span id="globalClock" class="ct-status-val mono-font" style="color:var(--text-brass)">No File</span>
-                    </div>
-                    <div class="ct-status-item">
-                        <span class="ct-status-key">Dynamic Tide</span>
-                        <span id="tideGauge" class="ct-status-val" style="color:var(--accent-sky)">0.00m</span>
-                    </div>
-                    <div class="ct-status-item">
-                        <span class="ct-status-key">Active Fleet</span>
-                        <span id="vesselsInPort" class="ct-status-val" style="color:var(--accent-emerald)">0 In Port</span>
-                    </div>
-                    <div class="ct-status-item" style="border-right:none">
-                        <span class="ct-status-key">Gated Trucks</span>
-                        <span id="truckQueue" class="ct-status-val" style="color:var(--accent-amber)">0 Active</span>
-                    </div>
+                    <h1 class="text-lg font-extrabold tracking-tight text-slate-900 font-sans leading-none">JNPA Control Tower</h1>
+                    <p class="text-[10px] text-slate-400 font-bold tracking-wider uppercase mt-1">Data-Driven Playback Engine</p>
                 </div>
             </div>
-
-            <!-- Action buttons -->
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <button id="btnAutoLoad" onclick="autoLoadAllCSVs()" class="btn-action">
-                    ⚡ Auto-Load Data
-                </button>
-                <button onclick="openModal('loadStatusModal')" class="btn-ghost" id="btnLoadStatus" style="display:flex;align-items:center;gap:5px">
-                    <span id="loadStatusDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-muted)"></span>
-                    <span id="loadStatusLabel">Data Status</span>
-                </button>
-                <button onclick="openModal('searchModal')" class="btn-ghost">🔍 Trace Finder</button>
-                <button onclick="openModal('settingsModal')" class="btn-primary">⚙️ Control Room</button>
+            
+            <!-- Global Telemetry Status Bar & Settings Access Buttons -->
+            <div class="flex flex-wrap items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Simulated Clock</span>
+                    <span id="globalClock" class="text-blue-600 font-bold mono-font text-[11px]">No File Loaded</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Dynamic Tide</span>
+                    <span id="tideGauge" class="text-indigo-600 font-black text-[11px]">0.00m</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Active Fleet</span>
+                    <span id="vesselsInPort" class="text-emerald-600 font-bold text-[11px]">0 In Port</span>
+                </div>
+                <div class="px-2.5 border-r border-slate-200">
+                    <span class="text-slate-400 block uppercase font-bold text-[8px] tracking-wider">Gated Trucks</span>
+                    <span id="truckQueue" class="text-amber-600 font-bold text-[11px]">0 Active</span>
+                </div>
+                <div class="flex gap-1.5 pl-1">
+                    <!-- Auto-load trigger button -->
+                    <button id="btnAutoLoad" onclick="autoLoadAllCSVs()" class="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm">
+                        ⚡ Auto-Load Data
+                    </button>
+                    <button onclick="openModal('loadStatusModal')" class="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition" id="btnLoadStatus">
+                        <span id="loadStatusDot" class="inline-block w-2 h-2 rounded-full bg-slate-300 mr-0.5"></span>
+                        <span id="loadStatusLabel">Data Status</span>
+                    </button>
+                    <button onclick="openModal('searchModal')" class="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded-lg border border-slate-200 shadow-2xs transition">
+                        🔍 Trace Finder
+                    </button>
+                    <button onclick="openModal('settingsModal')" class="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition shadow-sm">
+                        ⚙️ Control Room
+                    </button>
+                </div>
             </div>
         </div>
     </header>
 
-    <!-- ALERT BANNER -->
-    <div id="alertBanner" class="hidden sticky z-30 w-full px-4" style="top:57px">
-        <div id="alertBannerInner" style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:0 0 8px 8px;border-width:0 1px 1px;border-style:solid;font-size:11px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.4)">
-            <span id="alertIcon" style="font-size:15px;flex-shrink:0">⚠️</span>
-            <div style="flex-grow:1;min-width:0">
-                <span id="alertTitle" style="font-weight:800;text-transform:uppercase;letter-spacing:0.1em;font-size:9px;margin-right:8px"></span>
-                <span id="alertMessage" style="font-size:11px"></span>
+    <!-- ============================================================
+         ALERT BANNER — injected dynamically when playback pauses
+         ============================================================ -->
+    <div id="alertBanner" class="hidden sticky top-[57px] z-30 w-full px-4 py-0">
+        <div id="alertBannerInner" class="flex items-center gap-3 px-4 py-2.5 rounded-b-xl border-x border-b shadow-md text-xs font-semibold">
+            <span id="alertIcon" class="text-base shrink-0">⚠️</span>
+            <div class="flex-grow min-w-0">
+                <span id="alertTitle" class="font-extrabold uppercase tracking-wide text-[10px] mr-2"></span>
+                <span id="alertMessage"></span>
             </div>
-            <button id="btnContinue" onclick="continuePlayback()" style="flex-shrink:0;padding:4px 12px;border-radius:5px;font-size:10px;font-weight:800;border:1px solid;cursor:pointer;letter-spacing:0.06em;transition:opacity 0.15s">▶ CONTINUE</button>
-            <button onclick="dismissAlert()" style="flex-shrink:0;font-size:16px;font-weight:700;background:none;border:none;cursor:pointer;opacity:0.5;transition:opacity 0.15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+            <button id="btnContinue" onclick="continuePlayback()"
+                class="shrink-0 px-3 py-1 rounded-lg text-[11px] font-extrabold border transition">
+                ▶ Continue
+            </button>
+            <button onclick="dismissAlert()"
+                class="shrink-0 text-lg font-bold leading-none opacity-60 hover:opacity-100 transition">✕</button>
         </div>
     </div>
 
-    <!-- Master Layout -->
-    <main style="width:100%;padding:10px 14px 10px;flex-grow:1;display:grid;grid-template-columns:1fr;gap:10px;background:transparent">
-        <div style="display:grid;grid-template-columns:1fr 380px;gap:10px;height:calc(100vh - 62px);overflow:hidden">
-
-        <!-- ═══ LEFT COLUMN ═══ -->
-        <div style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding-right:6px">
-
-            <!-- Timeline bar -->
-            <div class="ct-card" style="padding:10px 14px;display:flex;align-items:center;gap:14px;flex-shrink:0">
-                <div style="display:flex;gap:6px;flex-shrink:0">
-                    <button id="btnPlay" class="btn-primary" style="min-width:56px">▶ Play</button>
-                    <button id="btnStep" class="btn-ghost">Step</button>
-                    <button id="btnReset" class="btn-ghost" style="color:var(--text-muted)">Restart</button>
+    <!-- Master Layout — full viewport width, no max-w cap -->
+    <main class="w-full px-4 py-3 flex-grow grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-58px)] lg:overflow-hidden">
+        
+        <!-- Left Section (All core visual states, pillars, matrix, graphs - 8 Columns) -->
+        <section class="lg:col-span-8 flex flex-col space-y-3 lg:overflow-y-auto lg:pr-2 h-full pb-3">
+            
+            <!-- Timeline Playback Seek Bar -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0 flex flex-col md:flex-row items-center gap-4">
+                <div class="flex gap-1.5 shrink-0">
+                    <button id="btnPlay" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm">
+                        Play
+                    </button>
+                    <button id="btnStep" class="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition">
+                        Step Event
+                    </button>
+                    <button id="btnReset" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs font-semibold rounded-lg border border-slate-200 transition">
+                        Restart
+                    </button>
                 </div>
-                <div style="flex-grow:1;display:flex;align-items:center;gap:10px">
-                    <span style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-muted);flex-shrink:0">Timeline Seek</span>
-                    <input id="timelineSlider" type="range" min="0" max="0" value="0" style="flex-grow:1" disabled>
-                    <span id="lblTimelineProgress" class="mono-font" style="font-size:11px;font-weight:700;color:var(--text-brass);flex-shrink:0">0 / 0</span>
-                </div>
-            </div>
-
-            <!-- KPI cards -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex-shrink:0">
-                <div class="kpi-card">
-                    <span class="kpi-label">Processed Events</span>
-                    <span id="kpiScheduled" class="kpi-value" style="color:var(--text-primary)">0</span><span class="kpi-unit">rows</span>
-                </div>
-                <div class="kpi-card">
-                    <span class="kpi-label">Vessels In Port</span>
-                    <span id="kpiMoored" class="kpi-value" style="color:var(--accent-blue)">0</span><span class="kpi-unit">active</span>
-                </div>
-                <div class="kpi-card">
-                    <span class="kpi-label">Containers Moved</span>
-                    <span id="kpiContainers" class="kpi-value" style="color:var(--accent-emerald)">0</span><span class="kpi-unit">boxes</span>
-                </div>
-                <div class="kpi-card">
-                    <span class="kpi-label">Trucks Gated In</span>
-                    <span id="kpiTrucks" class="kpi-value" style="color:var(--accent-amber)">0</span><span class="kpi-unit">vehicles</span>
+                
+                <div class="flex-grow w-full flex items-center gap-3">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Timeline Seek:</span>
+                    <input id="timelineSlider" type="range" min="0" max="0" value="0" class="flex-grow cursor-pointer" disabled>
+                    <span id="lblTimelineProgress" class="text-xs font-bold text-blue-600 mono-font shrink-0">0 / 0</span>
                 </div>
             </div>
 
-            <!-- 3 pillars -->
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex-shrink:0">
-
-                <!-- Pillar I: Maritime -->
-                <div class="ct-card" style="padding:12px">
-                    <div class="pillar-header-maritime" style="padding:4px 10px;border-radius:0 5px 5px 0;margin-bottom:10px">
-                        <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent-blue)">I. Maritime Status</span>
-                    </div>
-                    <div class="pillar-row"><span class="pillar-key">Scheduled / ETA</span><span id="lblShipScheduled" class="pillar-val" style="color:var(--text-primary)">0</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Anchorage Waiting</span><span id="lblShipAnchored" class="pillar-val" style="color:var(--accent-amber)">0</span></div>
-                    <div class="pillar-row"><span class="pillar-key">In Transit (Pilotage)</span><span id="lblShipTransit" class="pillar-val" style="color:var(--accent-sky)">0</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Moored / At Berth</span><span id="lblShipMoored" class="pillar-val" style="color:var(--accent-blue)">0</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Bunkering / Service</span><span id="lblShipBunkering" class="pillar-val" style="color:var(--accent-purple)">0</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Sailed / Cleared</span><span id="lblShipSailed" class="pillar-val" style="color:var(--text-muted)">0</span></div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light)">
-                        <div class="pillar-row"><span class="pillar-key">Avg Anchorage Wait</span><span id="lblAvgAnchorWait" class="pillar-val" style="color:var(--accent-amber)">0.0 h</span></div>
-                        <div class="pillar-row"><span class="pillar-key">Avg Cargo Hours</span><span id="lblAvgCargoHours" class="pillar-val" style="color:var(--text-secondary)">0.0 h</span></div>
+            <!-- KPI Counters Row -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Processed Events</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiScheduled" class="text-xl font-extrabold text-slate-800">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">rows</span>
                     </div>
                 </div>
-
-                <!-- Pillar II: Yard -->
-                <div class="ct-card" style="padding:12px">
-                    <div class="pillar-header-yard" style="padding:4px 10px;border-radius:0 5px 5px 0;margin-bottom:10px">
-                        <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent-emerald)">II. Yard Allocations</span>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Moored / Operating</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiMoored" class="text-xl font-extrabold text-blue-600">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">active</span>
                     </div>
-                    <div class="pillar-row"><span class="pillar-key">Yard A (Dry Cargo)</span><span id="lblYardADry" class="pillar-val" style="color:var(--text-primary)">4,500 TEU</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Yard B (Dry Cargo)</span><span id="lblYardBDry" class="pillar-val" style="color:var(--text-primary)">3,800 TEU</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Yard C (Reefer Plugs)</span><span id="lblYardCReefer" class="pillar-val" style="color:var(--accent-emerald)">1,200 TEU</span></div>
-                    <div class="pillar-row"><span class="pillar-key">Yard D (Reefer Plugs)</span><span id="lblYardDReefer" class="pillar-val" style="color:var(--accent-emerald)">900 TEU</span></div>
                 </div>
-
-                <!-- Pillar III: Gates -->
-                <div class="ct-card" style="padding:12px">
-                    <div class="pillar-header-gate" style="padding:4px 10px;border-radius:0 5px 5px 0;margin-bottom:10px">
-                        <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent-amber)">III. Port Boundaries</span>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Outbound / Sailed</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiSailed" class="text-xl font-extrabold text-emerald-600">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">cleared</span>
                     </div>
-                    <div class="pillar-row"><span class="pillar-key">Inbound Gate (OCR)</span><span id="lblEntryGate" class="pillar-val" style="color:var(--text-secondary);font-size:10px">Inactive</span></div>
-                    <div class="pillar-row"><span class="pillar-key">North Exit (Outbound)</span><span id="lblExitNorth" class="pillar-val" style="color:var(--text-secondary);font-size:10px">Inactive</span></div>
-                    <div class="pillar-row"><span class="pillar-key">South Exit (Outbound)</span><span id="lblExitSouth" class="pillar-val" style="color:var(--text-secondary);font-size:10px">Inactive</span></div>
                 </div>
-            </div>
-
-            <!-- Berth Matrix -->
-            <div class="ct-card" style="padding:12px;flex-shrink:0">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-light)">
-                    <div class="section-rule" style="flex-grow:1;margin-right:12px">
-                        <span>⚓</span><span>JNPA Berth Matrix</span>
-                    </div>
-                    <select id="filterTerminal" style="font-size:10px;font-weight:600;padding:4px 8px;background:var(--bg-inset);border:1px solid var(--border);color:var(--text-secondary);border-radius:5px;outline:none">
-                        <option value="ALL">All Terminals (T1–T4)</option>
-                        <option value="T1">T1 Dry (B1–B3)</option>
-                        <option value="T2">T2 Dry (B4–B6)</option>
-                        <option value="T3">T3 Reefer (B7–B8)</option>
-                        <option value="T4">T4 Reefer (B9–B10)</option>
-                    </select>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:7px" id="berthLayoutContainer"></div>
-            </div>
-
-            <!-- Charts -->
-            <div class="ct-card" style="padding:12px;flex-shrink:0">
-                <div class="section-rule" style="margin-bottom:10px">
-                    <span>📈</span><span>Live Telemetry Plots</span>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                    <div class="chart-container-wrapper ct-card-inset" style="padding:8px"><canvas id="bottleneckChart"></canvas></div>
-                    <div class="chart-container-wrapper ct-card-inset" style="padding:8px"><canvas id="customsDistributionChart"></canvas></div>
-                </div>
-            </div>
-
-        </div><!-- end left -->
-
-        <!-- ═══ RIGHT COLUMN ═══ -->
-        <div style="display:flex;flex-direction:column;gap:10px;height:100%">
-
-            <!-- Fleet Stage Distribution -->
-            <div class="ct-card" style="padding:12px;flex-shrink:0">
-                <div class="section-rule" style="margin-bottom:8px">
-                    <span>🔄</span><span>Fleet Stage Distribution</span>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
-                    <div class="stage-cell"><span class="stage-label">1. Sched</span><span id="stage_eta" class="stage-value" style="color:var(--text-secondary)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">2. Anch</span><span id="stage_anch" class="stage-value" style="color:var(--accent-amber)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">3. Transit</span><span id="stage_transit" class="stage-value" style="color:var(--accent-sky)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">4. Moored</span><span id="stage_moored" class="stage-value" style="color:#7a7fd8">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">5. Cranes</span><span id="stage_ops" class="stage-value" style="color:var(--accent-blue)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">6. Bunker</span><span id="stage_bunkering" class="stage-value" style="color:var(--accent-purple)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">7. Done</span><span id="stage_done" class="stage-value" style="color:var(--accent-emerald)">0</span></div>
-                    <div class="stage-cell"><span class="stage-label">8. Sailed</span><span id="stage_sailed" class="stage-value" style="color:var(--text-muted)">0</span></div>
-                </div>
-            </div>
-
-            <!-- Telemetry Stream -->
-            <div class="ct-card" style="padding:12px;display:flex;flex-direction:column;flex-grow:1;min-height:0">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-shrink:0">
-                    <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--text-primary)">
-                        <span id="livePulseSignal" style="color:var(--accent-emerald)" class="animate-pulse">●</span>
-                        Telemetry Stream
-                        <span style="font-size:9px;color:var(--text-muted);font-weight:400">↑ newest first</span>
-                    </div>
-                    <span id="lblPlaybackStatus" class="playback-badge">no file loaded</span>
-                </div>
-                <div id="eventConsole" class="ct-card-inset mono-font" style="flex-grow:1;overflow-y:auto;padding:8px;font-size:10.5px;height:0">
-                    <div style="text-align:center;padding:40px 10px;color:var(--text-muted)">
-                        <div style="font-size:28px;margin-bottom:8px">📂</div>
-                        <p style="font-weight:700;color:var(--text-secondary);font-size:11px">Load vessel_lifecycle_simulation.csv</p>
-                        <p style="font-size:10px;margin-top:4px">Generated by the Python simulation engine</p>
+                <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+                    <span class="text-slate-400 text-[9px] uppercase font-bold tracking-wider block">Active Relational Registry</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span id="kpiSync" class="text-xl font-extrabold text-slate-800">0</span>
+                        <span class="text-[10px] font-medium text-slate-400">entities</span>
                     </div>
                 </div>
             </div>
 
-        </div><!-- end right -->
-        </div><!-- end grid -->
+            <!-- Core Infrastructure Pillars (Maritime, Yards, Gates) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
+                
+                <!-- Pillar 1: Marine anchorage & pilotage -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-blue-500 bg-blue-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-blue-700 block">I. Maritime Status</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Scheduled Fleet:</span>
+                                <span id="lblShipScheduled" class="font-extrabold text-slate-800">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Anchorage Waiting:</span>
+                                <span id="lblShipAnchored" class="font-extrabold text-amber-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Moored / At Berth:</span>
+                                <span id="lblShipMoored" class="font-extrabold text-blue-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center border-t border-slate-100 pt-1.5 mt-1">
+                                <span class="text-slate-500 font-semibold">Avg Anchorage Wait:</span>
+                                <span id="lblAvgAnchorWait" class="font-extrabold text-amber-600">0.0 h</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Avg Cargo Hours:</span>
+                                <span id="lblAvgCargoHours" class="font-extrabold text-slate-700">0.0 h</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 2: Yards space management -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-emerald-700 block">II. Yard Allocations</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard A (Dry Cargo):</span>
+                                <span id="lblYardADry" class="font-extrabold text-slate-800">4,500 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard B (Dry Cargo):</span>
+                                <span id="lblYardBDry" class="font-extrabold text-slate-800">3,800 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard C (Reefer Plugs):</span>
+                                <span id="lblYardCReefer" class="font-extrabold text-emerald-600">1,200 TEU</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Yard D (Reefer Plugs):</span>
+                                <span id="lblYardDReefer" class="font-extrabold text-emerald-600">900 TEU</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 3: Entry & Exit Gates -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                        <div class="border-l-4 border-amber-500 bg-amber-50 px-2.5 py-1 rounded-r-xl mb-2.5">
+                            <span class="text-[9px] uppercase font-black tracking-widest text-amber-700 block">III. Port Boundaries</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">Inbound Gate (OCR):</span>
+                                <span id="lblEntryGate" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">North Exit (Outbound):</span>
+                                <span id="lblExitNorth" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500 font-semibold">South Exit (Outbound):</span>
+                                <span id="lblExitSouth" class="font-extrabold text-slate-800">Inactive</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Spatial Berth Allocations Grid -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0">
+                <div class="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+                    <h2 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        <span>⚓</span> JNPA Berth Matrix (State Allocation Map)
+                    </h2>
+                    
+                    <div>
+                        <select id="filterTerminal" class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 focus:outline-none cursor-pointer">
+                            <option value="ALL">All Terminals (T1, T2, T3, T4)</option>
+                            <option value="T1">T1 Dry (Berths: B1, B2, B3)</option>
+                            <option value="T2">T2 Dry (Berths: B4, B5, B6)</option>
+                            <option value="T3">T3 Reefer (Berths: B7, B8)</option>
+                            <option value="T4">T4 Reefer (Berths: B9, B10)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3" id="berthLayoutContainer">
+                    <!-- Renders dynamically with perfect spatial allocation mapping -->
+                </div>
+            </div>
+
+            <!-- Dynamic Telemetry Graphs -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs shrink-0">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-2 mb-3">
+                    📈 Control Tower Live Telemetry Plots
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="chart-container-wrapper">
+                        <canvas id="bottleneckChart"></canvas>
+                    </div>
+                    <div class="chart-container-wrapper">
+                        <canvas id="customsDistributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Section (Event Logger and Stage counter - 4 Columns) -->
+        <section class="lg:col-span-4 flex flex-col space-y-3 h-full">
+            
+            <!-- Compact Fleet Lifecycle State-Machine Grid -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs shrink-0">
+                <h3 class="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mb-2.5">
+                    🔄 Fleet Stage Distribution
+                </h3>
+                <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">1. Scheduled</span>
+                        <span id="stage_eta" class="text-sm font-extrabold text-slate-800 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">2. Anchored</span>
+                        <span id="stage_anch" class="text-sm font-extrabold text-amber-500 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">3. Moored</span>
+                        <span id="stage_moored" class="text-sm font-extrabold text-indigo-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">4. Crane Ops</span>
+                        <span id="stage_ops" class="text-sm font-extrabold text-blue-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">5. Done</span>
+                        <span id="stage_done" class="text-sm font-extrabold text-emerald-600 block mt-0.5">0</span>
+                    </div>
+                    <div class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <span class="text-slate-400 text-[8px] uppercase font-black tracking-widest block">6. Sailed</span>
+                        <span id="stage_sailed" class="text-sm font-extrabold text-slate-400 block mt-0.5">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Event Logger Card (Contrast-Optimized Dark text on light BG) -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex-grow flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-2.5 shrink-0">
+                    <h2 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                        <span id="livePulseSignal" class="text-emerald-500 animate-pulse">●</span> Simulated Telemetry Stream
+                        <span class="text-[9px] text-slate-400 font-normal ml-1 normal-case">↑ newest first</span>
+                    </h2>
+                    <span id="lblPlaybackStatus" class="mono-font text-[8px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500 font-bold uppercase">
+                        no file loaded
+                    </span>
+                </div>
+                <!-- Scrolling Terminal Core: fixed height, newest entries prepended at top -->
+                <div id="eventConsole" class="bg-white border border-slate-200 rounded-xl p-2.5 overflow-y-auto font-mono text-[11px] space-y-2 shadow-inner" style="height:340px; max-height:340px;">
+                    <div class="text-slate-400 text-center py-10">
+                        <span class="text-3xl block mb-2">📂</span>
+                        <p class="font-bold text-slate-700">Please select and load the vessel_lifecycle_simulation.csv</p>
+                        <p class="text-[10px] mt-1 text-slate-400">File is generated using the Python simulation engine script.</p>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
     </main>
 
     <!-- -------------------------------------------------------------
@@ -577,103 +416,106 @@
          ------------------------------------------------------------- -->
     
     <!-- 0. Data Load Status Modal -->
-    <div id="loadStatusModal" class="ct-modal-overlay hidden">
-        <div class="ct-modal" style="width:100%;max-width:520px">
-            <div class="ct-modal-header">
-                <span class="ct-modal-title">📡 Data Source Status</span>
-                <button class="ct-modal-close" onclick="closeModal('loadStatusModal')">✕</button>
+    <div id="loadStatusModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-200 p-6 overflow-y-auto max-h-[90vh] space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    📡 Data Source Status
+                </h3>
+                <button onclick="closeModal('loadStatusModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
             </div>
-            <div class="ct-modal-body" style="display:flex;flex-direction:column;gap:14px">
-                <div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                        <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-muted)">Overall Load Progress</span>
-                        <span id="overallLoadPct" class="mono-font" style="font-size:10px;font-weight:700;color:var(--text-brass)">0 / 5 files</span>
-                    </div>
-                    <div style="height:4px;background:var(--bg-inset);border-radius:4px;overflow:hidden;border:1px solid var(--border-light)">
-                        <div id="overallLoadBar" style="height:100%;width:0%;background:var(--accent-blue);border-radius:4px;transition:width 0.5s ease"></div>
-                    </div>
+
+            <!-- Overall progress bar -->
+            <div>
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Overall Load Progress</span>
+                    <span id="overallLoadPct" class="text-[10px] font-bold text-blue-600 mono-font">0 / 5 files</span>
                 </div>
-                <div id="fileStatusList" style="display:flex;flex-direction:column;gap:6px"></div>
-                <div style="padding-top:10px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center;gap:10px">
-                    <p style="font-size:9px;color:var(--text-muted);line-height:1.5">Files fetched from the same server directory as this HTML file.</p>
-                    <button onclick="autoLoadAllCSVs()" class="btn-action" style="flex-shrink:0;white-space:nowrap">↺ Reload All</button>
+                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="overallLoadBar" class="h-2 bg-blue-500 rounded-full transition-all duration-500" style="width:0%"></div>
                 </div>
+            </div>
+
+            <!-- Per-file status rows -->
+            <div class="space-y-2" id="fileStatusList">
+                <!-- Populated dynamically -->
+            </div>
+
+            <!-- Action row -->
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                <p class="text-[9px] text-slate-400 leading-normal">Files are fetched from the same directory as this HTML file on the server.</p>
+                <button onclick="autoLoadAllCSVs()" class="shrink-0 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition">
+                    ↺ Reload All
+                </button>
             </div>
         </div>
     </div>
 
     <!-- 1. Settings & Control Room Modal -->
-    <div id="settingsModal" class="ct-modal-overlay hidden">
-        <div class="ct-modal" style="width:100%;max-width:540px">
-            <div class="ct-modal-header">
-                <span class="ct-modal-title">⚙️ Control Room Parameters</span>
-                <button class="ct-modal-close" onclick="closeModal('settingsModal')">✕</button>
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full border border-slate-200 p-6 overflow-y-auto max-h-[90vh] space-y-5">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    ⚙️ Control Room Parameters
+                </h3>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
             </div>
-            <div class="ct-tab-bar">
-                <button class="ct-tab-btn active" id="btn-tab-playback" onclick="switchSettingsTab('tab-playback')">🎛 Playback</button>
-                <button class="ct-tab-btn" id="btn-tab-alerts" onclick="switchSettingsTab('tab-alerts')">🔔 Alert Config</button>
-                <button class="ct-tab-btn" id="btn-tab-diagnostics" onclick="switchSettingsTab('tab-diagnostics')">🛡 Diagnostics</button>
-            </div>
-            <div class="ct-modal-body">
-                <!-- Playback tab -->
-                <div id="tab-playback" class="settings-tab-panel" style="display:flex;flex-direction:column;gap:12px">
-                    <p style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.12em;font-weight:700">Playback Velocity</p>
-                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:4px">
-                        <span style="color:var(--text-secondary)">Speed Modifier</span>
-                        <span id="lblPlaybackSpeed" style="font-weight:700;color:var(--text-brass);background:var(--bg-inset);border:1px solid var(--border-brass);padding:2px 8px;border-radius:4px;font-size:10px">1 Event / Cycle</span>
+
+            <!-- Playback speed override -->
+            <div class="space-y-3 pt-2 text-xs">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">1. Playback Velocity</span>
+                
+                <div>
+                    <div class="flex justify-between mb-1 items-center">
+                        <span class="text-slate-500 font-semibold">Speed Modifier:</span>
+                        <span id="lblPlaybackSpeed" class="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">1 Event / Cycle</span>
                     </div>
-                    <input id="overrideSpeed" type="range" min="1" max="50" step="1" value="1" style="width:100%">
-                    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted)">
-                        <span>1 (slowest)</span><span>50 (fastest)</span>
+                    <input id="overrideSpeed" type="range" min="1" max="50" step="1" value="1" class="w-full cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Verification Agent Diagnostic Card -->
+            <div class="pt-3 border-t border-slate-100 space-y-2">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">2. Playback Security Checks</span>
+                <div class="flex items-center gap-2.5 p-2.5 bg-green-50 rounded-xl border border-green-100">
+                    <span class="text-lg">✔️</span>
+                    <div>
+                        <span class="text-[11px] font-bold text-green-800 block">DES Sequence Verified</span>
+                        <span class="text-[9px] text-green-600">State machines update cleanly from CSV headers</span>
                     </div>
                 </div>
-                <!-- Alerts tab -->
-                <div id="tab-alerts" class="settings-tab-panel" style="display:none;flex-direction:column;gap:10px">
-                    <p style="font-size:10px;color:var(--text-muted);line-height:1.6">Choose which conditions pause playback. Each enabled rule fires once per unique entity. Click <b style="color:var(--text-primary)">Continue</b> on the banner to resume.</p>
-                    <div id="alertRulesList" style="display:flex;flex-direction:column;gap:6px"></div>
-                    <div style="display:flex;gap:8px;padding-top:10px;border-top:1px solid var(--border-light)">
-                        <button onclick="setAllAlerts(true)" class="btn-primary" style="flex:1">Enable All</button>
-                        <button onclick="setAllAlerts(false)" class="btn-ghost" style="flex:1">Disable All</button>
-                    </div>
-                    <p style="font-size:9px;color:var(--text-muted)">Deduplication resets on Restart — each rule fires at most once per entity per run.</p>
-                </div>
-                <!-- Diagnostics tab -->
-                <div id="tab-diagnostics" class="settings-tab-panel" style="display:none;flex-direction:column;gap:10px">
-                    <p style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.12em;font-weight:700">Sequence Verification</p>
-                    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(58,143,106,0.08);border:1px solid rgba(58,143,106,0.25);border-radius:7px">
-                        <span style="font-size:18px">✔️</span>
-                        <div>
-                            <span style="font-size:11px;font-weight:700;color:var(--accent-emerald);display:block">DES Sequence Verified</span>
-                            <span style="font-size:9px;color:var(--text-muted)">State machines update cleanly from CSV headers</span>
-                        </div>
-                    </div>
-                    <div style="font-size:9px;color:var(--text-muted);line-height:1.8;padding-left:4px">
-                        <p>• Vessel drafts respect <em>Draft ≤ Depth + Tide</em> at mooring requests.</p>
-                        <p>• Shipping bills verify <em>T(LEO) &lt; T(Load)</em>; customs verify <em>T(OOC) &lt; T(GateOut)</em>.</p>
-                        <p>• BUNKERING stage tracked separately from CARGO ops in fleet distribution.</p>
-                    </div>
+                <div class="text-[9px] text-slate-400 leading-normal space-y-1 pl-1">
+                    <p>• Ensures vessel drafts respect $Draft \le Depth_{chart} + Tide$ at mooring requests.</p>
+                    <p>• Confirms shipping bills ($T_{LEO} < T_{Load}$) and customs releases ($T_{OOC} < T_{GateOut}$).</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 2. Trace Finder Modal -->
-    <div id="searchModal" class="ct-modal-overlay hidden">
-        <div class="ct-modal" style="width:100%;max-width:480px">
-            <div class="ct-modal-header">
-                <span class="ct-modal-title">🔍 Trace Relational Registry</span>
-                <button class="ct-modal-close" onclick="closeModal('searchModal')">✕</button>
+    <!-- 2. Search & Traceability Finder Modal -->
+    <div id="searchModal" class="fixed inset-0 bg-slate-900/40 backdrop-filter backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full border border-slate-200 p-6 space-y-4">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    🔍 Trace Relational Registry
+                </h3>
+                <button onclick="closeModal('searchModal')" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
             </div>
-            <div class="ct-modal-body" style="display:flex;flex-direction:column;gap:12px">
-                <p style="font-size:10px;color:var(--text-muted);line-height:1.6">
-                    Search any ID — vessels <code style="background:var(--bg-inset);border:1px solid var(--border);padding:1px 5px;border-radius:3px;color:var(--accent-blue);font-family:monospace">V0001</code>, containers <code style="background:var(--bg-inset);border:1px solid var(--border);padding:1px 5px;border-radius:3px;color:var(--accent-emerald);font-family:monospace">JNPU-EX-V0001-001</code>, or trucks <code style="background:var(--bg-inset);border:1px solid var(--border);padding:1px 5px;border-radius:3px;color:var(--accent-amber);font-family:monospace">MH-46-TRK-0001</code>
+
+            <!-- Query Entry field -->
+            <div class="space-y-3">
+                <p class="text-[10px] text-slate-400 leading-normal">
+                    Enter any valid ID across the digital twin database — vessels (<code class="bg-slate-100 px-1 rounded text-blue-600">V0001</code>), containers (<code class="bg-slate-100 px-1 rounded text-emerald-600">JNPU-EX-V0001-001</code>), or trucks (<code class="bg-slate-100 px-1 rounded text-amber-600">MH-46-TRK-0001</code>):
                 </p>
-                <div style="display:flex;gap:8px">
-                    <input id="txtQuery" type="text" placeholder="e.g. V0001, JNPU-EX-V0001-001, MH-46-TRK-0001"
-                        style="flex-grow:1;padding:8px 10px;font-size:11px;background:var(--bg-inset);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;outline:none">
-                    <button onclick="traceEntity()" class="btn-primary" style="white-space:nowrap">Search</button>
+                <div class="flex gap-2">
+                    <input id="txtQuery" type="text" placeholder="e.g. V0001, JNPU-EX-V0001-001, MH-46-TRK-0001" class="flex-grow p-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+                    <button onclick="traceEntity()" class="px-3.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition">Search</button>
                 </div>
-                <div id="searchResult" class="ct-card-inset" style="padding:12px;font-size:11px;display:none"></div>
+                <div id="searchResult" class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1.5 hidden shadow-inner">
+                    <!-- Dynamic Search outcomes -->
+                </div>
             </div>
         </div>
     </div>
@@ -812,33 +654,32 @@
             }
 
             list.innerHTML = CSV_MANIFEST.map(f => {
-                let icon, borderColor, bgColor, statusText;
+                let statusIcon, statusClass, statusText;
                 if (f.loaded) {
-                    icon = '✅'; borderColor = 'rgba(58,143,106,0.4)'; bgColor = 'rgba(58,143,106,0.07)';
-                    statusText = `<span style="color:var(--accent-emerald);font-weight:700">${f.rows.toLocaleString()} rows loaded</span>`;
+                    statusIcon = '✅';
+                    statusClass = 'bg-emerald-50 border-emerald-200';
+                    statusText = `<span class="text-emerald-700 font-bold">${f.rows.toLocaleString()} rows loaded</span>`;
                 } else if (f.error) {
-                    icon = '❌'; borderColor = 'rgba(184,74,74,0.4)'; bgColor = 'rgba(184,74,74,0.07)';
-                    statusText = `<span style="color:var(--accent-red);font-weight:700">${f.error}</span>`;
+                    statusIcon = '❌';
+                    statusClass = 'bg-red-50 border-red-200';
+                    statusText = `<span class="text-red-600 font-bold">${f.error}</span>`;
                 } else {
-                    icon = f.required ? '⏳' : '○'; borderColor = 'var(--border-light)'; bgColor = 'var(--bg-inset)';
-                    statusText = `<span style="color:var(--text-muted)">${f.required ? 'Pending...' : 'Not loaded'}</span>`;
+                    statusIcon = f.required ? '⏳' : '○';
+                    statusClass = 'bg-slate-50 border-slate-200';
+                    statusText = `<span class="text-slate-400">${f.required ? 'Pending...' : 'Not loaded'}</span>`;
                 }
+
                 return `
-                    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:7px;border:1px solid ${borderColor};background:${bgColor}">
-                        <span style="font-size:14px;flex-shrink:0;margin-top:1px">${icon}</span>
-                        <div style="flex-grow:1;min-width:0">
-                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                                <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${f.icon} ${f.label}</span>
-                                <span style="font-size:7.5px;padding:1px 6px;border-radius:3px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;
-                                    background:${f.required ? 'rgba(74,127,212,0.15)' : 'rgba(79,91,122,0.15)'};
-                                    color:${f.required ? 'var(--accent-blue)' : 'var(--text-muted)'};
-                                    border:1px solid ${f.required ? 'rgba(74,127,212,0.3)' : 'var(--border-light)'}">
-                                    ${f.required ? 'Required' : 'Optional'}
-                                </span>
+                    <div class="flex items-start gap-3 p-2.5 rounded-xl border ${statusClass}">
+                        <span class="text-base shrink-0 mt-0.5">${statusIcon}</span>
+                        <div class="flex-grow min-w-0">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] font-extrabold text-slate-800">${f.icon} ${f.label}</span>
+                                ${f.required ? '<span class="text-[8px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">Required</span>' : '<span class="text-[8px] bg-slate-100 text-slate-500 px-1.5 rounded font-bold uppercase">Optional</span>'}
                             </div>
-                            <div style="font-size:9px;color:var(--text-muted);margin-top:2px;font-family:monospace">${f.filename}</div>
-                            <div style="font-size:9px;margin-top:3px">${statusText}</div>
-                            <div style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.4">${f.description}</div>
+                            <div class="text-[9px] text-slate-400 mt-0.5 truncate">${f.filename}</div>
+                            <div class="text-[9px] mt-0.5">${statusText}</div>
+                            <div class="text-[9px] text-slate-400 mt-0.5 leading-normal">${f.description}</div>
                         </div>
                     </div>
                 `;
@@ -853,17 +694,18 @@
             const dot = document.getElementById('loadStatusDot');
             const lbl = document.getElementById('loadStatusLabel');
             if (!dot || !lbl) return;
+
             if (loadedCount === total) {
-                dot.style.background = 'var(--accent-emerald)';
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-emerald-500 mr-0.5';
                 lbl.innerText = `All ${total} Files OK`;
             } else if (hasError) {
-                dot.style.background = 'var(--accent-red)';
-                lbl.innerText = 'Load Error';
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-red-500 mr-0.5 animate-pulse';
+                lbl.innerText = `Load Error`;
             } else if (loadedCount > 0) {
-                dot.style.background = 'var(--accent-amber)';
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-amber-400 mr-0.5 animate-pulse';
                 lbl.innerText = `${loadedCount}/${total} Loaded`;
             } else {
-                dot.style.background = 'var(--text-muted)';
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-slate-300 mr-0.5';
                 lbl.innerText = 'Data Status';
             }
         }
@@ -1206,123 +1048,49 @@
         // (alertPaused, pendingResume, firedAlerts declared at top of script)
         // -------------------------------------------------------------
 
-        // Conditions that trigger an alert pause — each rule has an `enabled` flag
+        // Conditions that trigger an alert pause — tuned to actual CSV data patterns
         const ALERT_RULES = [
             {
-                id: 'CONGESTION', enabled: true,
-                label: 'Anchorage Congestion Hold',
-                description: 'Pauses when a vessel enters anchorage due to berth congestion (delay_reason = CONGESTION).',
-                test: (e) => e.delay_reason === 'CONGESTION',
-                severity: 'congestion', icon: '🚨', title: 'Anchorage Congestion Hold',
-                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line} — ${e.vessel_class}) is waiting at outer anchorage due to berth congestion. No slot at ${e.terminal}. Est. wait: ${parseFloat(e.anchorage_wait_hours||0).toFixed(1)}h.`
+                id: 'CONGESTION',
+                test: (event) => event.delay_reason === 'CONGESTION',
+                severity: 'congestion',
+                icon: '🚨',
+                title: 'Anchorage Congestion Hold',
+                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line} — ${e.vessel_class}) is waiting at outer anchorage due to berth congestion. No slot available at ${e.terminal}. Estimated anchorage wait: ${parseFloat(e.anchorage_wait_hours || 0).toFixed(1)}h.`
             },
             {
-                id: 'TIDE_HOLD', enabled: true,
-                label: 'Tide Hold — UKC Safety',
-                description: 'Pauses when a vessel is held at berth because tide is insufficient for safe departure (Under-Keel Clearance).',
-                test: (e) => e.delay_reason === 'TIDE_HOLD',
-                severity: 'tide', icon: '🌊', title: 'Tide Hold — UKC Safety Check',
-                message: (e) => `Vessel ${e.vessel_id} held at berth — UKC margin insufficient at current tide ${parseFloat(e.tide_level||0).toFixed(2)}m. Waiting for rising tide window before unberthing.`
+                id: 'TIDE_HOLD',
+                test: (event) => event.delay_reason === 'TIDE_HOLD',
+                severity: 'tide',
+                icon: '🌊',
+                title: 'Tide Hold — UKC Safety Check',
+                message: (e) => `Vessel ${e.vessel_id} is being held at berth. Tide penalty assessed before unberthing — Under-Keel Clearance margin insufficient at current tide ${parseFloat(e.tide_level || 0).toFixed(2)}m. Waiting for rising tide window.`
             },
             {
-                id: 'CUSTOMS_OOC', enabled: true,
-                label: 'Import OOC Assessment Pending',
-                description: 'Pauses when a container enters customs Out-of-Charge assessment, blocking consignee pickup.',
-                test: (e) => e.substage === 'CONTAINER_IMPORT_OOC_START',
-                severity: 'customs', icon: '📋', title: 'Import Customs Assessment — OOC Pending',
-                message: (e) => `Container ${e.entity_id} entered Customs OOC assessment. Bill of Entry filed — ICEGATE clearance pending. Consignee pickup blocked until assessment resolves.`
+                id: 'CUSTOMS_OOC',
+                test: (event) => event.substage === 'CONTAINER_IMPORT_OOC_START',
+                severity: 'customs',
+                icon: '📋',
+                title: 'Import Customs Assessment — OOC Pending',
+                message: (e) => `Container ${e.entity_id} has entered Customs OOC (Out-of-Charge) assessment. Bill of Entry filed — clearance pending from ICEGATE. Consignee pickup is blocked until assessment is resolved.`
             },
             {
-                id: 'LEO_CLEARED', enabled: false,
-                label: 'Customs LEO Green Channel',
-                description: 'Info pause when a container receives LEO clearance via Green Channel (no examination required).',
-                test: (e) => e.substage === 'CONTAINER_CUSTOMS_LEO' && (e.status_details||'').includes('GREEN_CHANNEL'),
-                severity: 'end', icon: '✅', title: 'Customs LEO — Green Channel Cleared',
-                message: (e) => `Container ${e.entity_id} received Let Export Order (LEO) via GREEN_CHANNEL. No physical examination. Cleared for direct loading.`
-            },
-            {
-                id: 'BUNKERING', enabled: false,
-                label: 'Vessel Bunkering Started',
-                description: 'Info pause when a vessel enters bunkering / fuel service phase after cargo operations.',
-                test: (e) => e.entity_type === 'VESSEL' && e.substage === 'BUNKERING_STARTED',
-                severity: 'inspection', icon: '⛽', title: 'Vessel Bunkering — Service Phase',
-                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line}) has entered bunkering at ${e.terminal}. Departure sequence on hold until fuel service complete.`
-            },
-            {
-                id: 'DISCHARGE_COMPLETE', enabled: false,
-                label: 'Discharge Operations Complete',
-                description: 'Info pause when a vessel finishes all discharge operations and transitions to load phase.',
-                test: (e) => e.entity_type === 'VESSEL' && e.substage === 'DISCHARGE_COMPLETED',
-                severity: 'end', icon: '📥', title: 'Discharge Complete',
-                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line}) completed all discharge at Berth ${e.berth}, ${e.terminal}. Transitioning to load sequence.`
-            },
-            {
-                id: 'VESSEL_BERTHED', enabled: false,
-                label: 'Vessel Berthed',
-                description: 'Info pause each time a vessel successfully moors at a berth.',
-                test: (e) => e.entity_type === 'VESSEL' && e.substage === 'BERTHED',
-                severity: 'tide', icon: '⚓', title: 'Vessel Berthed',
-                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line} — ${e.vessel_class}) moored at Berth ${e.berth}, ${e.terminal}. Crane allocation: ${e.cranes_assigned} units.`
-            },
-            {
-                id: 'VESSEL_SAILED', enabled: false,
-                label: 'Vessel Sailed',
-                description: 'Info pause when a vessel clears port and exits the JNPA boundary.',
-                test: (e) => e.entity_type === 'VESSEL' && e.substage === 'SAILED',
-                severity: 'end', icon: '🚢', title: 'Vessel Sailed',
-                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line}) cleared JNPA boundary. Import: ${e.import_teu} TEU | Export: ${e.export_teu} TEU. Voyage ${e.voyage_no} complete.`
+                id: 'LEO_GREEN',
+                //test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO' && (event.status_details || '').includes('GREEN_CHANNEL'),
+                test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO1' && (event.status_details || '').includes('GREEN_CHANNEL1'),
+                severity: 'end',
+                icon: '✅',
+                title: 'Customs LEO — Green Channel Cleared',
+                message: (e) => `Container ${e.entity_id} received Let Export Order (LEO) via GREEN_CHANNEL. Customs RMS cleared for direct loading — no examination required.`
             }
         ];
-
-        function renderAlertConfigPanel() {
-            const list = document.getElementById('alertRulesList');
-            if (!list) return;
-            list.innerHTML = ALERT_RULES.map(rule => `
-                <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:7px;cursor:pointer;border:1px solid ${rule.enabled ? 'var(--border-brass)' : 'var(--border-light)'};background:${rule.enabled ? 'rgba(201,168,76,0.06)' : 'var(--bg-inset)'}">
-                    <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleAlert('${rule.id}', this.checked)"
-                        style="margin-top:2px;flex-shrink:0;width:13px;height:13px;cursor:pointer;accent-color:var(--text-brass)">
-                    <div style="flex-grow:1;min-width:0">
-                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                            <span style="font-size:13px;line-height:1">${rule.icon}</span>
-                            <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${rule.label}</span>
-                            <span style="margin-left:auto;flex-shrink:0;font-size:7.5px;padding:2px 6px;border-radius:3px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;
-                                background:${rule.enabled ? 'rgba(201,168,76,0.15)' : 'rgba(79,91,122,0.2)'};
-                                color:${rule.enabled ? 'var(--text-brass)' : 'var(--text-muted)'};
-                                border:1px solid ${rule.enabled ? 'var(--border-brass)' : 'var(--border-light)'}">${rule.enabled ? 'ON' : 'OFF'}</span>
-                        </div>
-                        <p style="font-size:9px;color:var(--text-muted);margin-top:4px;line-height:1.5">${rule.description}</p>
-                    </div>
-                </label>
-            `).join('');
-        }
-
-        function toggleAlert(ruleId, enabled) {
-            const rule = ALERT_RULES.find(r => r.id === ruleId);
-            if (rule) { rule.enabled = enabled; }
-            renderAlertConfigPanel();
-        }
-
-        function setAllAlerts(enabled) {
-            ALERT_RULES.forEach(r => r.enabled = enabled);
-            renderAlertConfigPanel();
-        }
-
-        function switchSettingsTab(tabId) {
-            document.querySelectorAll('.settings-tab-panel').forEach(el => el.style.display = 'none');
-            document.querySelectorAll('.ct-tab-btn').forEach(btn => btn.classList.remove('active'));
-            const panel = document.getElementById(tabId);
-            if (panel) panel.style.display = 'flex';
-            const btn = document.getElementById('btn-' + tabId);
-            if (btn) btn.classList.add('active');
-            if (tabId === 'tab-alerts') renderAlertConfigPanel();
-        }
 
         // Fired-alert tracking: deduped per rule+entity (declared at top of script)
 
         function checkEventForAlerts(event) {
             for (const rule of ALERT_RULES) {
-                if (!rule.enabled) continue; // respect user toggle
                 if (!rule.test(event)) continue;
+                // Build a dedupe key: rule id + entity id
                 const dedupeKey = `${rule.id}::${event.entity_id}`;
                 if (firedAlerts.has(dedupeKey)) continue;
                 firedAlerts.add(dedupeKey);
@@ -1371,9 +1139,8 @@
                 const btn = document.getElementById('btnPlay');
                 if (btn) {
                     simLoop = setInterval(stepPlayback, 40);
-                    btn.innerText = '⏸ Pause';
-                    btn.className = 'btn-warn';
-                    btn.style.minWidth = '56px';
+                    btn.innerText = 'Pause';
+                    btn.className = 'px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition shadow-sm';
                 }
             }
         }
@@ -1424,8 +1191,8 @@
                         pendingResume = true;
                         const btn = document.getElementById('btnPlay');
                         if (btn) {
-                            btn.innerText = '▶ Play';
-                            btn.className = 'btn-primary'; btn.style.minWidth = '56px';
+                            btn.innerText = 'Play';
+                            btn.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
                         }
                     }
                     playbackIndex++;
@@ -1496,7 +1263,6 @@
                 } else {
                     containers_registry[entityId].stage = substage;
                 }
-                // Count individual boxes moved (each container event = 1 box, not TEU count)
                 if (substage === 'CONTAINER_DISCHARGED' || substage === 'CONTAINER_LOADED') {
                     simulated_container_count++;
                 }
@@ -1553,21 +1319,15 @@
             const vessel = vessels_registry[vId];
             if (vessel) {
                 vessel.tide = tide;
-                vessel.cranes = parseInt(cranes) || 0;
+                vessel.cranes = cranes;
 
-                // Read anchorage_wait on ANCHORAGE_ENTERED (not ETA_RECEIVED — it's 0 there)
-                if (substage === "ANCHORAGE_ENTERED" && anchorWait > 0) {
-                    anchor_wait_sum += anchorWait;
-                    anchor_wait_count++;
-                }
-                // Read cargo_hours once per vessel on BERTHED (same value repeats across rows)
-                if (substage === "BERTHED" && cargoHrs > 0 && !vessel.cargoHoursLogged) {
-                    cargo_hours_sum += cargoHrs;
-                    cargo_hours_count++;
-                    vessel.cargoHoursLogged = true;
+                // FIX 5: Accumulate anchorage and cargo stats on ETA_RECEIVED (once per vessel)
+                if (substage === "ETA_RECEIVED") {
+                    if (anchorWait > 0) { anchor_wait_sum += anchorWait; anchor_wait_count++; }
+                    if (cargoHrs > 0) { cargo_hours_sum += cargoHrs; cargo_hours_count++; }
                 }
 
-                // Stage Transitions — mapped to all CSV substages
+                // Stage Transitions
                 if (substage === "ETA_RECEIVED") {
                     vessel.stage = "SCHEDULED";
                 } else if (substage === "ANCHORAGE_ENTERED") {
@@ -1583,10 +1343,8 @@
                     vessel.berth = berth;
                     vessel.terminal = term;
                     simulateYardDeposit(cType, impTeu);
-                } else if (substage === "PROGRESS_20" || substage === "PROGRESS_40" || substage === "PROGRESS_60" || substage === "PROGRESS_80") {
-                    // Keep DISCHARGING or LOADING stage during progress milestones
-                    // (stage is already set, no change needed — just update cranes)
                 } else if (substage === "DISCHARGE_COMPLETED") {
+                    // FIX 9: DISCHARGING_DONE was missing from stage_done counts
                     vessel.stage = "DISCHARGING_DONE";
                 } else if (substage === "LOAD_STARTED") {
                     vessel.stage = "LOADING";
@@ -1594,11 +1352,8 @@
                     vessel.terminal = term;
                     simulateYardWithdrawal(cType, expTeu);
                 } else if (substage === "LOAD_COMPLETED") {
+                    // FIX 9: LOADING_DONE was missing from stage_done counts
                     vessel.stage = "LOADING_DONE";
-                } else if (substage === "BUNKERING_STARTED") {
-                    vessel.stage = "BUNKERING";
-                } else if (substage === "BUNKERING_COMPLETED") {
-                    vessel.stage = "BUNKERING_DONE";
                 } else if (substage === "UNBERTHED") {
                     vessel.stage = "UNBERTHED";
                     vessel.berth = null;
@@ -1668,47 +1423,48 @@
             setElementText('tideGauge', (parseFloat(currentEvent.tide_level) || 0.0).toFixed(2) + "m");
             setElementText('lblTimelineProgress', `${playbackIndex.toLocaleString()} / ${csvEvents.length.toLocaleString()}`);
 
-            const vList = Object.values(vessels_registry);
+            // Counter KPIs
+            const totalShips = Object.keys(vessels_registry).length;
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in moored/operating count
+            const mooredShips = Object.values(vessels_registry).filter(v => 
+                v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || 
+                v.stage === 'DONE' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE'
+            ).length;
+            const sailedShips = Object.values(vessels_registry).filter(v => v.stage === 'SAILED').length;
+            
+            // Total Active Relational Entities in dashboard registry
+            const totalEntities = totalShips + simulated_container_count + simulated_truck_count;
 
-            // --- Stage counts (mutually exclusive buckets) ---
-            const scheduledCount  = vList.filter(v => v.stage === 'SCHEDULED').length;
-            const anchoredCount   = vList.filter(v => v.stage === 'ANCHORED').length;
-            const transitCount    = vList.filter(v => v.stage === 'TRANSIT').length;
-            const mooredCount     = vList.filter(v => v.stage === 'MOORED').length;
-            const craneOpsCount   = vList.filter(v => v.stage === 'DISCHARGING' || v.stage === 'LOADING').length;
-            const bunkeringCount  = vList.filter(v => v.stage === 'BUNKERING' || v.stage === 'BUNKERING_DONE').length;
-            const doneCount       = vList.filter(v => v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE' || v.stage === 'UNBERTHED').length;
-            const sailedCount     = vList.filter(v => v.stage === 'SAILED').length;
-
-            // Vessels "in port" = moored + crane ops + bunkering + done-but-not-sailed
-            const inPortCount = mooredCount + craneOpsCount + bunkeringCount + doneCount;
-
-            // --- Top KPI cards ---
             setElementText('kpiScheduled', playbackIndex.toLocaleString());
-            setElementText('kpiMoored', inPortCount);
-            setElementText('kpiContainers', simulated_container_count.toLocaleString());
-            setElementText('kpiTrucks', simulated_truck_count.toLocaleString());
+            setElementText('kpiMoored', mooredShips);
+            setElementText('kpiSailed', sailedShips);
+            setElementText('kpiSync', totalEntities.toLocaleString());
 
-            // --- Fleet stage distribution grid ---
-            setElementText('stage_eta',      scheduledCount);
-            setElementText('stage_anch',     anchoredCount);
-            setElementText('stage_transit',  transitCount);
-            setElementText('stage_moored',   mooredCount);
-            setElementText('stage_ops',      craneOpsCount);
-            setElementText('stage_bunkering',bunkeringCount);
-            setElementText('stage_done',     doneCount);
-            setElementText('stage_sailed',   sailedCount);
+            // Pillars
+            const scheduledCount = Object.values(vessels_registry).filter(v => v.stage === 'SCHEDULED').length;
+            const anchoredCount = Object.values(vessels_registry).filter(v => v.stage === 'ANCHORED').length;
+            setElementText('lblShipScheduled', scheduledCount);
+            setElementText('lblShipAnchored', anchoredCount);
+            setElementText('lblShipMoored', mooredShips);
 
-            // --- Maritime Status pillar ---
-            setElementText('lblShipScheduled',  scheduledCount);
-            setElementText('lblShipAnchored',   anchoredCount);
-            setElementText('lblShipTransit',    transitCount);
-            setElementText('lblShipMoored',     mooredCount + craneOpsCount);
-            setElementText('lblShipBunkering',  bunkeringCount);
-            setElementText('lblShipSailed',     sailedCount);
-            setElementText('vesselsInPort',     `${inPortCount} In Port`);
+            setElementText('stage_eta', scheduledCount);
+            setElementText('stage_anch', anchoredCount);
+            setElementText('stage_moored', Object.values(vessels_registry).filter(v => v.stage === 'MOORED').length);
+            setElementText('stage_ops', Object.values(vessels_registry).filter(v => v.stage === 'DISCHARGING' || v.stage === 'LOADING').length);
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in "Done" stage count
+            setElementText('stage_done', Object.values(vessels_registry).filter(v => v.stage === 'DONE' || v.stage === 'UNBERTHED' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE').length);
+            setElementText('stage_sailed', sailedShips);
 
-            // Avg anchorage wait — only show once data is present
+            setElementText('vesselsInPort', `${mooredShips} In Port`);
+
+            // Yard Allocations
+            setElementText('lblYardADry', `${yard_inventories['Yard A'].toLocaleString()} TEU`);
+            setElementText('lblYardBDry', `${yard_inventories['Yard B'].toLocaleString()} TEU`);
+            setElementText('lblYardCReefer', `${yard_inventories['Yard C'].toLocaleString()} TEU`);
+            // FIX 4: Update Yard D
+            setElementText('lblYardDReefer', `${yard_inventories['Yard D'].toLocaleString()} TEU`);
+
+            // FIX 5: Update anchorage wait and cargo hours averages
             if (anchor_wait_count > 0) {
                 setElementText('lblAvgAnchorWait', `${(anchor_wait_sum / anchor_wait_count).toFixed(1)} h`);
             }
@@ -1716,23 +1472,19 @@
                 setElementText('lblAvgCargoHours', `${(cargo_hours_sum / cargo_hours_count).toFixed(1)} h`);
             }
 
-            // --- Yard Allocations ---
-            setElementText('lblYardADry',    `${yard_inventories['Yard A'].toLocaleString()} TEU`);
-            setElementText('lblYardBDry',    `${yard_inventories['Yard B'].toLocaleString()} TEU`);
-            setElementText('lblYardCReefer', `${yard_inventories['Yard C'].toLocaleString()} TEU`);
-            setElementText('lblYardDReefer', `${yard_inventories['Yard D'].toLocaleString()} TEU`);
-
-            // --- Gate queue metric ---
+            // Active Queue lengths
             const queueInbound = Math.round(simulated_truck_count % 11);
             setElementText('truckQueue', `${queueInbound} Active`);
 
-            // Append Chart Trackers
-            const timeStr = currentEvent.event_time && currentEvent.event_time.length >= 16
-                ? currentEvent.event_time.substring(11, 16) : '00:00';
+            // Append Chart Trackers - Safe Substring parsing
+            const timeStr = currentEvent.event_time && currentEvent.event_time.length >= 16 ? currentEvent.event_time.substring(11, 16) : '00:00';
             if (timeLogLabels.length === 0 || timeLogLabels[timeLogLabels.length - 1] !== timeStr) {
                 timeLogLabels.push(timeStr);
                 queueMetrics.push(queueInbound);
-                if (timeLogLabels.length > 15) { timeLogLabels.shift(); queueMetrics.shift(); }
+                if (timeLogLabels.length > 15) {
+                    timeLogLabels.shift();
+                    queueMetrics.shift();
+                }
             }
 
             renderBerthMapGrid();
@@ -1743,80 +1495,140 @@
             const grid = document.getElementById('berthLayoutContainer');
             if (!grid) return;
             grid.innerHTML = '';
+            
             const filterTerminalEl = document.getElementById('filterTerminal');
             const filterTerminal = filterTerminalEl ? filterTerminalEl.value : 'ALL';
 
             Object.entries(TERMINAL_BERTH_MAP).forEach(([termName, termObj]) => {
                 if (filterTerminal !== 'ALL' && filterTerminal !== termName) return;
+
                 termObj.berths.forEach((bName) => {
-                    const ship = Object.values(vessels_registry).find(v =>
-                        v.berth === bName &&
-                        ['MOORED','DISCHARGING','LOADING','DISCHARGING_DONE','LOADING_DONE','BUNKERING','BUNKERING_DONE'].includes(v.stage)
+                    // Direct solver: dynamic lookup into vessels_registry
+                    const ship = Object.values(vessels_registry).find(v => 
+                        v.berth === bName && 
+                        (v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || v.stage === 'DONE')
                     );
                     const isOccupied = !!ship;
+
+                    // Compute dynamic depth based on current clock tide values
                     let activeTide = 0;
                     if (csvEvents.length > 0) {
-                        const ev = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
-                        if (ev) activeTide = parseFloat(ev.tide_level) || 0;
+                        const currentEvent = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
+                        if (currentEvent) {
+                            activeTide = parseFloat(currentEvent.tide_level) || 0;
+                        }
                     }
-                    const liveDepth = (termObj.depth + activeTide).toFixed(1);
+                    const liveWaterDepth = termObj.depth + activeTide;
 
-                    const card = document.createElement('div');
-                    card.className = isOccupied ? 'berth-occupied' : 'berth-empty';
+                    const berthCard = document.createElement('div');
+                    berthCard.className = `p-3 border rounded-xl shadow-xs transition duration-300 flex flex-col justify-between ${isOccupied ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`;
+
+                    let cardHTML = `
+                        <div>
+                            <span class="text-[8px] uppercase font-black text-slate-400 block leading-none">${termName}</span>
+                            <span class="text-[11px] font-bold block mt-0.5 leading-none ${isOccupied ? 'text-blue-700' : 'text-slate-700'}">${bName}</span>
+                            <div class="text-[9px] text-slate-500 mt-1.5">Dredge: ${termObj.depth}m</div>
+                            <div class="text-[9px] font-bold text-slate-800">Dynamic: ${liveWaterDepth.toFixed(1)}m</div>
+                        </div>
+                    `;
 
                     if (isOccupied && ship) {
+                        // FIX 1: Look up real draft from vessels_master_registry
                         const masterInfo = vessels_master_registry[ship.id];
-                        const draft = ship.draft ? ship.draft.toFixed(1) : (masterInfo ? masterInfo.draft.toFixed(1) : '12.0');
-                        const stageColors = {
-                            DISCHARGING:'#4a7fd4', LOADING:'#3a8f6a', MOORED:'#6b8db8',
-                            BUNKERING:'#7a5fc0', DISCHARGING_DONE:'#3a8f6a', LOADING_DONE:'#3a8f6a', BUNKERING_DONE:'#7a5fc0'
-                        };
-                        const sc = stageColors[ship.stage] || '#6b8db8';
-                        card.innerHTML = `
-                            <div class="berth-label">${termName}</div>
-                            <div class="berth-name" style="color:var(--accent-blue)">${bName}</div>
-                            <div class="berth-depth">Dredge: ${termObj.depth}m</div>
-                            <div class="berth-dynamic">⊕ ${liveDepth}m</div>
-                            <div class="berth-ship">
-                                <div style="font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🚢 ${ship.id} (${ship.line})</div>
-                                <div style="margin-top:3px;font-size:8px;color:var(--text-secondary)">Draft: <b style="color:var(--text-primary)">${draft}m</b></div>
-                                <div style="margin-top:4px;display:inline-block;padding:1px 6px;border-radius:3px;font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;background:rgba(74,127,212,0.15);color:${sc};border:1px solid ${sc}40">${ship.stage}</div>
-                            </div>`;
+                        const displayDraft = ship.draft ? ship.draft.toFixed(1) : (masterInfo ? masterInfo.draft.toFixed(1) : '12.0');
+                        cardHTML += `
+                            <div class="mt-2 pt-2 border-t border-slate-200 text-[9px] text-slate-600 space-y-0.5">
+                                <div class="font-extrabold text-blue-800 truncate">🚢 ${ship.id} (${ship.line})</div>
+                                <div>Draft: <b>${displayDraft}m</b></div>
+                                <span class="inline-block mt-1 px-1 py-0.2 bg-blue-100 text-blue-800 rounded font-bold text-[7px] uppercase leading-none">${ship.stage}</span>
+                            </div>
+                        `;
                     } else {
-                        card.innerHTML = `
-                            <div class="berth-label">${termName}</div>
-                            <div class="berth-name" style="color:var(--text-secondary)">${bName}</div>
-                            <div class="berth-depth">Dredge: ${termObj.depth}m</div>
-                            <div class="berth-dynamic">⊕ ${liveDepth}m</div>
-                            <div class="berth-avail">Available</div>`;
+                        cardHTML += `
+                            <div class="mt-2 text-center py-1 text-[8px] text-slate-400 font-bold uppercase tracking-wider bg-white border border-slate-100 rounded-md">
+                                Available
+                            </div>
+                        `;
                     }
-                    grid.appendChild(card);
+
+                    berthCard.innerHTML = cardHTML;
+                    grid.appendChild(berthCard);
                 });
             });
         }
 
+        // -------------------------------------------------------------
+        // UNIFIED PLAYBACK LOGGER (Crisp Legibility Highlight Blocks)
+        // -------------------------------------------------------------
         function appendLocalConsoleLog(type, domain, entity, desc, timestamp) {
             const consoleBox = document.getElementById('eventConsole');
             if (!consoleBox) return;
 
-            // Entity-domain → log colour class
-            const domainClass = domain === 'VESSEL' ? 'log-vessel'
-                : domain === 'CONTAINER' ? 'log-container'
-                : domain === 'TRUCK' ? 'log-truck'
-                : domain === 'END_OF_STREAM' ? 'log-end'
-                : 'log-system';
+            const styleColorMap = {
+                'ETA_RECEIVED': 'text-blue-900 bg-blue-50 border-blue-200',
+                'ANCHORAGE_ENTERED': 'text-blue-900 bg-blue-100/60 border-blue-200',
+                'ANCHORAGE_EXITED': 'text-indigo-900 bg-indigo-50/50 border-indigo-200',
+                'BERTHED': 'text-indigo-900 bg-indigo-50 border-indigo-200',
+                'DISCHARGE_STARTED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'DISCHARGE_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'LOAD_STARTED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'LOAD_COMPLETED': 'text-emerald-900 bg-emerald-100 border-emerald-200',
+                'SAILED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'UNBERTHED': 'text-slate-800 bg-slate-50 border-slate-200',
+                'BUNKERING_STARTED': 'text-purple-900 bg-purple-50 border-purple-200',
+                'BUNKERING_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'PROGRESS_20': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_40': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_60': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_80': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                // FIX 2: Container substage colors
+                'CONTAINER_BOOKED': 'text-sky-900 bg-sky-50 border-sky-200',
+                'CONTAINER_SB_FILED': 'text-sky-900 bg-sky-100 border-sky-200',
+                'CONTAINER_CUSTOMS_LEO': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_YARD_STACK_START': 'text-slate-800 bg-slate-50 border-slate-200',
+                'CONTAINER_YARD_STACKED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'CONTAINER_LOADED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'CONTAINER_DISCHARGED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'CONTAINER_IMPORT_OOC_START': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_CUSTOMS_OOC': 'text-violet-900 bg-violet-100 border-violet-200',
+                'CONTAINER_IMPORT_DISPATCH': 'text-teal-900 bg-teal-50 border-teal-200',
+                // FIX 2: Truck substage colors
+                'TRUCK_CPP_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_CPP_GATE_OUT': 'text-amber-900 bg-amber-100 border-amber-200',
+                'TRUCK_TERMINAL_PRE_GATE': 'text-orange-900 bg-orange-50 border-orange-200',
+                'TRUCK_TERMINAL_GATE_IN': 'text-orange-900 bg-orange-100 border-orange-200',
+                'TRUCK_TERMINAL_GATE_OUT': 'text-orange-800 bg-orange-50/60 border-orange-100',
+                'TRUCK_IMPORT_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_IMPORT_GATE_OUT': 'text-amber-800 bg-amber-50/60 border-amber-100',
+            };
 
-            const logTime = (timestamp && timestamp.length >= 19) ? timestamp.substring(11, 19) : '??:??:??';
+            const blockClass = styleColorMap[type] || 'text-slate-800 bg-slate-50/60 border-slate-200';
+            const logTime = (timestamp && timestamp.length >= 19) ? timestamp.substring(11, 19) : '00:00:00';
 
             const logLine = document.createElement('div');
-            logLine.className = `log-entry ${domainClass}`;
-            logLine.innerHTML = `<span class="mono-font" style="font-size:9px;opacity:0.6;margin-right:6px">${logTime}</span><span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-right:5px">[${type}]</span><span class="mono-font" style="font-size:9px;font-weight:700;opacity:0.8">(${entity})</span><p style="margin-top:3px;font-size:10px;font-weight:400;opacity:0.85;line-height:1.4">${desc}</p>`;
-
+            logLine.innerHTML = `
+                <div class="flex items-start gap-2.5 p-2.5 border rounded-xl ${blockClass} text-xs shadow-2xs leading-relaxed">
+                    <span class="text-slate-400 font-mono font-bold shrink-0">${logTime}</span>
+                    <div class="flex-grow">
+                        <span class="font-extrabold tracking-wide uppercase text-[9px] mr-1">[${type}]</span>
+                        <span class="font-mono font-bold text-slate-950">(${entity})</span>
+                        <p class="text-slate-800 mt-0.5 font-medium">${desc}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Remove helper initial note if present
             if (consoleBox.children.length === 1 && consoleBox.children[0].innerText.includes('//')) {
                 consoleBox.innerHTML = '';
             }
+
+            // Prepend so newest entry appears at the top
             consoleBox.insertBefore(logLine, consoleBox.firstChild);
-            while (consoleBox.children.length > 300) consoleBox.removeChild(consoleBox.lastChild);
+
+            // Cap log entries at 300 to prevent DOM bloat
+            while (consoleBox.children.length > 300) {
+                consoleBox.removeChild(consoleBox.lastChild);
+            }
         }
 
         // -------------------------------------------------------------
@@ -1826,9 +1638,8 @@
         let distChart = null;
 
         function initializeTelemetryCharts() {
-            Chart.defaults.color = '#8b95b0';
-            Chart.defaults.font.family = 'Inter, sans-serif';
-            Chart.defaults.font.size = 10;
+            Chart.defaults.color = '#64748b';
+            Chart.defaults.font.family = 'Plus Jakarta Sans, sans-serif';
 
             // Chart 1: Pre-Gate Queue Length Tracking
             const scaleCtxEl = document.getElementById('bottleneckChart');
@@ -1854,7 +1665,7 @@
                         maintainAspectRatio: false,
                         plugins: { legend: { display: false } },
                         scales: {
-                            y: { grid: { color: '#2a3352' }, ticks: { font: { size: 9 } } },
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
                             x: { grid: { display: false }, ticks: { font: { size: 9 } } }
                         }
                     }
@@ -1881,7 +1692,7 @@
                         maintainAspectRatio: false,
                         plugins: { legend: { display: false } },
                         scales: {
-                            y: { grid: { color: '#2a3352' }, ticks: { font: { size: 9 } } },
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
                             x: { grid: { display: false }, ticks: { font: { size: 9 } } }
                         }
                     }
@@ -1996,18 +1807,21 @@
                         return;
                     }
                     if (simLoop) {
+                        // Pause
                         clearInterval(simLoop);
                         simLoop = null;
                         pendingResume = false;
-                        this.innerText = '▶ Play';
-                        this.className = 'btn-primary';
-                        this.style.minWidth = '56px';
+                        this.innerText = 'Play';
+                        this.className = 'px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
                     } else {
-                        if (alertPaused) { alertPaused = false; dismissAlert(); }
+                        // Play — if alert is shown, dismiss it first
+                        if (alertPaused) {
+                            alertPaused = false;
+                            dismissAlert();
+                        }
                         simLoop = setInterval(stepPlayback, 40);
-                        this.innerText = '⏸ Pause';
-                        this.className = 'btn-warn';
-                        this.style.minWidth = '56px';
+                        this.innerText = 'Pause';
+                        this.className = 'px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition shadow-sm';
                     }
                 };
             }
