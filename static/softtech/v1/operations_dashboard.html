@@ -1,0 +1,1119 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operations Digital Twin Dashboard</title>
+    <style>
+        :root {
+            --primary: #0f4c81;
+            --primary-light: #e6f0fa;
+            --secondary: #5a6b7c;
+            --neutral-dark: #1a2530;
+            --neutral-light: #f8fafc;
+            --border-color: #e2e8f0;
+            --success: #2e7d32;
+            --success-bg: #e8f5e9;
+            --warning: #ed6c02;
+            --warning-bg: #fff3e0;
+            --danger: #d32f2f;
+            --danger-bg: #ffebee;
+            --info: #0288d1;
+            --info-bg: #e1f5fe;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: var(--neutral-dark);
+            line-height: 1.5;
+            padding: 20px;
+        }
+
+        /* Top Header */
+        .header {
+            display: table;
+            width: 100%;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .header-title-cell {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .header-toggle-cell {
+            display: table-cell;
+            vertical-align: middle;
+            text-align: right;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            color: var(--primary);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Mode Selector Toggle */
+        .toggle-container {
+            display: inline-block;
+            background-color: var(--neutral-light);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 6px;
+        }
+
+        .toggle-btn {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            color: var(--secondary);
+        }
+
+        .toggle-btn.active {
+            background-color: var(--primary);
+            color: #ffffff;
+        }
+
+        /* Navigation Tabs */
+        .tabs-container {
+            width: 100%;
+            margin-bottom: 20px;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tabs-table {
+            display: table;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .tab-cell {
+            display: table-cell;
+            text-align: center;
+        }
+
+        .tab-button {
+            width: 100%;
+            padding: 12px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            background-color: var(--neutral-light);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            color: var(--secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            background-color: #edf2f7;
+        }
+
+        .tab-button.active {
+            background-color: #ffffff;
+            color: var(--primary);
+            border-top: 3px solid var(--primary);
+            height: 100%;
+            font-weight: 700;
+        }
+
+        /* Layout Grid Helpers */
+        .row {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            margin-bottom: 15px;
+        }
+
+        .col-12 { display: table-cell; width: 100%; vertical-align: top; }
+        .col-6 { display: table-cell; width: 50%; vertical-align: top; padding-right: 10px; }
+        .col-6:last-child { padding-right: 0; padding-left: 10px; }
+        .col-4 { display: table-cell; width: 33.33%; vertical-align: top; padding-right: 10px; }
+        .col-4:last-child { padding-right: 0; }
+        .col-3 { display: table-cell; width: 25%; vertical-align: top; padding-right: 10px; }
+        .col-3:last-child { padding-right: 0; }
+        .col-8 { display: table-cell; width: 66.66%; vertical-align: top; padding-right: 10px; }
+
+        /* Enterprise Cards */
+        .card {
+            background-color: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-header {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--primary);
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+        }
+
+        /* KPI Cards */
+        .kpi-container {
+            display: table;
+            width: 100%;
+        }
+
+        .kpi-val {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--neutral-dark);
+            margin-top: 5px;
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            color: var(--secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .kpi-sub {
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .trend-up { color: var(--success); font-weight: bold; }
+        .trend-down { color: var(--danger); font-weight: bold; }
+
+        /* Tables */
+        .ops-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            text-align: left;
+        }
+
+        .ops-table th {
+            background-color: var(--neutral-light);
+            color: var(--secondary);
+            font-weight: 700;
+            padding: 8px 10px;
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+        }
+
+        .ops-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--neutral-dark);
+        }
+
+        .ops-table tr:nth-child(even) {
+            background-color: #fcfdfe;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+
+        .badge-success { background-color: var(--success-bg); color: var(--success); }
+        .badge-warning { background-color: var(--warning-bg); color: var(--warning); }
+        .badge-danger { background-color: var(--danger-bg); color: var(--danger); }
+        .badge-info { background-color: var(--info-bg); color: var(--info); }
+
+        /* Pure CSS Charts & Visuals */
+        .progress-bar-container {
+            background-color: var(--neutral-light);
+            border-radius: 4px;
+            height: 12px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--primary);
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        .chart-bar-row {
+            margin-bottom: 8px;
+        }
+        .chart-bar-label {
+            font-size: 11px;
+            margin-bottom: 2px;
+            color: var(--secondary);
+        }
+
+        /* Block Timelines (Gantt style) */
+        .gantt-container {
+            width: 100%;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+            border-collapse: collapse;
+        }
+        .gantt-row {
+            border-bottom: 1px solid var(--border-color);
+        }
+        .gantt-label-cell {
+            width: 120px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 10px;
+            background-color: var(--neutral-light);
+            border-right: 1px solid var(--border-color);
+        }
+        .gantt-timeline-cell {
+            position: relative;
+            padding: 10px 0;
+            background-image: linear-gradient(to right, #f1f5f9 1px, transparent 1px);
+            background-size: 14.28% 100%;
+        }
+        .gantt-block {
+            position: absolute;
+            height: 20px;
+            top: 8px;
+            background-color: var(--primary-light);
+            border: 1px solid var(--primary);
+            border-radius: 3px;
+            color: var(--primary);
+            font-size: 10px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 18px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        /* Tracker Steps */
+        .tracker-wrapper {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            position: relative;
+            margin-top: 15px;
+        }
+        .tracker-step {
+            display: table-cell;
+            text-align: center;
+            position: relative;
+        }
+        .tracker-step::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background-color: var(--border-color);
+            top: 12px;
+            left: 50%;
+            z-index: 1;
+        }
+        .tracker-step:last-child::after { content: none; }
+        .tracker-node {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            border: 3px solid var(--border-color);
+            margin: 0 auto 8px auto;
+            position: relative;
+            z-index: 2;
+        }
+        .tracker-step.completed .tracker-node {
+            border-color: var(--success);
+            background-color: var(--success);
+        }
+        .tracker-step.active .tracker-node {
+            border-color: var(--primary);
+            background-color: #ffffff;
+        }
+        .tracker-step.completed::after {
+            background-color: var(--success);
+        }
+        .tracker-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--secondary);
+        }
+        .tracker-step.active .tracker-label {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        /* Schematic Maps */
+        .map-svg {
+            background-color: var(--neutral-light);
+            border: 1px solid var(--border-color);
+            width: 100%;
+            height: 260px;
+        }
+
+        /* Equipment Cards */
+        .equip-grid {
+            display: table;
+            width: 100%;
+        }
+        .equip-card {
+            background-color: var(--neutral-light);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        .equip-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--neutral-dark);
+            margin-bottom: 4px;
+        }
+        .equip-meta {
+            font-size: 11px;
+            color: var(--secondary);
+        }
+
+        /* Alerts List */
+        .alert-item {
+            padding: 10px;
+            border-left: 4px solid var(--border-color);
+            background-color: var(--neutral-light);
+            margin-bottom: 8px;
+            font-size: 12px;
+            border-radius: 0 4px 4px 0;
+        }
+        .alert-item.danger { border-left-color: var(--danger); background-color: var(--danger-bg); }
+        .alert-item.warning { border-left-color: var(--warning); background-color: var(--warning-bg); }
+        .alert-item.info { border-left-color: var(--info); background-color: var(--info-bg); }
+        
+        .alert-time {
+            font-weight: bold;
+            color: var(--secondary);
+            margin-right: 8px;
+        }
+
+        /* Hide tabs by default */
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Header -->
+    <div class="header">
+        <div class="header-title-cell">
+            <h1 id="main-title">Airport Operations Digital Twin</h1>
+        </div>
+        <div class="header-toggle-cell">
+            <div class="toggle-container">
+                <button class="toggle-btn active" id="btn-airport" onclick="setMode('airport')">Airport Mode</button>
+                <button class="toggle-btn" id="btn-port" onclick="setMode('port')">Port Mode</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-container">
+        <div class="tabs-table">
+            <div class="tab-cell"><button class="tab-button active" onclick="switchTab(event, 'tab-overview')" id="nav-overview">Operations Overview</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-traffic')" id="nav-traffic">Traffic Control</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-schedule')" id="nav-schedule">Arrivals & Departures</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-gate')" id="nav-gate">Gate / Berth Mgmt</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-tracking')" id="nav-tracking">Passenger / Container Tracking</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-ground')" id="nav-ground">Ground / Yard Ops</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-resources')" id="nav-resources">Resource Management</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-turnaround')" id="nav-turnaround">Turnaround Mgmt</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-kpi')" id="nav-kpi">Executive KPIs</button></div>
+            <div class="tab-cell"><button class="tab-button" onclick="switchTab(event, 'tab-alerts')" id="nav-alerts">Incidents & Alerts</button></div>
+        </div>
+    </div>
+
+    <!-- SCREEN 1: OPERATIONS OVERVIEW -->
+    <div id="tab-overview" class="tab-content active">
+        <div class="row">
+            <div class="col-3">
+                <div class="card">
+                    <div class="kpi-label" data-ap="Flights Today" data-po="Vessels Today">Flights Today</div>
+                    <div class="kpi-val" id="ov-kpi-1">142</div>
+                    <div class="kpi-sub"><span class="trend-up">▲ +4%</span> vs yesterday</div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="kpi-label" data-ap="Passengers Today" data-po="TEUs Today">Passengers Today</div>
+                    <div class="kpi-val" id="ov-kpi-2">24,530</div>
+                    <div class="kpi-sub"><span class="trend-up">▲ +1.8%</span> vs target</div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="kpi-label" data-ap="On-Time %" data-po="Berth Utilization">On-Time %</div>
+                    <div class="kpi-val" id="ov-kpi-3">88.5%</div>
+                    <div class="kpi-sub"><span class="trend-down">▼ -0.5%</span> hourly variance</div>
+                </div>
+            </div>
+            <div class="col-3">
+                <div class="card">
+                    <div class="kpi-label" data-ap="Delayed Flights" data-po="Crane Productivity">Delayed Flights</div>
+                    <div class="kpi-val" id="ov-kpi-4">12</div>
+                    <div class="kpi-sub"><span class="badge badge-warning">Active Management</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Asset Performance & Utilization" data-po="Terminal & Berth Performance">Asset Performance & Utilization</div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="ov-bar-lbl-1">Gate Utilization</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="ov-bar-1" style="width: 74%;"></div></div>
+                    </div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="ov-bar-lbl-2">Runway Utilization</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="ov-bar-2" style="width: 62%;"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Environmental Metrics" data-po="Marine & MetOcean Metrics">Environmental Metrics</div>
+                    <table class="ops-table">
+                        <tr>
+                            <td style="font-weight: 600;" data-ap="Weather Conditions" data-po="MetOcean Status">Weather Conditions</td>
+                            <td id="ov-env-1">Clear / Winds 12kts NW</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 600;" id="ov-env-lbl-2">Visibility</td>
+                            <td id="ov-env-2">&gt; 10 km</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 600;">Current Status</td>
+                            <td><span class="badge badge-success">Nominal Operations</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 2: TRAFFIC CONTROL -->
+    <div id="tab-traffic" class="tab-content">
+        <div class="row">
+            <div class="col-8">
+                <div class="card">
+                    <div class="card-header" data-ap="Live ATC Radar Schematic" data-po="Harbor Basin Vessel Positions (AIS)">Live Schematic Tracking</div>
+                    <svg class="map-svg" viewBox="0 0 800 260">
+                        <circle cx="400" cy="130" r="110" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4"/>
+                        <circle cx="400" cy="130" r="60" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+                        <line x1="100" y1="130" x2="700" y2="130" stroke="#e2e8f0" stroke-width="1"/>
+                        <!-- Mode-specific layouts altered by JS -->
+                        <g id="radar-assets"></g>
+                    </svg>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card">
+                    <div class="card-header" data-ap="Communications Log (ATC)" data-po="Communications Log (Port Command)">Communications Log</div>
+                    <div id="traffic-msg-box"></div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header" data-ap="Airspace & Active Way Status" data-po="Channel & Infrastructure Status">Infrastructure Status</div>
+                    <table class="ops-table" id="traffic-status-table"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 3: ARRIVALS & DEPARTURES -->
+    <div id="tab-schedule" class="tab-content">
+        <div class="card">
+            <div class="card-header" data-ap="Active Flight Schedule" data-po="Active Vessel Voyage Schedule">Active Operations Schedule</div>
+            <table class="ops-table" id="schedule-table"></table>
+        </div>
+    </div>
+
+    <!-- SCREEN 4: GATE / BERTH MANAGEMENT -->
+    <div id="tab-gate" class="tab-content">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header" data-ap="Visual Gate Allocation & Occupancy Timeline" data-po="Visual Berth Allocation & Occupancy Timeline">Visual Resource Occupancy Timeline</div>
+                    <table class="gantt-container" id="gate-gantt"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 5: PASSENGER / CONTAINER TRACKING -->
+    <div id="tab-tracking" class="tab-content">
+        <div class="card">
+            <div class="card-header" data-ap="Passenger Journey Milestone Tracker (Avg. Flow)" data-po="Container Logistics Milestone Tracker (Standard Cycle)">Milestone Progress Journey Tracker</div>
+            <div class="tracker-wrapper" id="milestone-tracker"></div>
+        </div>
+        <div class="row">
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Processing Dwell Statistics" data-po="Logistics Dwell Statistics">Processing Dwell Statistics</div>
+                    <table class="ops-table" id="tracking-stats-table"></table>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Terminal Disruption Risks" data-po="Yard Bottleneck & Congestion Risks">Bottleneck & Congestion Risks</div>
+                    <table class="ops-table" id="tracking-risk-table"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 6: GROUND HANDLING / YARD OPERATIONS -->
+    <div id="tab-ground" class="tab-content">
+        <div class="card-header" data-ap="Ground Support Equipment (GSE) Status" data-po="Yard Handling Equipment Status">Equipment Fleet & Operations Status</div>
+        <div class="row" id="equipment-grid-row"></div>
+    </div>
+
+    <!-- SCREEN 7: RESOURCE MANAGEMENT -->
+    <div id="tab-resources" class="tab-content">
+        <div class="row">
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Infrastructure Capacity Gauges" data-po="Terminal Capacity Gauges">Infrastructure Capacity Gauges</div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="res-bar-lbl-1">Runways Availability</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="res-bar-1" style="width: 100%;"></div></div>
+                    </div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="res-bar-lbl-2">Gates Utilization</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="res-bar-2" style="width: 82%;"></div></div>
+                    </div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="res-bar-lbl-3">Stands Allocation</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="res-bar-3" style="width: 68%;"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header" data-ap="Workforce & Support Equipment Availability" data-po="Stevedore Crews & Support Fleet Availability">Workforce & Equipment Fleet Availability</div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="res-bar-lbl-4">Ground Crews</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="res-bar-4" style="width: 91%;"></div></div>
+                    </div>
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label" id="res-bar-lbl-5">Fuel Trucks</div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" id="res-bar-5" style="width: 75%;"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 8: TURNAROUND MANAGEMENT -->
+    <div id="tab-turnaround" class="tab-content">
+        <div class="card">
+            <div class="card-header" data-ap="Critical Path Aircraft Turnaround Timeline (Tail: N-742X)" data-po="Critical Path Vessel Turnaround Timeline (Voyage: V-109E)">Critical Path Turnaround Timeline</div>
+            <table class="gantt-container" id="turnaround-gantt"></table>
+        </div>
+    </div>
+
+    <!-- SCREEN 9: EXECUTIVE KPI DASHBOARD -->
+    <div id="tab-kpi" class="tab-content">
+        <div class="row">
+            <div class="col-4">
+                <div class="card">
+                    <div class="kpi-label" id="exec-lbl-1">Total Throughput (Monthly)</div>
+                    <div class="kpi-val" id="exec-val-1">4.2M Pax</div>
+                    <div class="kpi-sub"><span class="trend-up">▲ +5.2%</span> MoM Growth</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card">
+                    <div class="kpi-label" id="exec-lbl-2">Average Service Delay</div>
+                    <div class="kpi-val" id="exec-val-2">6.2 Mins</div>
+                    <div class="kpi-sub"><span class="trend-down">▼ -12%</span> Efficiency Gain</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card">
+                    <div class="kpi-label" id="exec-lbl-3">Asset Performance Index</div>
+                    <div class="kpi-val" id="exec-val-3">94.8%</div>
+                    <div class="kpi-sub"><span class="trend-up">▲ +1.1%</span> Optimal</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">Monthly Performance & Productivity Benchmarks</div>
+            <table class="ops-table" id="exec-kpi-table"></table>
+        </div>
+    </div>
+
+    <!-- SCREEN 10: INCIDENT & ALERTS -->
+    <div id="tab-alerts" class="tab-content">
+        <div class="row">
+            <div class="col-8">
+                <div class="card">
+                    <div class="card-header" data-ap="Active Airport Security & Operational Alerts" data-po="Active Port Command Security & Operational Alerts">Active Operations Alerts Log</div>
+                    <div id="alerts-log-list"></div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card">
+                    <div class="card-header">Incident Severity Metrics</div>
+                    <table class="ops-table">
+                        <tr>
+                            <td><span class="badge badge-danger">Critical</span></td>
+                            <td id="alert-cnt-crit">1 Active</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-warning">Warning</span></td>
+                            <td id="alert-cnt-warn">2 Active</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-info">Routine Log</span></td>
+                            <td>Nominal Flow</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard State Logic Matrix -->
+    <script>
+        let currentMode = 'airport';
+
+        const dataMatrix = {
+            airport: {
+                title: "Airport Operations Control Centre | Digital Twin",
+                ov: {
+                    kpi1: "142", kpi2: "24,530", kpi3: "88.5%", kpi4: "12",
+                    barlbl1: "Gate Utilization", bar1: "74%", barlbl2: "Runway Utilization", bar2: "62%",
+                    env1: "Clear / Winds 12kts NW", envlbl2: "Visibility", env2: "> 10 km"
+                },
+                traffic: {
+                    radar: `
+                        <line x1="400" y1="130" x2="480" y2="70" stroke="#0f4c81" stroke-width="2"/>
+                        <circle cx="480" cy="70" r="5" fill="#0f4c81"/>
+                        <text x="492" y="74" font-size="10" font-weight="bold" fill="#1a2530">AA-231 (12,000ft)</text>
+                        <circle cx="320" cy="180" r="5" fill="#ed6c02"/>
+                        <text x="332" y="184" font-size="10" font-weight="bold" fill="#1a2530">DL-742 (Holding)</text>
+                        <path d="M 200 60 L 600 60" stroke="#5a6b7c" stroke-width="3" stroke-dasharray="6,4"/>
+                        <text x="210" y="52" font-size="10" font-weight="bold" fill="#5a6b7c">RUNWAY 09L/27R</text>
+                    `,
+                    msgs: [
+                        { time: "10:14", msg: "ATC: AA-231 cleared for ILS approach Runway 09L." },
+                        { time: "10:18", msg: "GND: Pushback approved for UA-883 at Gate B22." },
+                        { time: "10:20", msg: "ATC: DL-742 enter holding pattern south sector." }
+                    ],
+                    statusHeaders: ["Runway / Taxiway", "Current Status", "Occupant / Asset", "Load Factor"],
+                    statusRows: [
+                        ["Runway 09L/27R", "Active - Landing", "AA-231 (A320)", "High"],
+                        ["Runway 09R/27L", "Active - Departures", "LH-430 (B777)", "Medium"],
+                        ["Taxiway Alpha", "Clear", "None", "None"],
+                        ["Taxiway Bravo", "Restricted - Maintenance", "GSE Crew 4", "Low"]
+                    ]
+                },
+                schedule: {
+                    headers: ["Flight Number", "Airline", "Origin", "Destination", "Gate", "ETA", "ETD", "Status"],
+                    rows: [
+                        ["AA-231", "American Airlines", "JFK", "BLR", "C12", "10:25", "--", "Landed"],
+                        ["LH-430", "Lufthansa", "FRA", "BLR", "E11", "--", "10:45", "Boarding"],
+                        ["EK-562", "Emirates", "DXB", "BLR", "D04", "11:10", "--", "On Time"],
+                        ["6E-125", "IndiGo", "DEL", "BOM", "A02", "--", "11:20", "Delayed"]
+                    ]
+                },
+                gate: {
+                    rows: [
+                        { id: "Gate A01", label: "Gate A01", blocks: [{ left: "10%", width: "40%", text: "6E-201 (Active)" }, { left: "60%", width: "30%", text: "AI-402" }] },
+                        { id: "Gate A02", label: "Gate A02", blocks: [{ left: "20%", width: "50%", text: "6E-125 (Delayed)" }] },
+                        { id: "Gate B21", label: "Gate B21", blocks: [{ left: "0%", width: "35%", text: "UA-883 (Departed)" }, { left: "45%", width: "45%", text: "AA-904" }] },
+                        { id: "Gate C12", label: "Gate C12", blocks: [{ left: "15%", width: "60%", text: "AA-231 (Servicing)" }] }
+                    ]
+                },
+                tracking: {
+                    steps: ["Check-in", "Security Screening", "Boarding Lounge", "Aircraft Loading", "Arrival Destination"],
+                    activeStep: 2,
+                    stats: [
+                        ["Avg. Check-in Counter Wait", "14 Mins", "Within Target Threshold"],
+                        ["Security Checkpoint Throughput", "280 Pax/hr/lane", "Optimal Flow Rate"],
+                        ["Baggage Claim Carousel Feed Rate", "8.5 Mins from block", "Highly Efficient"]
+                    ],
+                    risks: [
+                        ["Terminal 2 Security Lane 4", "Equipment Calibration", "Minor Delay Risk"],
+                        ["Concourse B International Lounge", "High Capacity Volume", "Monitor Closely"]
+                    ]
+                },
+                ground: [
+                    { name: "Fuel Truck FT-09", loc: "Stand C12", task: "Refueling AA-231", status: "Active", badge: "badge-success" },
+                    { name: "Baggage Tug BT-44", loc: "Terminal 1 Ramp", task: "Offloading 6E-201", status: "Active", badge: "badge-success" },
+                    { name: "Pushback Tug PT-02", loc: "Gate B21", task: "Standby", status: "Available", badge: "badge-info" },
+                    { name: "GPU Unit GPU-12", loc: "Gate E11", task: "Power Supply LH-430", status: "Active", badge: "badge-success" },
+                    { name: "Catering Loader CL-05", loc: "Catering Hub", task: "Restocking Cycles", status: "Maintenance", badge: "badge-danger" }
+                ],
+                resources: {
+                    lbl1: "Runways Availability", bar1: "100%",
+                    lbl2: "Gates Utilization Index", bar2: "82%",
+                    lbl3: "Aircraft Stands Allocation", bar3: "68%",
+                    lbl4: "Ground Support Crew Deployment", bar4: "91%",
+                    lbl5: "Fuel Truck Fleet Utilization", bar5: "75%"
+                },
+                turnaround: {
+                    rows: [
+                        { label: "Arrival / De-boarding", left: "0%", width: "20%", text: "Completed" },
+                        { label: "Cabin Cleaning", left: "20%", width: "15%", text: "Completed" },
+                        { label: "Underwing Fueling", left: "30%", width: "25%", text: "Active" },
+                        { label: "Catering Service", left: "35%", width: "20%", text: "Active" },
+                        { label: "Passenger Boarding", left: "60%", width: "25%", text: "Pending" },
+                        { label: "Pushback & Startup", left: "85%", width: "15%", text: "Scheduled" }
+                    ]
+                },
+                kpi: {
+                    lbl1: "Total Passagers (Monthly)", val1: "4.2M Pax",
+                    lbl2: "Average Flight Delay", val2: "6.2 Mins",
+                    lbl3: "On-Time Performance (OTP)", val3: "91.4%",
+                    headers: ["Performance Metric Category", "Current Month", "Previous Month", "Target Baseline", "Variance"],
+                    rows: [
+                        ["Total Flight Movements", "14,320", "13,900", "14,000", "+2.2%"],
+                        ["Baggage Delivery Performance (First Bag)", "9.2 Mins", "10.5 Mins", "< 12.0 Mins", "-12.3%"],
+                        ["Runway Capacity Utilization Rate", "64.2%", "62.8%", "65.0%", "-0.8%"],
+                        ["Passenger Satisfaction Index", "4.62 / 5", "4.55 / 5", "4.50 / 5", "+2.6%"]
+                    ]
+                },
+                alerts: [
+                    { time: "10:02", type: "danger", text: "Runway 09L/27R Temporary Closure due to foreign object debris (FOD) sweep." },
+                    { time: "09:45", type: "warning", text: "Gate Change: LH-430 shifted from Gate E11 to E14 due to bridge technical fault." },
+                    { time: "08:12", type: "info", text: "Weather Advisory: Minor convective cell tracking south of airspace corridors." }
+                ]
+            },
+            port: {
+                title: "Container Port Operations Centre | Digital Twin",
+                ov: {
+                    kpi1: "18", kpi2: "14,850 TEU", kpi3: "76.2%", kpi4: "28.5 Mvs/hr",
+                    barlbl1: "Berth Occupancy Index", bar1: "88%", barlbl2: "Yard Storage Capacity", bar2: "79%",
+                    env1: "Clear / Wind 14kts WNW", envlbl2: "Tide Status", env2: "High Tide (+1.8m)"
+                },
+                traffic: {
+                    radar: `
+                        <line x1="400" y1="130" x2="520" y2="160" stroke="#5a6b7c" stroke-width="2"/>
+                        <circle cx="520" cy="160" r="7" fill="#0f4c81"/>
+                        <text x="532" y="164" font-size="10" font-weight="bold" fill="#1a2530">MV Maersk Aegean (Inbound)</text>
+                        <circle cx="280" cy="90" r="7" fill="#ed6c02"/>
+                        <text x="292" y="94" font-size="10" font-weight="bold" fill="#1a2530">MSC Valeria (Anchorage)</text>
+                        <path d="M 150 130 C 300 130, 500 180, 750 130" fill="none" stroke="#0288d1" stroke-width="25" opacity="0.15"/>
+                        <text x="160" y="110" font-size="10" font-weight="bold" fill="#0288d1">MAIN NAVIGATION CHANNEL</text>
+                    `,
+                    msgs: [
+                        { time: "10:12", msg: "PORT: Maersk Aegean entered main channel with Pilot onboard." },
+                        { time: "10:15", msg: "TUG: Tug Triton and Tug Titan assigned to MSC Valeria." },
+                        { time: "10:19", msg: "YARD: Block C designated for immediate discharge receipt." }
+                    ],
+                    statusHeaders: ["Channel / Basin Sector", "Current Status", "Occupant / Vessel", "Tide Restriction"],
+                    statusRows: [
+                        ["Main Approach Channel", "Occupied - Inbound", "Maersk Aegean", "None"],
+                        ["Harbor Basin Turning Circle", "Clear", "None", "None"],
+                        ["Outer Anchorage Sector B", "3 Vessels Stationed", "MSC Valeria + 2", "Awaiting Berth"],
+                        ["North Berth Pocket", "Restricted Depth", "Dredger Delta 1", "Low Tide Caution"]
+                    ]
+                },
+                schedule: {
+                    headers: ["Vessel Name", "Voyage Ref", "Origin Port", "Destination Port", "Berth Allocated", "ETA", "ETD", "Status"],
+                    rows: [
+                        ["Maersk Aegean", "V-109E", "Rotterdam", "Singapore", "Berth 02", "10:40", "--", "Berthing"],
+                        ["MSC Valeria", "V-742W", "Antwerp", "Shanghai", "Berth 01", "--", "14:30", "Loading Ops"],
+                        ["CMA CGM Orion", "V-022N", "Jebel Ali", "Rotterdam", "Berth 04", "13:15", "--", "At Anchorage"],
+                        ["Ever Given II", "V-881S", "Singapore", "London Gateway", "Berth 03", "--", "19:00", "Delayed Trucking"]
+                    ]
+                },
+                gate: {
+                    rows: [
+                        { id: "Berth 01", label: "Berth 01", blocks: [{ left: "5%", width: "55%", text: "MSC Valeria (Working)" }] },
+                        { id: "Berth 02", label: "Berth 02", blocks: [{ left: "45%", width: "40%", text: "Maersk Aegean (Arrived)" }] },
+                        { id: "Berth 03", label: "Berth 03", blocks: [{ left: "0%", width: "30%", text: "Ever Given II (Clear)" }, { left: "40%", width: "50%", text: "COSCO Horizon" }] },
+                        { id: "Berth 04", label: "Berth 04", blocks: [{ left: "25%", width: "45%", text: "CMA CGM Orion (Expected)" }] }
+                    ]
+                },
+                tracking: {
+                    steps: ["Booking & Manifest", "Terminal Gate-In", "Container Yard Stacking", "Quay Crane Loading", "Vessel Departure"],
+                    activeStep: 3,
+                    stats: [
+                        ["Container Dwell Time (Import)", "2.4 Days", "Target Baseline Met"],
+                        ["Gate-in Truck Turnaround Time", "24.5 Mins", "Optimal Fluid Velocity"],
+                        ["Reefer Plug Availability Rate", "92.1% Engaged", "High Seasonal Demand"]
+                    ],
+                    risks: [
+                        ["Yard Block F (Intermodal Area)", "High Container Stack Density", "Reshuffle Delay Risk"],
+                        ["Customs Inspection Facility Lane 2", "Documentation Backlog", "Monitor Processing Release"]
+                    ]
+                },
+                ground: [
+                    { name: "STS Quay Crane QC-04", loc: "Berth 01", task: "Discharging MSC Valeria", status: "Active", badge: "badge-success" },
+                    { name: "RTG Crane RTG-18", loc: "Yard Block C", task: "Stacking Import Cycle", status: "Active", badge: "badge-success" },
+                    { name: "Reach Stacker RS-02", loc: "Intermodal Rail Yard", task: "Standby", status: "Available", badge: "badge-info" },
+                    { name: "Terminal Tractor TT-62", loc: "Quay Sub-structure", task: "Hauling TEU Containers", status: "Active", badge: "badge-success" },
+                    { name: "Reefer Monitoring Station 3", loc: "Zone 2 Reefers", task: "Thermal Integrity Logs", status: "Maintenance", badge: "badge-danger" }
+                ],
+                resources: {
+                    lbl1: "Berths Infrastructure Availability", bar1: "100%",
+                    lbl2: "STS Quay Crane Allocation Index", bar2: "88%",
+                    lbl3: "Yard Storage Stacking Capacity", bar3: "79%",
+                    lbl4: "Stevedore Crew Rostering Deployment", bar4: "95%",
+                    lbl5: "Terminal Tractor Fleet Capacity", bar5: "84%"
+                },
+                turnaround: {
+                    rows: [
+                        { label: "Vessel Berthing & Mooring", left: "0%", width: "15%", text: "Completed" },
+                        { label: "Discharge Operations (Import)", left: "15%", width: "35%", text: "Completed" },
+                        { label: "Yard Stacking Transfers", left: "20%", width: "40%", text: "Active" },
+                        { label: "Load Operations (Export)", left: "50%", width: "35%", text: "Active" },
+                        { label: "Customs & Manifest Manifests", left: "80%", width: "10%", text: "Pending" },
+                        { label: "Vessel Unmooring & Departure", left: "90%", width: "10%", text: "Scheduled" }
+                    ]
+                },
+                kpi: {
+                    lbl1: "Total TEU Throughput", val1: "485,200 TEU",
+                    lbl2: "Gross Crane Productivity", val2: "32.4 Mvs/hr",
+                    lbl3: "Vessel On-Time Departure Rate", val3: "86.2%",
+                    headers: ["Key Performance Metric Indicator", "Current Month", "Previous Month", "Target Baseline", "Variance"],
+                    rows: [
+                        ["Total Vessel Calls Checked", "412 Units", "390 Units", "400 Units", "+5.6%"],
+                        ["Truck Turnaround Time (Gate-to-Gate)", "22.8 Mins", "26.4 Mins", "< 30.0 Mins", "-13.6%"],
+                        ["Vessel Berth Dwell Duration", "18.4 Hrs", "20.1 Hrs", "< 24.0 Hrs", "-8.4%"],
+                        ["Yard Density Occupancy Index", "74.1%", "78.5%", "75.0%", "-5.6%"]
+                    ]
+                },
+                alerts: [
+                    { time: "10:05", type: "danger", text: "High Wind Alert: STS Crane operations suspended on elevated booms (>45 kts gusts)." },
+                    { time: "09:30", type: "warning", text: "Equipment Mechanical Fault: Quay Crane QC-02 offline for hydraulic hose replacement." },
+                    { time: "07:45", type: "info", text: "Terminal Gate Congestion: Heavy inbound truck volumes queueing at Gate Lanes 1-3." }
+                ]
+            }
+        };
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btn-airport').classList.toggle('active', mode === 'airport');
+            document.getElementById('btn-port').classList.toggle('active', mode === 'port');
+
+            const m = dataMatrix[mode];
+
+            // Title
+            document.getElementById('main-title').innerText = m.title;
+
+            // Global update text elements matching attributes
+            document.querySelectorAll('[data-ap]').forEach(el => {
+                el.innerText = mode === 'airport' ? el.getAttribute('data-ap') : el.getAttribute('data-po');
+            });
+
+            // Tab 1: Overview
+            document.getElementById('ov-kpi-1').innerText = m.ov.kpi1;
+            document.getElementById('ov-kpi-2').innerText = m.ov.kpi2;
+            document.getElementById('ov-kpi-3').innerText = m.ov.kpi3;
+            document.getElementById('ov-kpi-4').innerText = m.ov.kpi4;
+            document.getElementById('ov-bar-lbl-1').innerText = m.ov.barlbl1;
+            document.getElementById('ov-bar-1').style.width = m.ov.bar1;
+            document.getElementById('ov-bar-lbl-2').innerText = m.ov.barlbl2;
+            document.getElementById('ov-bar-2').style.width = m.ov.bar2;
+            document.getElementById('ov-env-1').innerText = m.ov.env1;
+            document.getElementById('ov-env-lbl-2').innerText = m.ov.envlbl2;
+            document.getElementById('ov-env-2').innerText = m.ov.env2;
+
+            // Tab 2: Traffic
+            document.getElementById('radar-assets').innerHTML = m.traffic.radar;
+            let msgHtml = '';
+            m.traffic.msgs.forEach(item => {
+                msgHtml += `<div style="font-size:12px; margin-bottom:8px;"><span class="badge badge-info">${item.time}</span> <span style="color:var(--neutral-dark);">${item.msg}</span></div>`;
+            });
+            document.getElementById('traffic-msg-box').innerHTML = msgHtml;
+
+            let tHead = `<tr>`;
+            m.traffic.statusHeaders.forEach(h => tHead += `<th>${h}</th>`);
+            tHead += `</tr>`;
+            m.traffic.statusRows.forEach(row => {
+                tHead += `<tr><td><strong>${row[0]}</strong></td><td><span class="badge badge-success">${row[1]}</span></td><td>${row[2]}</td><td>${row[3]}</td></tr>`;
+            });
+            document.getElementById('traffic-status-table').innerHTML = tHead;
+
+            // Tab 3: Schedule Table
+            let sHead = `<tr>`;
+            m.schedule.headers.forEach(h => sHead += `<th>${h}</th>`);
+            sHead += `</tr>`;
+            m.schedule.rows.forEach(row => {
+                let badgeClass = "badge-success";
+                if(row[7] === "Delayed") badgeClass = "badge-danger";
+                if(row[7] === "Boarding" || row[7] === "Loading Ops") badgeClass = "badge-warning";
+                sHead += `<tr>`;
+                row.forEach((cell, idx) => {
+                    if(idx === 0) sHead += `<td><strong>${cell}</strong></td>`;
+                    else if(idx === 7) sHead += `<td><span class="badge ${badgeClass}">${cell}</span></td>`;
+                    else sHead += `<td>${cell}</td>`;
+                });
+                sHead += `</tr>`;
+            });
+            document.getElementById('schedule-table').innerHTML = sHead;
+
+            // Tab 4: Gate / Berth Gantt Timeline Diagram
+            let gHtml = '';
+            m.gate.rows.forEach(row => {
+                gHtml += `<tr class="gantt-row">
+                    <td class="gantt-label-cell">${row.label}</td>
+                    <td class="gantt-timeline-cell">`;
+                row.blocks.forEach(b => {
+                    gHtml += `<div class="gantt-block" style="left: ${b.left}; width: ${b.width};">${b.text}</div>`;
+                });
+                gHtml += `</td></tr>`;
+            });
+            document.getElementById('gate-gantt').innerHTML = gHtml;
+
+            // Tab 5: Journey Progress Tracking Flow
+            let trHtml = '';
+            m.tracking.steps.forEach((step, idx) => {
+                let stateClass = '';
+                if(idx < m.tracking.activeStep) stateClass = 'completed';
+                else if(idx === m.tracking.activeStep) stateClass = 'active';
+                trHtml += `<div class="tracker-step ${stateClass}">
+                    <div class="tracker-node"></div>
+                    <div class="tracker-label">${step}</div>
+                </div>`;
+            });
+            document.getElementById('milestone-tracker').innerHTML = trHtml;
+
+            let tsHtml = '';
+            m.tracking.stats.forEach(row => {
+                tsHtml += `<tr><td><strong>${row[0]}</strong></td><td style="color:var(--primary); font-weight:bold;">${row[1]}</td><td><span class="badge badge-success">${row[2]}</span></td></tr>`;
+            });
+            document.getElementById('tracking-stats-table').innerHTML = tsHtml;
+
+            let trkRisk = '';
+            m.tracking.risks.forEach(row => {
+                trkRisk += `<tr><td><strong>${row[0]}</strong></td><td>${row[1]}</td><td><span class="badge badge-warning">${row[2]}</span></td></tr>`;
+            });
+            document.getElementById('tracking-risk-table').innerHTML = trkRisk;
+
+            // Tab 6: Ground Support Fleet Equipment Layout
+            let eqHtml = '';
+            m.ground.forEach((eq, index) => {
+                if(index % 3 === 0) {
+                    if(index > 0) eqHtml += `</div>`;
+                    eqHtml += `<div class="row">`;
+                }
+                eqHtml += `<div class="col-4">
+                    <div class="card equip-card">
+                        <div class="equip-title">${eq.name}</div>
+                        <div class="equip-meta"><strong>Location:</strong> ${eq.loc}</div>
+                        <div class="equip-meta"><strong>Task:</strong> ${eq.task}</div>
+                        <div style="margin-top:8px;"><span class="badge ${eq.badge}">${eq.status}</span></div>
+                    </div>
+                </div>`;
+            });
+            eqHtml += `</div>`;
+            document.getElementById('equipment-grid-row').innerHTML = eqHtml;
+
+            // Tab 7: Resource Indices
+            document.getElementById('res-bar-lbl-1').innerText = m.resources.lbl1;
+            document.getElementById('res-bar-1').style.width = m.resources.bar1;
+            document.getElementById('res-bar-lbl-2').innerText = m.resources.lbl2;
+            document.getElementById('res-bar-2').style.width = m.resources.bar2;
+            document.getElementById('res-bar-lbl-3').innerText = m.resources.lbl3;
+            document.getElementById('res-bar-3').style.width = m.resources.bar3;
+            document.getElementById('res-bar-lbl-4').innerText = m.resources.lbl4;
+            document.getElementById('res-bar-4').style.width = m.resources.bar4;
+            document.getElementById('res-bar-lbl-5').innerText = m.resources.lbl5;
+            document.getElementById('res-bar-5').style.width = m.resources.bar5;
+
+            // Tab 8: Turnaround Timeline Process Flow
+            let taHtml = '';
+            m.turnaround.rows.forEach(row => {
+                taHtml += `<tr class="gantt-row">
+                    <td class="gantt-label-cell">${row.label}</td>
+                    <td class="gantt-timeline-cell">
+                        <div class="gantt-block" style="left: ${row.left}; width: ${row.width};">${row.text}</div>
+                    </td>
+                </tr>`;
+            });
+            document.getElementById('turnaround-gantt').innerHTML = taHtml;
+
+            // Tab 9: Executive Metrics Dashboard
+            document.getElementById('exec-lbl-1').innerText = m.kpi.lbl1;
+            document.getElementById('exec-val-1').innerText = m.kpi.val1;
+            document.getElementById('exec-lbl-2').innerText = m.kpi.lbl2;
+            document.getElementById('exec-val-2').innerText = m.kpi.val2;
+            document.getElementById('exec-lbl-3').innerText = m.kpi.lbl3;
+            document.getElementById('exec-val-3').innerText = m.kpi.val3;
+
+            let kHead = `<tr>`;
+            m.kpi.headers.forEach(h => kHead += `<th>${h}</th>`);
+            kHead += `</tr>`;
+            m.kpi.rows.forEach(row => {
+                kHead += `<tr>
+                    <td><strong>${row[0]}</strong></td>
+                    <td>${row[1]}</td>
+                    <td>${row[2]}</td>
+                    <td>${row[3]}</td>
+                    <td><span class="trend-up">${row[4]}</span></td>
+                </tr>`;
+            });
+            document.getElementById('exec-kpi-table').innerHTML = kHead;
+
+            // Tab 10: Incidents Logging Log
+            let alHtml = '';
+            let critCount = 0;
+            let warnCount = 0;
+            m.alerts.forEach(al => {
+                if(al.type === 'danger') critCount++;
+                if(al.type === 'warning') warnCount++;
+                alHtml += `<div class="alert-item ${al.type}">
+                    <span class="alert-time">${al.time}</span> ${al.text}
+                </div>`;
+            });
+            document.getElementById('alerts-log-list').innerHTML = alHtml;
+            document.getElementById('alert-cnt-crit').innerText = `${critCount} Active`;
+            document.getElementById('alert-cnt-warn').innerText = `${warnCount} Active`;
+        }
+
+        function switchTab(evt, tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            evt.currentTarget.classList.add('active');
+        }
+
+        // Initialize with default mode data loading
+        window.onload = function() {
+            setMode('airport');
+        };
+    </script>
+</body>
+</html>
