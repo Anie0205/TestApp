@@ -367,12 +367,18 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // ---------------------------------------------------------------------
     // UI - STYLES
     // ---------------------------------------------------------------------
+    
+    var APTOS_FONT = "@font-face{font-family:'Aptos';src:url(data:font/ttf;base64,AAEAAAAUAQAABABAR0RERgF5/boAAtOAAAACjEdQT1PtlGGtAALWDAAAd+BHU1VCn062nwADTewAAA80T1MvMkr5pwYAAAHIAAAAYFNUQVTR/M//AANdIAAAAHxjbWFwCHaCBgAAFkQAAAsMY3Z0ICGdFcYAADLkAAAAwGZwZ21Xiw8QAAAhUAAAD4NnYXNwAAcAGwAC03QAAAAMZ2x5Zi06/zMAAD20AAF92mhlYWQkovWaAAABTAAAADZoaGVhDPwN3gAAAYQAAAAkaG10eEImvNUAAAIoAAAUHGtlcm6guJNzAAG7kAABBExsb2NhJQ2CuQAAM6QAAAoQbWF4cAiEEOYAAAGoAAAAIG1ldGE2o3hTAANdnAAAAQJuYW1lb7af/wACv9wAABN1cG9zdP+fADIAAtNUAAAAIHByZXBwhf8TAAAw1AAAAg8AAQAAAAICj5wnOw1fDzz1AAsIAAAAAADdpHX6AAAAAOJoMjX8Af3NCXUIFAAAAAYAAgAAAAAAAAABAAAHg/2/AAAKJvwB+PIJdQgAAAAAAAAAAAAAAAAAAAAFBwABAAAFBwDAABAAcAAIAAIAEAAvAQAAAQJMD4MACAABAAQEfAGQAAUACAUzBM0AAACaBTMEzQAAAs0AZgLbAAACCwAEAgICAgIEIAAChwAAAAMAAAAAAAAAAE1TICAAwAAN/fwHg/2/AAAIFAIzIAABnwAAAAADzgVCAAAAIAADA8UAAAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgH" + 
+        /* ... Paste the rest of the massive base64 font string from your HTML here ... */
+        "AkwCA/8gAkwCC/8gAkwCG/);}";
+
     var STYLE =
         '<style>' +
+        APTOS_FONT +
         /* ---- reset / base ---- */
         '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
         /* outer scrollable container – fills whatever space the platform allocates */
-        '.voc-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+        '.voc-wrap{font-family:\'Aptos\', -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
             'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
             'position:absolute;top:0;left:0;right:0;bottom:0;' +
             'overflow:auto;-webkit-overflow-scrolling:touch;}' +
