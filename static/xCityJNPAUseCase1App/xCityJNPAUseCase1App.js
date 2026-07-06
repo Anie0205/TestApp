@@ -18,38 +18,6 @@ define('xCityJNPAUseCase1App', [
 
     // 2. Initialize DATA as an empty array
     var DATA = [];
-
-    // 3. Function to fetch the ML predictions
-    function loadModelData() {
-        return new Promise(function (resolve, reject) {
-            WAFData.proxifiedRequest(JSON_URL, {
-                method: 'GET',
-                type: 'json',
-                onComplete: function (response) {
-                    DATA = response; // Populate the global DATA array
-                    resolve();
-                },
-                onFailure: function (error) {
-                    reject(error);
-                }
-            });
-        });
-    }
-
-    // 4. Wait for data to load BEFORE rendering the dashboard
-    function onLoad() {
-        loadModelData().then(function() {
-            console.log("Successfully loaded " + DATA.length + " rows from XGBoost model.");
-            
-            // Call your dashboard initialization here (e.g., app.render() or whatever starts your UI)
-            
-        }).catch(function(err) {
-            console.error("Failed to load ML predictions JSON.", err);
-        });
-    }
-
-    widget.addEvent('onLoad', onLoad);
-    
     var BERTH_POINTS = {
         BMCT01: {lon:72.9506, lat:18.9488, terminal:'BMCT'},
         BMCT02: {lon:72.9524, lat:18.9498, terminal:'BMCT'},
@@ -92,6 +60,38 @@ define('xCityJNPAUseCase1App', [
         },
         ui: {}
     };
+
+    // 3. Function to fetch the ML predictions
+    function loadModelData() {
+        return new Promise(function (resolve, reject) {
+            WAFData.proxifiedRequest(JSON_URL, {
+                method: 'GET',
+                type: 'json',
+                onComplete: function (response) {
+                    DATA = response; // Populate the global DATA array
+                    resolve();
+                },
+                onFailure: function (error) {
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    // 4. Wait for data to load BEFORE rendering the dashboard
+    function onLoad() {
+        loadModelData().then(function() {
+            console.log("Successfully loaded " + DATA.length + " rows from XGBoost model.");
+            
+            // Call your dashboard initialization here (e.g., app.render() or whatever starts your UI)
+            
+        }).catch(function(err) {
+            console.error("Failed to load ML predictions JSON.", err);
+        });
+    }
+
+    widget.addEvent('onLoad', onLoad);
+    
 
     function n(v) { var x = parseFloat(v); return isNaN(x) ? 0 : x; }
     function avg(arr) { return arr.length ? arr.reduce(function(a,b){return a+n(b);},0)/arr.length : 0; }
