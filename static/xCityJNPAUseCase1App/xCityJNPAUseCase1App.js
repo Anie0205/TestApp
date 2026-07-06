@@ -78,12 +78,13 @@ define('xCityJNPAUseCase1App', [
         });
     }
 
-    // 4. Wait for data to load BEFORE rendering the dashboard
     function onLoad() {
         loadModelData().then(function() {
             console.log("Successfully loaded " + DATA.length + " rows from XGBoost model.");
             
-            // Call your dashboard initialization here (e.g., app.render() or whatever starts your UI)
+            // Build the UI and render only AFTER data is populated
+            buildUI();
+            render();
             
         }).catch(function(err) {
             console.error("Failed to load ML predictions JSON.", err);
@@ -440,10 +441,6 @@ define('xCityJNPAUseCase1App', [
         state.ui.content = UWA.createElement('div').inject(wrap);
     }
 
-    widget.addEvent('onLoad', function() {
-        buildUI();
-        render();
-    });
 
     return state;
 });
