@@ -1,0 +1,11 @@
+berth_id,terminal_id,dredge_depth_m,supported_cargo_type,allocated_yard_block
+B1,T1,16.5,DRY_VAN,Yard A
+B2,T1,16.5,DRY_VAN,Yard A
+B3,T1,16.5,DRY_VAN,Yard A
+B4,T2,15.0,DRY_VAN,Yard B
+B5,T2,15.0,DRY_VAN,Yard B
+B6,T2,15.0,DRY_VAN,Yard B
+B7,T3,13.5,REEFER_CARGO,Yard C
+B8,T3,13.5,REEFER_CARGO,Yard C
+B9,T4,12.5,REEFER_CARGO,Yard D
+B10,T4,12.5,REEFER_CARGO,Yard D

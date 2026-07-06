@@ -210,39 +210,61 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return SEA;
     }
 
-    // ---------------------------------------------------------------------
-    // STATIC BERTH MARKERS (created once at load)
-    // ---------------------------------------------------------------------
+   function getBerthPolygonCoords(lon, lat, heading, widthMeters, lengthMeters) {
+        var R = 6378137;
+        var rad = Math.PI / 180;
+        var hRad = heading * rad;
+        var pts = [
+            [widthMeters / 2, lengthMeters / 2],
+            [widthMeters / 2, -lengthMeters / 2],
+            [-widthMeters / 2, -lengthMeters / 2],
+            [-widthMeters / 2, lengthMeters / 2],
+            [widthMeters / 2, lengthMeters / 2] // Close ring
+        ];
+        var coords = [];
+        for (var i = 0; i < pts.length; i++) {
+            var dx = pts[i][0] * Math.cos(hRad) + pts[i][1] * Math.sin(hRad);
+            var dy = -pts[i][0] * Math.sin(hRad) + pts[i][1] * Math.cos(hRad);
+            coords.push([lon + (dx / (R * Math.cos(lat * rad)) / rad), lat + (dy / R / rad)]);
+        }
+        return [coords];
+    }
+
     function initBerthMarkers() {
         Object.keys(BERTHS).forEach(function (b) {
             var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
             app.berthMarkerIds[b] = markerId;
             app.berthOccupied[b] = false;
 
-            PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
-                widgetID: widget.id,
-                position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+            // Generate an 80m x 30m rectangular zone, rotated 135 degrees to match the quay
+            var polyCoords = getBerthPolygonCoords(BERTHS[b][1], BERTHS[b][0], 135, 30, 80);
+
+            PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
+                json: [{
+                    type: 'Polygon',
+                    properties: { STRID: b },
+                    coordinates: polyCoords
+                }],
                 layer: {
                     id: markerId,
                     name: b,
                     description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
                 },
+                render: {
+                    color: '#2ca02c', // Green for free
+                    opacity: 0.5,     // Semi-transparent
+                    outlineColor: '#ffffff',
+                    outlineWidth: 2
+                },
                 options: {
                     projection: { from: 'WGS84' },
-                    // Inject the external CSS configuration
-                    css: {
-                        id: 'custom-berth-poi', // Matches the selector in your CSS file
-                        url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css' // Your hosted CSS file
-                        style: 'icon',
-                        iconName: 'transportation-dock',
-                        color: '#2ca02c', // You can change this hex to literally anything!
-                        size: { width: 32, height: 32 }
-                    }
+                    addTerrainHeight: true,       // Snaps to the port surface
+                    altitudeMode: 'clampToGround' 
                 }
             });
         });
     }
-    // Re-publishes a berth marker with updated color/description when its occupancy changes
+
     function setBerthOccupied(b, occupied) {
         if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
         app.berthOccupied[b] = occupied;
@@ -252,28 +274,30 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
         app.berthMarkerIds[b] = markerId;
 
-        // Dynamically assign the CSS ID based on whether a ship is docked
-        var activeCssId = occupied ? 'custom-berth-poi-occupied' : 'custom-berth-poi-free';
+        // Keep the exact same geometry when updating the color
+        var polyCoords = getBerthPolygonCoords(BERTHS[b][1], BERTHS[b][0], 135, 30, 80);
 
-        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
-            widgetID: widget.id,
-            position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+        PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
+            json: [{
+                type: 'Polygon',
+                properties: { STRID: b },
+                coordinates: polyCoords
+            }],
             layer: {
                 id: markerId,
                 name: b,
                 description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
             },
-            options: { 
+            render: {
+                color: occupied ? '#d62728' : '#2ca02c', // Flips Red/Green natively
+                opacity: 0.5,
+                outlineColor: '#ffffff',
+                outlineWidth: 2
+            },
+            options: {
                 projection: { from: 'WGS84' },
-                // Inject the external CSS configuration
-                css: {
-                    id: activeCssId, // Points to the specific state in your CSS file
-                    url: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth-markers.css' // Your hosted CSS file
-                    style: 'icon',
-                    iconName: 'transportation-dock',
-                    occupied ? '#d62728' : '#2ca02c'
-                    size: { width: 32, height: 32 }
-                }
+                addTerrainHeight: true,
+                altitudeMode: 'clampToGround'
             }
         });
     }
@@ -302,39 +326,168 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         });
     }
 
+    // 📐 Calculates GeoJSON Polygon coordinates for a directional Ship shape
+    function getShipPolygonCoords(lon, lat, heading, widthMeters, lengthMeters) {
+        var R = 6378137;
+        var rad = Math.PI / 180;
+        var hRad = heading * rad;
+
+        // Base shape coordinates (pointed nose at the top)
+        var pts = [
+            [0, lengthMeters / 2],                   // Bow (Tip)
+            [widthMeters / 2, lengthMeters / 4],     // Right Shoulder
+            [widthMeters / 2, -lengthMeters / 2],    // Bottom Right
+            [-widthMeters / 2, -lengthMeters / 2],   // Bottom Left
+            [-widthMeters / 2, lengthMeters / 4],    // Left Shoulder
+            [0, lengthMeters / 2]                    // Close ring
+        ];
+
+        var coords = [];
+        for (var i = 0; i < pts.length; i++) {
+            var dx = pts[i][0] * Math.cos(hRad) + pts[i][1] * Math.sin(hRad);
+            var dy = -pts[i][0] * Math.sin(hRad) + pts[i][1] * Math.cos(hRad);
+            coords.push([lon + (dx / (R * Math.cos(lat * rad)) / rad), lat + (dy / R / rad)]);
+        }
+        return [coords];
+    }
     // ---------------------------------------------------------------------
-    // VESSEL MARKERS
+    // TRUE 3D VOLUMETRIC VESSELS (Extruded GeoJSON Polygons)
     // ---------------------------------------------------------------------
     function publishVesselMarker(ev) {
         var id = ev.vessel_id;
-        var markerId = CONFIG.VESSEL_MARKER_PREFIX + id;
-        removeContent(app.vesselMarkerIds[id]); // drop previous position marker for this vessel, if any
-        app.vesselMarkerIds[id] = markerId;
-        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
-            widgetID: widget.id,
-            position: toXY(posFor(ev), CONFIG.VESSEL_MARKER_ELEVATION),
-            layer: {
-                id: markerId,
-                name: '\uD83D\uDEF3\uFE0F' + id,
-                description:
-                    '<b>Vessel:</b> ' + esc(id) + '<br>' +
-                    '<b>Voyage:</b> ' + esc(ev.voyage_no) + '<br>' +
-                    '<b>Line:</b> ' + esc(ev.shipping_line) + '<br>' +
-                    '<b>Type:</b> ' + esc(ev.container_type) + '<br>' +
-                    '<b>Terminal:</b> ' + esc(ev.terminal) + '<br>' +
-                    '<b>Berth:</b> ' + esc(ev.berth) + '<br>' +
-                    '<b>Stage:</b> ' + esc(ev.stage) + '<br>' +
-                    '<b>Substage:</b> ' + esc(ev.substage) + '<br>' +
-                    '<b>Import/Export TEU:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu)
+
+        // Cleanup previous multi-block marker
+        if (app.vesselMarkerIds[id]) {
+            if (Array.isArray(app.vesselMarkerIds[id])) {
+                app.vesselMarkerIds[id].forEach(function(layerId) {
+                    removeContent(layerId);
+                });
+            } else {
+                removeContent(app.vesselMarkerIds[id]); 
+            }
+        }
+        app.vesselMarkerIds[id] = [];
+
+        var pos = posFor(ev);
+        var baseZ = CONFIG.VESSEL_MARKER_ELEVATION || 0; 
+        
+        // ⚙️ 1. Parallel Berthing Alignment
+        // If the ship is actively parked at a berth, force the heading to match the dock (135 deg)
+        var isBerthed = (ev.berth && ev.berth !== '-' && ['CARGO', 'SERVICE', 'CLEARANCE', 'BERTHING'].indexOf(ev.stage) !== -1);
+        var heading = isBerthed ? 135 : (ev.heading_deg || 0);
+
+        // ⚙️ 2. Ship Dimensions
+        var w = 40;  
+        var l = 150; 
+
+        var stageColors = {
+            'PLANNING': '#95a5a6', 'ARRIVAL': '#f39c12', 'WAITING': '#e74c3c',
+            'INBOUND': '#3498db', 'BERTHING': '#9b59b6', 'CLEARANCE': '#1abc9c',
+            'CARGO': '#2ecc71', 'SERVICE': '#f1c40f', 'DEPARTURE': '#34495e'
+        };
+        var hullColor = stageColors[ev.stage] || '#0B5CAB';
+
+        // 🏗️ 3. Define the 3D Blocks [2D Base Outline, Z-Bottom, Z-Top, Color]
+        var shipBlocks = [
+            // Hull (Waterline to Deck)
+            { 
+                color: '#2c3e50', zBottom: 0, zTop: 4, 
+                pts: [[0, l/2], [w/2, l/4], [w/2, -l/2], [-w/2, -l/2], [-w/2, l/4]] 
             },
-            render: {
-                style: 'text', // glyph-based marker; if your platform names this style differently
-                                // (e.g. 'label'), swap it here - the rest of the payload is unchanged.
-                text: CONFIG.VESSEL_SYMBOL,
-                color: '#0B5CAB',
-                scale: CONFIG.VESSEL_MARKER_SCALE
+            // Cargo Block (Dynamic Status Color)
+            { 
+                color: hullColor, zBottom: 4, zTop: 12, 
+                pts: [[w/2.2, l/5], [w/2.2, -l/4], [-w/2.2, -l/4], [-w/2.2, l/5]] 
             },
-            options: { projection: { from: 'WGS84' } }
+            // Lower Bridge Tower
+            { 
+                color: '#ecf0f1', zBottom: 4, zTop: 18, 
+                pts: [[w/2.2, -l/4], [w/2.2, -l/2.1], [-w/2.2, -l/2.1], [-w/2.2, -l/4]] 
+            },
+            // Radar Roof / Top Tower
+            { 
+                color: '#bdc3c7', zBottom: 18, zTop: 24, 
+                pts: [[w/3, -l/3.5], [w/3, -l/2.2], [-w/3, -l/2.2], [-w/3, -l/3.5]] 
+            }
+        ];
+
+        // 📐 4. Mathematical Extrusion Engine (Converts blocks to solid 3D GeoJSON)
+        function generateExtrudedFeatures(block) {
+            var R = 6378137;
+            var rad = Math.PI / 180;
+            var hRad = heading * rad;
+            var features = [];
+
+            // Translates local [x,y,z] to GPS coordinates
+            function localToGps(x, y, z) {
+                var dx = x * Math.cos(hRad) + y * Math.sin(hRad);
+                var dy = -x * Math.sin(hRad) + y * Math.cos(hRad);
+                return [
+                    pos[1] + (dx / (R * Math.cos(pos[0] * rad)) / rad),
+                    pos[0] + (dy / R / rad),
+                    z + baseZ
+                ];
+            }
+
+            function toGpsRing(localPts) {
+                var ring = localPts.map(function(p) { return localToGps(p[0], p[1], p[2]); });
+                ring.push(ring[0]); // Close the polygon ring
+                return [ring];
+            }
+
+            // Create the TOP Face (Horizontal Polygon)
+            var topPts = block.pts.map(function(p) { return [p[0], p[1], block.zTop]; });
+            features.push({ type: 'Polygon', properties: { STRID: id }, coordinates: toGpsRing(topPts) });
+
+            // Create the VERTICAL WALLS (Extrusion Polygons)
+            for (var i = 0; i < block.pts.length; i++) {
+                var pA = block.pts[i];
+                var pB = block.pts[(i + 1) % block.pts.length];
+                var wallPts = [
+                    [pA[0], pA[1], block.zBottom], // Bottom Left
+                    [pB[0], pB[1], block.zBottom], // Bottom Right
+                    [pB[0], pB[1], block.zTop],    // Top Right
+                    [pA[0], pA[1], block.zTop]     // Top Left
+                ];
+                features.push({ type: 'Polygon', properties: { STRID: id }, coordinates: toGpsRing(wallPts) });
+            }
+            return features; // Returns an array of polygons forming a complete solid block
+        }
+
+        var tooltipDesc = 
+            '<b>Vessel:</b> ' + esc(id) + '<br>' +
+            '<b>Terminal:</b> ' + esc(ev.terminal) + ' | <b>Berth:</b> ' + esc(ev.berth) + '<br>' +
+            '<b>Stage:</b> ' + esc(ev.stage) + '<br>' +
+            '<b>Import/Export:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu);
+
+        // 🚀 5. Publish the 3D Blocks to the Engine
+        shipBlocks.forEach(function(block, idx) {
+            var blockId = CONFIG.VESSEL_MARKER_PREFIX + id + '_BLOCK_' + idx;
+            app.vesselMarkerIds[id].push(blockId); 
+
+            // Generate the Top + Vertical Wall polygons for this specific block
+            var blockPolygons = generateExtrudedFeatures(block);
+
+            PlatformAPI.publish('3DEXPERIENCity.AddPolygon', {
+                // The engine accepts an array of polygons and renders them all at once!
+                json: blockPolygons,
+                layer: {
+                    id: blockId,
+                    name: '\uD83D\uDEF3\uFE0F ' + id + ' (Volume ' + idx + ')',
+                    description: tooltipDesc
+                },
+                render: {
+                    color: block.color,
+                    opacity: 1.0,            
+                    outlineColor: '#ffffff', // Creates a gorgeous architectural wireframe edge
+                    outlineWidth: 1
+                },
+                options: { 
+                    projection: { from: 'WGS84' },
+                    addTerrainHeight: true,
+                    altitudeMode: 'relativeToGround' // Critical for vertical wall stacking
+                }
+            });
         });
     }
 

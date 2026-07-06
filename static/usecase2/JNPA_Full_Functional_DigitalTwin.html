@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JNPA Digital Twin Platform</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{font-family:Segoe UI,Arial;margin:0;background:#f4f6f9}
+header{background:#0f172a;color:#fff;padding:16px}
+.tabs{display:flex;gap:8px;padding:10px;background:#fff;overflow:auto}
+.tab{padding:10px 14px;border:1px solid #ddd;cursor:pointer}
+.active{background:#2563eb;color:#fff}
+.page{display:none;padding:15px}.page.active{display:block}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.card,.chart{background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.k{font-size:28px;font-weight:bold}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+table{width:100%;border-collapse:collapse}.tablewrap{max-height:450px;overflow:auto}
+th,td{border:1px solid #ddd;padding:6px;font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>JNPA Enterprise Digital Twin & Control Tower</h1></header>
+
+<div class="tabs">
+<button class="tab active" onclick="showTab('exec',this)">Executive</button>
+<button class="tab" onclick="showTab('marine',this)">Marine</button>
+<button class="tab" onclick="showTab('yard',this)">Yard</button>
+<button class="tab" onclick="showTab('customs',this)">Customs</button>
+<button class="tab" onclick="showTab('digital',this)">Digital Twin</button>
+</div>
+
+<div id="exec" class="page active">
+<div class="kpis">
+<div class="card"><div>Total Containers</div><div id="k1" class="k">-</div></div>
+<div class="card"><div>Imports</div><div id="k2" class="k">-</div></div>
+<div class="card"><div>Exports</div><div id="k3" class="k">-</div></div>
+<div class="card"><div>Vessel Calls</div><div id="k4" class="k">-</div></div>
+</div>
+<div class="grid2">
+<div class="chart"><div id="termChart"></div></div>
+<div class="chart"><div id="flowChart"></div></div>
+</div>
+</div>
+
+<div id="marine" class="page">
+<div class="grid2">
+<div class="chart"><div id="berthChart"></div></div>
+<div class="chart"><div id="craneChart"></div></div>
+</div>
+</div>
+
+<div id="yard" class="page">
+<div class="chart"><div id="yardChart"></div></div>
+</div>
+
+<div id="customs" class="page">
+<div class="chart"><div id="customsChart"></div></div>
+</div>
+
+<div id="digital" class="page">
+<div class="chart"><div id="journeyChart"></div></div>
+<div class="card tablewrap">
+<table id="eventsTbl"><thead><tr><th>Container</th><th>Vessel</th><th>Event</th><th>Timestamp</th></tr></thead><tbody></tbody></table>
+</div>
+</div>
+
+<script>
+function showTab(id,b){
+document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+document.getElementById(id).classList.add('active'); b.classList.add('active');
+}
+const files=[
+'container_master.csv',
+'vessels.csv',
+'yard_operations.csv',
+'customs_events.csv',
+'digital_twin_events.csv',
+'berth_crane_operations.csv'
+];
+const data={};
+
+function loadCSV(f){
+ return fetch(f).then(r=>r.text()).then(t=>new Promise(res=>{
+   Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})
+ }))
+}
+
+Promise.all(files.map(loadCSV)).then(arr=>{
+ files.forEach((f,i)=>data[f]=arr[i]);
+ build();
+});
+
+function build(){
+ const cm=data['container_master.csv'];
+ const vessels=data['vessels.csv'];
+ const yard=data['yard_operations.csv'];
+ const customs=data['customs_events.csv'];
+ const events=data['digital_twin_events.csv'];
+ const berth=data['berth_crane_operations.csv'];
+
+ document.getElementById('k1').innerText=cm.length.toLocaleString();
+ document.getElementById('k2').innerText=cm.filter(x=>x.flow_type=='IMPORT').length.toLocaleString();
+ document.getElementById('k3').innerText=cm.filter(x=>x.flow_type=='EXPORT').length.toLocaleString();
+ document.getElementById('k4').innerText=vessels.length.toLocaleString();
+
+ let term={};
+ cm.forEach(r=>{
+   if(!term[r.terminal]) term[r.terminal]={IMPORT:0,EXPORT:0};
+   term[r.terminal][r.flow_type]++;
+ });
+
+ let cats=Object.keys(term);
+ new ApexCharts(document.querySelector("#termChart"),{
+ chart:{type:'bar',height:350},
+ series:[
+ {name:'Import',data:cats.map(c=>term[c].IMPORT)},
+ {name:'Export',data:cats.map(c=>term[c].EXPORT)}
+ ],
+ xaxis:{categories:cats},
+ title:{text:'Terminal Throughput'}
+ }).render();
+
+ new ApexCharts(document.querySelector("#flowChart"),{
+ chart:{type:'pie',height:350},
+ series:[cm.filter(x=>x.flow_type=='IMPORT').length,cm.filter(x=>x.flow_type=='EXPORT').length],
+ labels:['Import','Export']
+ }).render();
+
+ const berthByTerm={};
+ berth.forEach(r=>{
+   berthByTerm[r.terminal]=(berthByTerm[r.terminal]||[]);
+   berthByTerm[r.terminal].push(+r.berth_hours);
+ });
+
+ new ApexCharts(document.querySelector("#berthChart"),{
+ chart:{type:'bar',height:350},
+ series:[{name:'Avg Berth Hours',data:Object.keys(berthByTerm).map(k=>berthByTerm[k].reduce((a,b)=>a+b,0)/berthByTerm[k].length)}],
+ xaxis:{categories:Object.keys(berthByTerm)}
+ }).render();
+
+ new ApexCharts(document.querySelector("#craneChart"),{
+ chart:{type:'line',height:350},
+ series:[{name:'Crane MPH',data:berth.slice(0,100).map(x=>+x.crane_moves_per_hour)}]
+ }).render();
+
+ new ApexCharts(document.querySelector("#yardChart"),{
+ chart:{type:'histogram',height:350},
+ series:[{name:'Dwell Hours',data:yard.slice(0,1000).map(x=>+x.dwell_hours)}]
+ }).render();
+
+ const leo=customs.filter(x=>x.ooc_time==''||x.ooc_time==null).length;
+ const ooc=customs.length-leo;
+ new ApexCharts(document.querySelector("#customsChart"),{
+ chart:{type:'donut',height:350},
+ series:[leo,ooc],
+ labels:['Export/LEO','Import/OOC']
+ }).render();
+
+ const stages={};
+ events.forEach(r=>stages[r.event]=(stages[r.event]||0)+1);
+ new ApexCharts(document.querySelector("#journeyChart"),{
+ chart:{type:'bar',height:350},
+ series:[{name:'Events',data:Object.values(stages)}],
+ xaxis:{categories:Object.keys(stages)},
+ title:{text:'Digital Twin Event Flow'}
+ }).render();
+
+ const tb=document.querySelector("#eventsTbl tbody");
+ events.slice(0,500).forEach(r=>{
+   tb.innerHTML += `<tr><td>${r.container_id}</td><td>${r.vessel_call_id}</td><td>${r.event}</td><td>${r.event_ts}</td></tr>`;
+ });
+}
+</script>
+</body></html>

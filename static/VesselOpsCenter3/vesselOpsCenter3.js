@@ -1,0 +1,1644 @@
+/*global window, document, widget, define */
+
+/*
+ * VesselOpsCenter
+ * ---------------------------------------------------------------------
+ * This widget merges two source artifacts into a single DS/UWA widget
+ * module:
+ *
+ *   1. vessel_heatmap8.html  - "Enterprise Port Command Center", a
+ *      multi-tab analytics console (Executive / Vessel Tracking Matrix /
+ *      Terminal & Berth / Operations & Cranes / Environmental Context)
+ *      built with ApexCharts, a snapshot timeline, and filter controls.
+ *
+ *   2. vesselMovement2.js    - the 3D-scene twin that publishes vessel,
+ *      berth and tide-gauge markers onto the platform via PlatformAPI as
+ *      the timeline plays back.
+ *
+ * The analytics console drives the on-page UI; every time the snapshot
+ * timeline moves (via the dropdown, Play, Next, or filter changes) the
+ * widget both re-renders the dashboard AND re-publishes the 3D markers
+ * so the map and the console always describe the same instant in time.
+ * ---------------------------------------------------------------------
+ */
+
+define('VesselOpsCenter3',
+[
+    'UWA/Core',
+    'UWA/Promise',
+    'UWA/String',
+    'DS/WAFData/WAFData',
+    'DS/PlatformAPI/PlatformAPI',
+    'DS/UIKIT/Toggler',
+    'DS/UIKIT/Autocomplete',
+    'DS/UIKIT/Input/Button',
+    'DS/UIKIT/Scroller',
+    'css!DS/UIKIT/UIKIT.css'
+],
+
+function (UWA, Promise, String, WAFData, PlatformAPI) {
+
+'use strict';
+
+    // ---------------------------------------------------------------------
+    // CONFIG
+    // ---------------------------------------------------------------------
+    var CONFIG = {
+        // Replace with the actual hosted location of vessel_lifecycle_simulation.csv
+        CSV_URL: 'https://test-app-lyart-six.vercel.app/static/VesselOpsCenter/vessel_lifecycle_simulation.csv',
+        APEXCHARTS_URL: 'https://cdn.jsdelivr.net/npm/apexcharts',
+        DEFAULT_INTERVAL_MS: 350,
+        FAST_INTERVAL_MS: 100,
+        VESSEL_MARKER_PREFIX: 'VESSEL_',
+        BERTH_MARKER_PREFIX: 'BERTH_',
+        // Elevation (meters) vessel markers are lifted above ground level so they
+        // don't visually collide with the berth marker/label sitting at the same lat/lng.
+        VESSEL_MARKER_ELEVATION: 80,
+        VESSEL_MARKER_SCALE: 1.4,
+        // Berth markers stay pinned at ground level so the gap to the vessel above is obvious.
+        BERTH_MARKER_ELEVATION: 0,
+        // Fixed point where the current tide reading is displayed
+        TIDE_MARKER_ID: 'TIDE_GAUGE',
+        TIDE_LOCATION: [18.94543, 72.92450],
+        // Anchorage: vessels get a stable slot around ANCH instead of stacking on one point
+        ANCHORAGE_SLOTS: 12,
+        ANCHORAGE_RADIUS_DEG: 0.0018,
+        // UTF-8 glyph used for vessel markers instead of an icon set
+        VESSEL_SYMBOL: '\uD83D\uDEA2'
+    };
+
+    // Static reference points / berth coordinates
+    var BERTHS = {
+        B1: [18.936532, 72.933758], B2: [18.937983, 72.934885], B3: [18.939687, 72.936355],
+        B4: [18.94753,  72.93965],  B5: [18.95031,  72.94201],  B6: [18.95470,  72.94551],
+        B7: [18.95717,  72.94673],  B8: [18.95993,  72.94795],  B9: [18.96259,  72.94918],
+        B10: [18.96474, 72.95038]
+    };
+    var ANCH = [18.93366, 72.88527];
+    var CHANNEL = [18.94137, 72.90879];
+    var SEA = [18.92879, 72.86845];
+
+    var STAGES = ['PLANNING', 'ARRIVAL', 'WAITING', 'INBOUND', 'BERTHING', 'CLEARANCE', 'CARGO', 'SERVICE', 'DEPARTURE'];
+    var TABS = ['executive', 'vessels', 'terminals', 'operations', 'environment', 'whatif'];
+    var NUMERIC_FIELDS = ['teu_capacity', 'import_teu', 'export_teu', 'cranes_assigned', 'tide_level', 'anchorage_wait_hours', 'cargo_hours'];
+    // Stages during which a vessel needs an active pilot to move (into anchorage
+    // queue release, inbound transit, berthing maneuver, or outbound departure).
+    // A pilot unavailability window adds directly to the wait in these stages.
+    var PILOT_DEPENDENT_STAGES = ['WAITING', 'INBOUND', 'BERTHING', 'DEPARTURE'];
+    // Vessels already at the terminal doing arrival formalities, clearance, cargo
+    // work, or servicing aren't blocked by the outage yet, but the extra berth
+    // congestion it causes ripples onto them too — modelled as a fraction of the
+    // outage duration rather than the full amount.
+    var CASCADE_STAGES = ['ARRIVAL', 'CLEARANCE', 'CARGO', 'SERVICE'];
+    var CASCADE_RIPPLE_FACTOR = 0.5;
+
+    // ---------------------------------------------------------------------
+    // APP STATE
+    // ---------------------------------------------------------------------
+    var app = {
+        events: [],
+        times: [],
+        timeIndex: 0,
+        vesselMarkerIds: {},      // vessel_id -> marker id currently on the platform
+        berthMarkerIds: {},       // berth code -> marker id (created once)
+        berthOccupied: {},        // berth code -> bool, last published occupancy
+        lastPublishedTide: null,
+        playbackHandle: null,
+        playing: false,
+        currentTab: 'executive',
+        chartsMap: {},
+        isFirstLoad: true,
+        statusBar: null
+    };
+
+    // ---------------------------------------------------------------------
+    // HELPERS
+    // ---------------------------------------------------------------------
+    function safe(v) { return (v === undefined || v === null || v === '') ? '-' : String(v); }
+
+    function esc(s) {
+        return safe(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // CSV timestamps look like "2026-02-28 03:27:29". Swapping the space for a
+    // "T" keeps Date parsing consistent across browser engines.
+    function parseEventDate(s) {
+        return new Date(String(s).replace(' ', 'T'));
+    }
+
+    function parseCsv(text) {
+        var lines = text.replace(/\r/g, '').trim().split('\n');
+        if (!lines.length) { return []; }
+        var headers = lines[0].split(',').map(function (h) { return h.trim(); });
+        return lines.slice(1).filter(function (l) { return l.length; }).map(function (line) {
+            var parts = line.split(',');
+            var obj = {};
+            headers.forEach(function (h, idx) {
+                var raw = (parts[idx] || '').trim();
+                if (NUMERIC_FIELDS.indexOf(h) !== -1) {
+                    obj[h] = raw === '' ? 0 : (parseFloat(raw) || 0);
+                } else {
+                    obj[h] = raw;
+                }
+            });
+            return obj;
+        });
+    }
+
+    function apiGetText(url) {
+        return new Promise(function (resolve, reject) {
+            WAFData.proxifiedRequest(url, {
+                method: 'GET',
+                type: 'text',
+                onComplete: resolve,
+                onFailure: function (e, d) { reject(d || e); }
+            });
+        });
+    }
+
+    function ensureApexCharts() {
+        return new Promise(function (resolve, reject) {
+            if (window.ApexCharts) { resolve(); return; }
+
+            // ---------------------------------------------------------------
+            // AMD guard — ApexCharts is packaged as UMD.  When an AMD loader
+            // is present (UWA / RequireJS sets window.define with define.amd
+            // truthy), the UMD wrapper calls define(factory) and registers as
+            // an anonymous AMD module instead of assigning window.ApexCharts.
+            // We temporarily clear window.define so the UMD code falls through
+            // to the plain-browser branch:  window.ApexCharts = factory().
+            // define is restored synchronously inside onload/onerror, before
+            // any other module code runs.
+            // ---------------------------------------------------------------
+            var savedDefine = window.define;
+            window.define = undefined;
+
+            var s = document.createElement('script');
+            s.src = CONFIG.APEXCHARTS_URL;
+            s.onload = function () {
+                window.define = savedDefine;          // restore AMD loader
+                if (window.ApexCharts) {
+                    resolve();
+                } else {
+                    reject(new Error('ApexCharts loaded but window.ApexCharts is still undefined — check CSP or URL'));
+                }
+            };
+            s.onerror = function () {
+                window.define = savedDefine;
+                reject(new Error('Failed to load ApexCharts from ' + CONFIG.APEXCHARTS_URL));
+            };
+            document.head.appendChild(s);
+        });
+    }
+
+    function uniqueSorted(arr) {
+        var seen = {}, out = [];
+        arr.forEach(function (v) {
+            if (!seen.hasOwnProperty(v)) {
+                seen[v] = true;
+                out.push(v);
+            }
+        });
+        return out.sort();
+    }
+
+    function toXY(latlon, z) {
+        var p = { x: latlon[1], y: latlon[0] };
+        if (z) { p.z = z; }
+        return p;
+    }
+
+    function removeContent(id) {
+        if (!id) { return; }
+        PlatformAPI.publish('3DEXPERIENCity.RemoveContent', id);
+    }
+
+    function setStatus(text, isError) {
+        if (!app.statusBar) { return; }
+        app.statusBar.textContent = text;
+        app.statusBar.style.color = isError ? '#c2424b' : '#5c6b80';
+    }
+
+    // Gives each vessel a stable slot on a small ring around ANCH so that when several
+    // vessels are anchored at once they fan out instead of stacking on a single point.
+    function anchorageOffset(vesselId) {
+        var numPart = parseInt(String(vesselId).replace(/[^0-9]/g, ''), 10) || 0;
+        var slots = CONFIG.ANCHORAGE_SLOTS;
+        var idx = numPart % slots;
+        var angle = (2 * Math.PI * idx) / slots;
+        var r = CONFIG.ANCHORAGE_RADIUS_DEG;
+        var latOffset = r * Math.sin(angle);
+        var lonOffset = (r * Math.cos(angle)) / Math.cos(ANCH[0] * Math.PI / 180);
+        return [ANCH[0] + latOffset, ANCH[1] + lonOffset];
+    }
+
+    // Mirrors pos() from the HTML twin (same precedence order), with anchored vessels
+    // spread around ANCH via anchorageOffset() instead of all sharing one exact point.
+    function posFor(ev) {
+        if (ev.substage && ev.substage.indexOf('ANCHORAGE') !== -1) { return anchorageOffset(ev.vessel_id); }
+        if (ev.stage === 'INBOUND' || ev.stage === 'BERTHING') { return CHANNEL; }
+        if (ev.berth && (ev.stage === 'CARGO' || ev.stage === 'SERVICE' || ev.stage === 'CLEARANCE' ||
+                ev.stage === 'BERTHING' || ev.substage === 'ALL_FAST')) {
+            return BERTHS[ev.berth] || SEA;
+        }
+        return SEA;
+    }
+
+    // ---------------------------------------------------------------------
+    // STATIC BERTH MARKERS (created once at load, icon pins on the quay)
+    // ---------------------------------------------------------------------
+    function initBerthMarkers() {
+        Object.keys(BERTHS).forEach(function (b) {
+            var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
+            app.berthMarkerIds[b] = markerId;
+            app.berthOccupied[b] = false;
+            PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+                widgetID: widget.id,
+                position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+                layer: {
+                    id: markerId,
+                    name: b,
+                    description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> Free'
+                },
+                render: {
+                    style: 'icon',
+                    color: '#2c8f4e',
+                    iconName: 'transportation-dock'
+                },
+                options: { projection: { from: 'WGS84' } }
+            });
+        });
+    }
+
+    // Re-publishes a berth marker with updated colour when occupancy changes
+    function setBerthOccupied(b, occupied) {
+        if (!BERTHS[b] || app.berthOccupied[b] === occupied) { return; }
+        app.berthOccupied[b] = occupied;
+        removeContent(app.berthMarkerIds[b]);
+        var markerId = CONFIG.BERTH_MARKER_PREFIX + b;
+        app.berthMarkerIds[b] = markerId;
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: toXY(BERTHS[b], CONFIG.BERTH_MARKER_ELEVATION),
+            layer: {
+                id: markerId,
+                name: b,
+                description: '<b>Berth:</b> ' + b + '<br><b>Status:</b> ' + (occupied ? 'Occupied' : 'Free')
+            },
+            render: {
+                style: 'icon',
+                color: occupied ? '#c2424b' : '#2c8f4e',
+                iconName: 'transportation-dock'
+            },
+            options: { projection: { from: 'WGS84' } }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // TIDE GAUGE MARKER (fixed location, updated whenever the tide value changes)
+    // ---------------------------------------------------------------------
+    function publishTideMarker(value) {
+        if (app.lastPublishedTide === value) { return; }
+        app.lastPublishedTide = value;
+        removeContent(CONFIG.TIDE_MARKER_ID);
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: toXY(CONFIG.TIDE_LOCATION, 0),
+            layer: {
+                id: CONFIG.TIDE_MARKER_ID,
+                name: '\uD83C\uDF0A ' + esc(value),
+                description: '<b>Current Tide:</b> ' + esc(value) + ' / 5.0'
+            },
+            render: {
+                style: 'text',
+                text: '\uD83C\uDF0A ' + safe(value),
+                color: '#1fa9b8',
+                scale: 1.2
+            },
+            options: { projection: { from: 'WGS84' } }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // VESSEL MARKERS
+    // ---------------------------------------------------------------------
+    function publishVesselMarker(ev) {
+        var id = ev.vessel_id;
+        var markerId = CONFIG.VESSEL_MARKER_PREFIX + id;
+        removeContent(app.vesselMarkerIds[id]); // drop previous position marker for this vessel, if any
+        app.vesselMarkerIds[id] = markerId;
+        PlatformAPI.publish('3DEXPERIENCity.AddMarker', {
+            widgetID: widget.id,
+            position: toXY(posFor(ev), CONFIG.VESSEL_MARKER_ELEVATION),
+            layer: {
+                id: markerId,
+                name: '\uD83D\uDEF3\uFE0F' + id,
+                description:
+                    '<b>Vessel:</b> ' + esc(id) + '<br>' +
+                    '<b>Voyage:</b> ' + esc(ev.voyage_no) + '<br>' +
+                    '<b>Line:</b> ' + esc(ev.shipping_line) + '<br>' +
+                    '<b>Type:</b> ' + esc(ev.container_type) + '<br>' +
+                    '<b>Terminal:</b> ' + esc(ev.terminal) + '<br>' +
+                    '<b>Berth:</b> ' + esc(ev.berth) + '<br>' +
+                    '<b>Stage:</b> ' + esc(ev.stage) + '<br>' +
+                    '<b>Substage:</b> ' + esc(ev.substage) + '<br>' +
+                    '<b>Import/Export TEU:</b> ' + safe(ev.import_teu) + ' / ' + safe(ev.export_teu)
+            },
+            render: {
+                style: 'text', // glyph-based marker; if your platform names this style differently
+                                // (e.g. 'label'), swap it here - the rest of the payload is unchanged.
+                text: CONFIG.VESSEL_SYMBOL,
+                color: '#15708a',
+                scale: CONFIG.VESSEL_MARKER_SCALE
+            },
+            options: { projection: { from: 'WGS84' } }
+        });
+    }
+
+    // Publishes the 3D scene (vessel positions, berth occupancy, tide gauge) so it
+    // matches whatever instant the analytics console is currently showing.
+    function syncSceneMarkers(metadata, envTide) {
+        var occupied = {};
+        Object.keys(metadata).forEach(function (key) {
+            var meta = metadata[key];
+            if (meta.latestRow) { publishVesselMarker(meta.latestRow); }
+            if (meta.berth !== '-' && meta.hasArrived && !meta.hasDeparted) {
+                occupied[meta.berth] = true;
+            }
+        });
+        Object.keys(BERTHS).forEach(function (b) {
+            setBerthOccupied(b, !!occupied[b]);
+        });
+        publishTideMarker(typeof envTide === 'number' ? envTide.toFixed(2) : safe(envTide));
+    }
+
+
+
+    // ---------------------------------------------------------------------
+    // UI - STYLES
+    // ---------------------------------------------------------------------
+    var STYLE =
+        '<style>' +
+        /* ---- reset / base (JNPA DTCCC maritime theme: navy/teal, Aptos) ---- */
+        '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
+        /* outer scrollable container – fills whatever space the platform allocates */
+        '.voc-wrap{font-family:"Aptos","Segoe UI",Roboto,Helvetica,Arial,sans-serif;' +
+            'background:#e9eef3;color:#0e2a47;line-height:1.45;' +
+            'position:absolute;top:0;left:0;right:0;bottom:0;' +
+            'overflow:auto;-webkit-overflow-scrolling:touch;}' +
+        /* inner padding box so content never bleeds to edge */
+        '.voc-inner{padding:14px;min-width:420px;}' +
+
+        /* ---- top header bar ---- */
+        '.voc-topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:relative;}' +
+        '.voc-topbar-left{flex:1;min-width:0;}' +
+        '.voc-title{font-size:1.15rem;font-weight:700;letter-spacing:-.2px;color:#0e2a47;' +
+            'font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.voc-subtitle{font-size:11px;color:#5c6b80;}' +
+        '.voc-topbar-right{display:flex;gap:6px;align-items:center;flex-shrink:0;}' +
+        /* active tab badge */
+        '.voc-active-badge{font-size:11px;font-weight:700;letter-spacing:.3px;color:#15708a;background:#e2f2f5;' +
+            'border:1px solid rgba(21,112,138,.25);padding:3px 10px;border-radius:20px;white-space:nowrap;cursor:default;}' +
+        /* icon buttons */
+        '.voc-icon-btn{width:34px;height:34px;border-radius:6px;border:1px solid #dde3ec;background:#ffffff;' +
+            'color:#5c6b80;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
+            'transition:background .15s,border-color .15s,color .15s;}' +
+        '.voc-icon-btn:hover{background:#f4f7fa;border-color:#c2cad6;color:#0e2a47;}' +
+        '.voc-icon-btn.voc-active{background:#e2f2f5;border-color:#15708a;color:#15708a;}' +
+
+        /* ---- status bar ---- */
+        '.voc-status-bar{font-size:11px;color:#5c6b80;background:#ffffff;border:1px solid #dde3ec;padding:6px 10px;border-radius:6px;' +
+            'margin-bottom:11px;word-break:break-all;}' +
+
+        /* ---- burger dropdown menu ---- */
+        '.voc-burger-menu{position:absolute;top:42px;right:0;z-index:200;' +
+            'background:#ffffff;border:1px solid #dde3ec;border-radius:8px;' +
+            'box-shadow:0 8px 24px rgba(14,42,71,.14);min-width:230px;padding:6px 0;display:none;}' +
+        '.voc-burger-menu.voc-open{display:block;}' +
+        '.voc-menu-section{font-size:9px;font-weight:700;color:#9aa6b6;text-transform:uppercase;' +
+            'letter-spacing:.6px;padding:8px 14px 4px;}' +
+        '.voc-menu-item{display:flex;align-items:center;gap:9px;padding:9px 14px;font-size:13px;' +
+            'font-weight:500;color:#0e2a47;cursor:pointer;transition:background .12s,color .12s;}' +
+        '.voc-menu-item:hover{background:#e2f2f5;color:#15708a;}' +
+        '.voc-menu-item.voc-menu-active{background:#e2f2f5;color:#15708a;font-weight:700;box-shadow:inset 3px 0 0 #15708a;}' +
+        '.voc-menu-divider{border:none;border-top:1px solid #dde3ec;margin:4px 0;}' +
+        '.voc-menu-icon{font-size:14px;width:18px;text-align:center;}' +
+
+        /* ---- settings modal overlay ---- */
+        '.voc-modal-backdrop{position:absolute;inset:0;background:rgba(8,16,24,.4);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:50px;}' +
+        '.voc-modal-backdrop.voc-open{display:flex;}' +
+        '.voc-modal{background:#ffffff;border:1px solid #dde3ec;border-radius:8px;box-shadow:0 24px 70px rgba(8,16,24,.35);' +
+            'width:90%;max-width:680px;max-height:82vh;overflow-y:auto;display:flex;flex-direction:column;}' +
+        '.voc-modal-header{display:flex;align-items:center;justify-content:space-between;' +
+            'padding:14px 18px;border-bottom:1px solid #dde3ec;position:sticky;top:0;background:#ffffff;z-index:1;}' +
+        '.voc-modal-title{font-size:15px;font-weight:700;color:#0e2a47;font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;}' +
+        '.voc-modal-close{width:30px;height:30px;border-radius:6px;border:1px solid #dde3ec;' +
+            'background:#ffffff;color:#5c6b80;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
+            'transition:background .12s,border-color .12s,color .12s;}' +
+        '.voc-modal-close:hover{background:#f4f7fa;border-color:#c2cad6;color:#0e2a47;}' +
+        '.voc-modal-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;}' +
+        /* playback row inside modal */
+        '.voc-pb-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}' +
+        '.voc-pb-row .voc-cg{flex:1;min-width:140px;}' +
+        /* modal apply button */
+        '.voc-modal-footer{padding:12px 18px;border-top:1px solid #dde3ec;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#ffffff;}' +
+
+        /* ---- shared form control group ---- */
+        '.voc-cg{display:flex;flex-direction:column;gap:4px;}' +
+        '.voc-cg label{font-weight:600;font-size:11px;color:#5c6b80;}' +
+        '.voc-cg select,.voc-cg input[type="text"],.voc-cg input[type="number"]{font:inherit;padding:7px 10px;font-size:13px;border-radius:6px;' +
+            'border:1px solid #dde3ec;background:#ffffff;color:#0e2a47;width:100%;outline:none;transition:border-color .12s;}' +
+        '.voc-cg select:focus,.voc-cg input[type="text"]:focus,.voc-cg input[type="number"]:focus{border-color:#1fa9b8;box-shadow:0 0 0 2px rgba(31,169,184,.15);}' +
+        '.voc-filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;}' +
+
+        /* ---- what-if scenario panel ---- */
+        '.voc-whatif-controls{background:#ffffff;border:1px solid #dde3ec;border-radius:8px;padding:14px;margin-bottom:13px;}' +
+        '.voc-whatif-controls-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}' +
+        '.voc-whatif-controls-row .voc-cg{flex:1;min-width:160px;}' +
+        '.voc-whatif-empty{padding:22px;text-align:center;color:#9aa6b6;font-style:italic;border:1px dashed #dde3ec;border-radius:8px;background:#ffffff;}' +
+        '.voc-whatif-presets{display:flex;gap:6px;}' +
+        '.voc-preset-btn{padding:6px 11px;font-size:11.5px;}' +
+        '.voc-preset-btn.voc-active{background:#e2f2f5;color:#15708a;border-color:#15708a;font-weight:700;}' +
+        '.voc-whatif-summary{background:#e2f2f5;border:1px solid rgba(21,112,138,.25);border-left:4px solid #15708a;' +
+            'border-radius:6px;padding:12px 14px;font-size:13px;line-height:1.5;color:#0e2a47;margin-bottom:14px;}' +
+        '.voc-whatif-summary strong{color:#15708a;}' +
+        '.voc-impact-type-badge{display:inline-block;padding:2px 8px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;border-radius:10px;}' +
+        '.voc-impact-type-badge.voc-type-direct{background:#f8e5e6;color:#c2424b;}' +
+        '.voc-impact-type-badge.voc-type-cascade{background:#f6edd8;color:#b9791a;}' +
+        '.voc-whatif-flag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;padding:1px 6px;border-radius:3px;margin-left:6px;}' +
+        '.voc-whatif-flag.voc-flag-low{background:#e4f3ea;color:#2c8f4e;}' +
+        '.voc-whatif-flag.voc-flag-med{background:#f6edd8;color:#b9791a;}' +
+        '.voc-whatif-flag.voc-flag-critical{background:#f8e5e6;color:#c2424b;}' +
+
+        /* ---- buttons ---- */
+        '.voc-btn{font:inherit;padding:8px 14px;font-size:12.5px;font-weight:600;border-radius:6px;color:#0e2a47;' +
+            'border:1px solid #c2cad6;background:#ffffff;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,filter .12s;}' +
+        '.voc-btn:hover{background:#f4f7fa;}' +
+        '.voc-btn:disabled{opacity:.5;cursor:not-allowed;background:#ffffff;}' +
+        '.voc-btn:disabled:hover{background:#ffffff;}' +
+        '.voc-btn.voc-active{background:#f8e5e6;color:#c2424b;border-color:#e6b3b8;}' +
+        '.voc-btn-primary{background:#15708a;color:#fff;border-color:#15708a;}' +
+        '.voc-btn-primary:hover{filter:brightness(1.08);}' +
+
+        /* ---- tab content panes ---- */
+        '.voc-tab-content{display:none;}' +
+        '.voc-tab-content.voc-tab-content-active{display:block;}' +
+
+        /* ---- KPI cards ---- */
+        '.voc-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:13px;}' +
+        '.voc-kpi-card{background:#ffffff;border:1px solid #dde3ec;padding:12px;border-radius:8px;display:flex;flex-direction:column;}' +
+        '.voc-kpi-card label{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#5c6b80;margin-bottom:2px;}' +
+        '.voc-kpi-val{font-size:19px;font-weight:700;letter-spacing:-.3px;color:#0e2a47;margin-bottom:5px;font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;}' +
+        '.voc-kpi-explanation{font-size:10px;color:#9aa6b6;border-top:1px dashed #dde3ec;padding-top:4px;font-style:italic;line-height:1.3;}' +
+
+        /* ---- vessel matrix ---- */
+        '.voc-vessel-panel-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;}' +
+        '@media(max-width:1024px){.voc-vessel-panel-grid{grid-template-columns:1fr;}}' +
+        '.voc-matrix-container{background:#ffffff;border:1px solid #dde3ec;padding:14px;border-radius:8px;overflow-x:auto;margin-bottom:14px;}' +
+        '.voc-matrix-container table{width:100%;border-collapse:collapse;min-width:850px;text-align:center;}' +
+        '.voc-matrix-container th,.voc-matrix-container td{padding:8px 5px;border:1px solid #dde3ec;font-size:11.5px;}' +
+        '.voc-matrix-container th{background:#f4f7fa;font-weight:700;color:#5c6b80;font-size:10px;letter-spacing:.3px;text-transform:uppercase;}' +
+        '.voc-vessel-row{cursor:pointer;}' +
+        '.voc-vessel-row:hover td{background:#f4f7fa;}' +
+        '.voc-vessel-axis-cell{text-align:left;font-weight:700;background:#f4f7fa;min-width:180px;color:#0e2a47;position:sticky;left:0;box-shadow:2px 0 5px -2px rgba(14,42,71,.1);}' +
+        '.voc-drilldown-row{background:#f4f7fa;display:none;}' +
+        '.voc-drilldown-container{padding:10px;text-align:left;background:#ffffff;border:1px solid #dde3ec;border-radius:6px;margin:4px auto;width:98%;overflow-x:auto;}' +
+        '.voc-subtable{width:100%;border-collapse:collapse;min-width:700px;}' +
+        '.voc-subtable th{background:#f4f7fa;color:#5c6b80;font-size:10px;padding:5px;text-transform:uppercase;letter-spacing:.3px;}' +
+        '.voc-subtable td{padding:5px;font-size:10.5px;border:1px solid #dde3ec;background:#ffffff;color:#0e2a47;}' +
+        '.voc-berth-badge{display:inline-block;padding:2px 8px;font-size:10px;border-radius:10px;font-weight:700;margin-top:4px;background:#e2f2f5;color:#15708a;border:1px solid rgba(21,112,138,.2);}' +
+        '.voc-delay-warning-tag{display:block;font-size:9px;color:#c2424b;font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.2px;background:#f8e5e6;padding:1px 4px;border-radius:3px;}' +
+        '.voc-cell-empty{background:#f4f7fa;color:#9aa6b6;}' +
+        '.voc-cell-low{background:#e4f3ea;color:#2c8f4e;}' +
+        '.voc-cell-med{background:#f6edd8;color:#b9791a;}' +
+        '.voc-cell-critical{background:#f8e5e6;color:#c2424b;}' +
+
+        /* ---- charts ---- */
+        '.voc-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:8px;}' +
+        '.voc-chart-card{background:#ffffff;border:1px solid #dde3ec;padding:14px;border-radius:8px;width:100%;overflow:hidden;display:flex;flex-direction:column;}' +
+        '.voc-chart-card.voc-span2{grid-column:1/-1;}' +
+        '.voc-chart-title{font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;color:#5c6b80;margin-bottom:2px;border-bottom:1px solid #dde3ec;padding-bottom:5px;}' +
+        '.voc-chart-explanation{font-size:10.5px;color:#9aa6b6;font-style:italic;margin-bottom:10px;margin-top:2px;line-height:1.3;}' +
+        '.voc-grid-col{display:flex;flex-direction:column;gap:14px;}' +
+        '.voc-tip{font-size:11px;color:#5c6b80;font-style:italic;display:block;margin-bottom:8px;}' +
+        '</style>';
+
+    // ---- small helpers ----
+    function kpiCard(id, label, color, explanation) {
+        return '<div class="voc-kpi-card" style="border-left:4px solid ' + color + ';">' +
+            '<label>' + label + '</label>' +
+            '<div class="voc-kpi-val" id="' + id + '">-</div>' +
+            '<div class="voc-kpi-explanation">' + explanation + '</div>' +
+            '</div>';
+    }
+
+    var TAB_META = [
+        { id: 'executive',   icon: '\uD83D\uDCCA', label: 'Executive Insights' },
+        { id: 'vessels',     icon: '\uD83D\uDEA2', label: 'Vessel Tracking Matrix' },
+        { id: 'terminals',   icon: '\u2693',        label: 'Terminal \u0026 Berth' },
+        { id: 'operations',  icon: '\uD83C\uDFF7\uFE0F', label: 'Operations \u0026 Cranes' },
+        { id: 'environment', icon: '\uD83C\uDF21\uFE0F', label: 'Environmental Context' },
+        { id: 'whatif',      icon: '\uD83D\uDD2E', label: 'What-If: Pilot Availability' }
+    ];
+
+    function buildHtml() {
+        // ---- burger dropdown items ----
+        var menuItems = '';
+        menuItems += '<div class="voc-menu-section">Navigate</div>';
+        TAB_META.forEach(function (t) {
+            menuItems += '<div class="voc-menu-item" id="voc-menu-' + t.id + '" data-tab="' + t.id + '">' +
+                '<span class="voc-menu-icon">' + t.icon + '</span>' + t.label + '</div>';
+        });
+        menuItems += '<hr class="voc-menu-divider">' +
+            '<div class="voc-menu-item" id="voc-menu-open-settings">' +
+                '<span class="voc-menu-icon">\u2699\uFE0F</span>Simulation Controls' +
+            '</div>';
+
+        // ---- settings modal body ----
+        var modal =
+            '<div class="voc-modal-backdrop" id="voc-settings-backdrop">' +
+                '<div class="voc-modal">' +
+                    '<div class="voc-modal-header">' +
+                        '<span class="voc-modal-title">\u2699\uFE0F Simulation &amp; Filter Controls</span>' +
+                        '<button class="voc-modal-close" id="voc-modal-close-btn">\u00D7</button>' +
+                    '</div>' +
+                    '<div class="voc-modal-body">' +
+
+                        // Playback row
+                        '<div class="voc-pb-row">' +
+                            '<div class="voc-cg" style="flex:2;min-width:200px;">' +
+                                '<label for="voc-ts-select">Snapshot Timeline</label>' +
+                                '<select id="voc-ts-select"></select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label>Playback</label>' +
+                                '<div style="display:flex;gap:6px;">' +
+                                    '<button class="voc-btn" id="voc-play-btn">\u25B6 Play</button>' +
+                                    '<button class="voc-btn" id="voc-next-btn">Next \u2794</button>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="voc-cg" style="min-width:90px;">' +
+                                '<label for="voc-speed">Speed</label>' +
+                                '<select id="voc-speed">' +
+                                    '<option value="' + CONFIG.DEFAULT_INTERVAL_MS + '">Normal</option>' +
+                                    '<option value="' + CONFIG.FAST_INTERVAL_MS + '">Fast</option>' +
+                                '</select>' +
+                            '</div>' +
+                        '</div>' +
+
+                        // Filters grid
+                        '<div class="voc-filters-grid">' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-date-filter">Date Scope</label>' +
+                                '<select id="voc-date-filter">' +
+                                    '<option value="ALL" selected>All Simulation History</option>' +
+                                    '<option value="2026-02-28">2026-02-28 (Day 1)</option>' +
+                                    '<option value="2026-03-01">2026-03-01 (Day 2)</option>' +
+                                    '<option value="2026-03-02">2026-03-02 (Day 3)</option>' +
+                                    '<option value="2026-03-03">2026-03-03 (Day 4)</option>' +
+                                    '<option value="2026-03-04">2026-03-04 (Day 5)</option>' +
+                                    '<option value="2026-03-05">2026-03-05 (Day 6)</option>' +
+                                    '<option value="2026-03-06">2026-03-06 (Day 7)</option>' +
+                                    '<option value="2026-03-07">2026-03-07 (Day 8)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-shift-filter">Work Shift</label>' +
+                                '<select id="voc-shift-filter">' +
+                                    '<option value="ALL" selected>All Shifts (24 h)</option>' +
+                                    '<option value="MORNING">Morning (06:00-14:00)</option>' +
+                                    '<option value="AFTERNOON">Afternoon (14:00-22:00)</option>' +
+                                    '<option value="NIGHT">Night (22:00-06:00)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-status-filter">Vessel Pipeline</label>' +
+                                '<select id="voc-status-filter">' +
+                                    '<option value="IN_PORT" selected>In Port (Active Ops)</option>' +
+                                    '<option value="ALL">All Tracked Voyages</option>' +
+                                    '<option value="PRE_ARRIVAL">Pre-Arrival Only</option>' +
+                                    '<option value="DEPARTED">Departed Only</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg">' +
+                                '<label for="voc-matrix-sort">Matrix Sort</label>' +
+                                '<select id="voc-matrix-sort">' +
+                                    '<option value="TOTAL_TIME_DESC">Total Time (Max\u2794Min)</option>' +
+                                    '<option value="RECENT_EVENT_DESC" selected>Most Recent Update</option>' +
+                                    '<option value="VESSEL_ID_ASC">Vessel ID (A\u2794Z)</option>' +
+                                    '<option value="CARGO_VOLUME_DESC">Cargo Volume (Max TEU)</option>' +
+                                '</select>' +
+                            '</div>' +
+                            '<div class="voc-cg" style="grid-column:1/-1;">' +
+                                '<label for="voc-search-input">Quick Search</label>' +
+                                '<input type="text" id="voc-search-input" placeholder="Search vessel ID, line, substage\u2026">' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="voc-modal-footer">' +
+                        '<button class="voc-btn voc-btn-primary" id="voc-modal-apply-btn">Apply \u2714</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        // ---- tab content panes (unchanged) ----
+        var panes =
+            '<div id="voc-tab-executive" class="voc-tab-content voc-tab-content-active">' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#15708a', 'Total elapsed hours from port entry to open-sea departure.') +
+                    kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#2c8f4e', 'Active TEU exchange vs total fleet capacity.') +
+                    kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#c2424b', 'Share of voyages reporting active disruption logs.') +
+                '</div>' +
+                '<div class="voc-charts-grid">' +
+                    '<div class="voc-chart-card"><div class="voc-chart-title">Congestion Gaps by Carrier Line (Hours)</div><div class="voc-chart-explanation">Accumulated demurrage/idle hours by carrier.</div><div id="voc-exe-demurrage-chart"></div></div>' +
+                    '<div class="voc-chart-card"><div class="voc-chart-title">Delay Factor Distribution</div><div class="voc-chart-explanation">Leading operational bottleneck root-causes.</div><div id="voc-exe-delay-pie"></div></div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div id="voc-tab-vessels" class="voc-tab-content">' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-vsl-active', 'Active Hulls In Port', '#15708a', 'Vessels currently berthed or transiting.') +
+                    kpiCard('voc-kpi-vsl-plan', 'Pre-Arrival Pipeline', '#b9791a', 'Vessels in planning with active ETA receipts.') +
+                    kpiCard('voc-kpi-vsl-anch', 'Avg Anchorage Wait', '#c2424b', 'Average wait at anchorage for pilot access.') +
+                '</div>' +
+                '<div class="voc-vessel-panel-grid">' +
+                    '<div class="voc-matrix-container">' +
+                        '<span class="voc-tip">\uD83D\uDCA1 Click a row to expand the sub-stage timeline.</span>' +
+                        '<table><thead><tr id="voc-matrix-header"></tr></thead><tbody id="voc-matrix-body"></tbody></table>' +
+                    '</div>' +
+                    '<div class="voc-grid-col">' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Fleet Mix Profile</div><div id="voc-vsl-mix-donut"></div></div>' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Capacity Ranges (TEU)</div><div id="voc-vsl-capacity-bar"></div></div>' +
+                        '<div class="voc-chart-card"><div class="voc-chart-title">Queue Count by Stage</div><div id="voc-vsl-stage-bar"></div></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div id="voc-tab-terminals" class="voc-tab-content">' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-term-imp', 'Total Imports Handled', '#2c8f4e', 'Cumulative discharge TEU up to selected timestamp.') +
+                    kpiCard('voc-kpi-term-exp', 'Total Exports Handled', '#1fa9b8', 'Cumulative load TEU processed outbound.') +
+                    kpiCard('voc-kpi-term-occupancy', 'Berth Occupancy Index', '#5558b0', 'Percentage of berths currently occupied.') +
+                '</div>' +
+                '<div class="voc-charts-grid">' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Terminal \u2794 Berth Imports &amp; Exports</div><div class="voc-chart-explanation">Import vs Export TEU per berth node.</div><div id="voc-term-geo-bar"></div></div>' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Container Type Proportions</div><div class="voc-chart-explanation">Dry Van vs Reefer Cargo distribution.</div><div id="voc-term-type-pie"></div></div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div id="voc-tab-operations" class="voc-tab-content">' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-ops-cranes', 'Avg Cranes Assigned', '#5558b0', 'Mean crane sets allocated per vessel cargo phase.') +
+                    kpiCard('voc-kpi-ops-speed', 'Mean Crane Velocity', '#15708a', 'TEU/hr across cargo operations.') +
+                '</div>' +
+                '<div class="voc-charts-grid">' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Crane Density vs Handling Velocity</div><div class="voc-chart-explanation">Scatter: does more cranes = faster handling?</div><div id="voc-ops-efficiency-scatter"></div></div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div id="voc-tab-environment" class="voc-tab-content">' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-env-weather', 'Current Weather', '#5c6b80', 'Atmospheric descriptor at current snapshot.') +
+                    kpiCard('voc-kpi-env-tide', 'Tide Water Level', '#1fa9b8', 'Hydrographic level (m) \u2014 also drives the 3D tide marker.') +
+                '</div>' +
+                '<div class="voc-charts-grid">' +
+                    '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Tide Fluctuations vs Active Disruptions</div><div class="voc-chart-explanation">Cross-references water level against delay spike frequency.</div><div id="voc-env-tide-line"></div></div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div id="voc-tab-whatif" class="voc-tab-content">' +
+                '<div class="voc-whatif-controls">' +
+                    '<div class="voc-whatif-controls-row">' +
+                        '<div class="voc-cg">' +
+                            '<label for="voc-whatif-terminal">Terminal</label>' +
+                            '<select id="voc-whatif-terminal"></select>' +
+                        '</div>' +
+                        '<div class="voc-cg">' +
+                            '<label for="voc-whatif-hours">Pilot Unavailable For (hours)</label>' +
+                            '<input type="number" id="voc-whatif-hours" min="0" max="48" step="0.5" value="5">' +
+                        '</div>' +
+                        '<div class="voc-cg" style="flex:0 0 auto;">' +
+                            '<label>Quick Presets</label>' +
+                            '<div class="voc-whatif-presets">' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="1">1h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="3">3h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="6">6h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="12">12h</button>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="voc-cg" style="flex:0 0 auto;">' +
+                            '<label>&nbsp;</label>' +
+                            '<button class="voc-btn voc-btn-primary" id="voc-whatif-run-btn">\u25B6 Run Simulation</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<span class="voc-tip" style="margin-top:10px;margin-bottom:0;">\uD83D\uDCA1 Vessels currently Waiting, Inbound, Berthing, or Departing need an active pilot right now (Direct impact). Vessels already at the terminal doing Arrival/Clearance/Cargo/Service work aren\u2019t stuck without a pilot yet, but face knock-on berth congestion once their turn comes (Cascade impact).</span>' +
+                '</div>' +
+                '<div class="voc-kpi-row">' +
+                    kpiCard('voc-kpi-whatif-impacted', 'Vessels Impacted', '#c2424b', 'Direct + cascade vessels affected at this terminal.') +
+                    kpiCard('voc-kpi-whatif-baseline', 'Avg Wait \u2014 Baseline', '#15708a', 'Average current-stage wait with normal pilot availability.') +
+                    kpiCard('voc-kpi-whatif-simulated', 'Avg Wait \u2014 With Outage', '#c2424b', 'Average current-stage wait if the outage occurs now.') +
+                    kpiCard('voc-kpi-whatif-added', 'Added Vessel-Hours (Fleet)', '#b9791a', 'Total extra waiting hours injected across all affected vessels.') +
+                '</div>' +
+                '<div id="voc-whatif-empty" class="voc-whatif-empty" style="display:none;">No vessels at this terminal are Waiting, Inbound, Berthing, Departing, or mid-process for the selected snapshot \u2014 a pilot outage right now would have no effect.</div>' +
+                '<div id="voc-whatif-results">' +
+                    '<div id="voc-whatif-summary" class="voc-whatif-summary"></div>' +
+                    '<div class="voc-chart-card" style="margin-bottom:14px;">' +
+                        '<div class="voc-chart-title">Baseline vs Simulated Waiting Time (per Vessel)</div>' +
+                        '<div class="voc-chart-explanation">Compares each affected vessel\u2019s current wait against its projected wait if the pilot outage happens now. Sorted worst-impact first.</div>' +
+                        '<div id="voc-whatif-chart"></div>' +
+                    '</div>' +
+                    '<div class="voc-matrix-container">' +
+                        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+                            '<span class="voc-tip" style="margin-bottom:0;">\uD83D\uDCA1 Detail view of every vessel affected by the simulated outage.</span>' +
+                            '<button class="voc-btn" id="voc-whatif-export-btn">\u2B07\uFE0F Export CSV</button>' +
+                        '</div>' +
+                        '<table><thead><tr><th style="text-align:left;">Vessel</th><th>Stage</th><th>Berth</th><th>Impact Type</th><th>Baseline Wait</th><th>+ Added</th><th>Simulated Wait</th></tr></thead><tbody id="voc-whatif-table-body"></tbody></table>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        return STYLE +
+            '<div class="voc-wrap">' +
+                '<div class="voc-inner">' +
+                    // top bar
+                    '<div class="voc-topbar">' +
+                        '<div class="voc-topbar-left">' +
+                            '<div class="voc-title">\u2693 Enterprise Port Command Center</div>' +
+                            '<div class="voc-subtitle">Synced live with the 3D port scene</div>' +
+                        '</div>' +
+                        '<div class="voc-topbar-right">' +
+                            '<span class="voc-active-badge" id="voc-active-badge">Executive Insights</span>' +
+                            '<button class="voc-icon-btn" id="voc-settings-btn" title="Simulation Controls">\u2699\uFE0F</button>' +
+                            '<button class="voc-icon-btn" id="voc-burger-btn" title="Navigate">\u2630</button>' +
+                        '</div>' +
+                        // burger dropdown (absolutely positioned inside topbar)
+                        '<div class="voc-burger-menu" id="voc-burger-menu">' + menuItems + '</div>' +
+                    '</div>' +
+
+                    // status bar
+                    '<div class="voc-status-bar" id="voc-status">Initializing\u2026</div>' +
+
+                    // tab panes
+                    panes +
+
+                    // settings modal (absolute overlay anchored to .voc-inner)
+                    modal +
+                '</div>' +
+            '</div>';
+    }
+
+    // -----------------------------------------------------------------------
+    // initUi — wire up burger menu, settings modal, filter events, drilldown
+    // -----------------------------------------------------------------------
+    function initUi() {
+        widget.body.empty();
+        UWA.createElement('div', { html: buildHtml() }).inject(widget.body);
+
+        // ---- Ensure .voc-wrap's ancestor chain has an explicit height ----
+        // UWA.createElement injects an extra wrapper div between widget.body and .voc-wrap.
+        // We need that wrapper (and ideally widget.body itself) to be position:relative with
+        // height:100% so that position:absolute on .voc-wrap anchors correctly.
+        var wrapEl = document.querySelector('.voc-wrap');
+        if (wrapEl) {
+            var p = wrapEl.parentNode;
+            if (p) {
+                p.style.position = 'relative';
+                p.style.height   = '100%';
+                p.style.overflow = 'hidden';
+            }
+            var gp = p && p.parentNode;
+            if (gp && gp !== document.body) {
+                gp.style.position = 'relative';
+                gp.style.height   = '100%';
+                gp.style.overflow = 'hidden';
+            }
+        }
+
+        // make .voc-inner position:relative so the absolute modal is contained within it
+        var inner = document.querySelector('.voc-inner');
+        if (inner) { inner.style.position = 'relative'; }
+
+        app.statusBar = document.getElementById('voc-status');
+
+        // ---- burger menu ----
+        var burgerBtn  = document.getElementById('voc-burger-btn');
+        var burgerMenu = document.getElementById('voc-burger-menu');
+
+        burgerBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            burgerMenu.classList.toggle('voc-open');
+            burgerBtn.classList.toggle('voc-active');
+        });
+
+        // Tab navigation items inside burger menu
+        TAB_META.forEach(function (t) {
+            var item = document.getElementById('voc-menu-' + t.id);
+            if (!item) { return; }
+            item.addEventListener('click', function () {
+                switchTab(t.id);
+                burgerMenu.classList.remove('voc-open');
+                burgerBtn.classList.remove('voc-active');
+            });
+        });
+
+        // "Simulation Controls" item in burger opens the settings modal
+        document.getElementById('voc-menu-open-settings').addEventListener('click', function () {
+            burgerMenu.classList.remove('voc-open');
+            burgerBtn.classList.remove('voc-active');
+            openSettingsModal();
+        });
+
+        // ---- settings icon button (top-right) ----
+        document.getElementById('voc-settings-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            openSettingsModal();
+        });
+
+        // ---- settings modal close / apply ----
+        document.getElementById('voc-modal-close-btn').addEventListener('click', closeSettingsModal);
+        document.getElementById('voc-modal-apply-btn').addEventListener('click', function () {
+            renderActiveTab();
+            closeSettingsModal();
+        });
+        // clicking backdrop outside the modal card closes it
+        document.getElementById('voc-settings-backdrop').addEventListener('click', function (e) {
+            if (e.target === this) { closeSettingsModal(); }
+        });
+
+        // ---- timeline / filter change events (live — fire without needing Apply) ----
+        document.getElementById('voc-ts-select').addEventListener('change', function () {
+            var idx = app.times.indexOf(this.value);
+            if (idx !== -1) { app.timeIndex = idx; }
+            renderActiveTab();
+        });
+        document.getElementById('voc-date-filter').addEventListener('change', renderActiveTab);
+        document.getElementById('voc-shift-filter').addEventListener('change', renderActiveTab);
+        document.getElementById('voc-status-filter').addEventListener('change', renderActiveTab);
+        document.getElementById('voc-matrix-sort').addEventListener('change', renderActiveTab);
+        document.getElementById('voc-search-input').addEventListener('input', renderActiveTab);
+
+        // ---- what-if pilot unavailability scenario ----
+        document.getElementById('voc-whatif-terminal').addEventListener('change', renderActiveTab);
+        document.getElementById('voc-whatif-hours').addEventListener('input', renderActiveTab);
+        document.getElementById('voc-whatif-run-btn').addEventListener('click', renderActiveTab);
+        document.getElementById('voc-whatif-export-btn').addEventListener('click', exportWhatIfCsv);
+        var presetBtnList = document.querySelectorAll('.voc-preset-btn');
+        for (var pbi = 0; pbi < presetBtnList.length; pbi++) {
+            presetBtnList[pbi].addEventListener('click', function () {
+                document.getElementById('voc-whatif-hours').value = this.getAttribute('data-hours');
+                renderActiveTab();
+            });
+        }
+
+        // ---- playback ----
+        document.getElementById('voc-play-btn').addEventListener('click', togglePlayback);
+        document.getElementById('voc-next-btn').addEventListener('click', function () { stepPlayback(1); });
+
+        // ---- close burger when clicking anywhere else ----
+        document.addEventListener('click', function () {
+            burgerMenu.classList.remove('voc-open');
+            burgerBtn.classList.remove('voc-active');
+        });
+
+        // ---- vessel drilldown rows (event delegation on tbody) ----
+        document.getElementById('voc-matrix-body').addEventListener('click', function (e) {
+            var target = e.target;
+            var row = null;
+            while (target && target !== this) {
+                if (target.className && String(target.className).indexOf('voc-vessel-row') !== -1) { row = target; break; }
+                target = target.parentNode;
+            }
+            if (!row) { return; }
+            var key = row.getAttribute('data-key');
+            var sub = document.getElementById('voc-sub-' + key);
+            if (sub) { sub.style.display = (sub.style.display === 'table-row') ? 'none' : 'table-row'; }
+        });
+    }
+
+    function openSettingsModal() {
+        var backdrop = document.getElementById('voc-settings-backdrop');
+        if (backdrop) { backdrop.classList.add('voc-open'); }
+    }
+
+    function closeSettingsModal() {
+        var backdrop = document.getElementById('voc-settings-backdrop');
+        if (backdrop) { backdrop.classList.remove('voc-open'); }
+    }
+
+    function populateTimelineSelect() {
+        var select = document.getElementById('voc-ts-select');
+        select.innerHTML = '';
+        app.times.forEach(function (ts) {
+            var opt = document.createElement('option');
+            opt.value = ts;
+            opt.textContent = ts;
+            select.appendChild(opt);
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // CHART RENDERING (ApexCharts)
+    // ---------------------------------------------------------------------
+
+    // Debounced resize nudge — fired once, 220 ms after the last new chart is
+    // created in a render pass.  Handles the rare case where a chart measured
+    // a zero-size container during initial layout; ApexCharts redraws at the
+    // correct dimensions on the resize event without the instance being destroyed.
+    var _chartResizeTimer = null;
+    function scheduleResizeNudge() {
+        window.clearTimeout(_chartResizeTimer);
+        _chartResizeTimer = window.setTimeout(function () {
+            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+        }, 220);
+    }
+
+    function safeRender(id, config) {
+        var el = document.getElementById(id);
+        if (!el || !window.ApexCharts) { return; }
+
+        if (app.chartsMap[id]) {
+            // ---- update existing chart ----
+            // Do NOT check el.offsetWidth here.  In the UWA platform widget
+            // environment offsetWidth can be 0 on visible elements while the
+            // layout engine is still committing dimensions.  Checking it causes
+            // a destroy-and-recreate loop on every render tick (playback fires
+            // every 100–350 ms), so the chart is continuously torn down before
+            // it can paint.  We let redrawOnParentResize / redrawOnWindowResize
+            // and the scheduleResizeNudge() handle zero-size recovery instead.
+            config.chart.animations = { enabled: false };
+            app.chartsMap[id].updateOptions(config, false, false);
+        } else {
+            // ---- first visit: create and render ----
+            config.chart.animations           = { enabled: app.isFirstLoad, animateOnDataChange: false };
+            config.chart.redrawOnParentResize  = true;
+            config.chart.redrawOnWindowResize  = true;
+            app.chartsMap[id] = new window.ApexCharts(el, config);
+            app.chartsMap[id].render();
+            scheduleResizeNudge();
+        }
+    }
+
+    function renderBarChart(id, categories, data, label) {
+        safeRender(id, {
+            series: [{ name: label, data: data }],
+            chart: { type: 'bar', height: 200, toolbar: { show: false } },
+            colors: ['#15708a'],
+            plotOptions: { bar: { dataLabels: { position: 'top' } } },
+            xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '9px' } } },
+            dataLabels: { enabled: true, style: { fontSize: '10px', colors: ['#0e2a47'] }, offsetY: -18 }
+        });
+    }
+
+    function renderClusteredBarChart(id, categories, series, colors) {
+        safeRender(id, {
+            series: series,
+            chart: { type: 'bar', height: 280, toolbar: { show: false } },
+            colors: colors || ['#2c8f4e', '#1fa9b8'],
+            plotOptions: { bar: { dataLabels: { position: 'top' }, columnWidth: '65%' } },
+            xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '9px' } } },
+            dataLabels: { enabled: true, style: { fontSize: '9px', colors: ['#0e2a47'] }, offsetY: -16 },
+            legend: { position: 'top', horizontalAlign: 'right' }
+        });
+    }
+
+    function renderDonutChart(id, labels, series) {
+        safeRender(id, {
+            series: series, labels: labels,
+            chart: { type: 'pie', height: 200 },
+            legend: { position: 'bottom', fontSize: '10px' }
+        });
+    }
+
+    function renderScatterChart(id, points) {
+        safeRender(id, {
+            series: [{ name: 'Vessel Performance', data: points }],
+            chart: { type: 'scatter', height: 240, toolbar: { show: false } },
+            xaxis: { title: { text: 'Cranes Allocated', style: { fontSize: '11px' } }, tickAmount: 4 },
+            yaxis: { title: { text: 'Velocity (TEU/hr)', style: { fontSize: '11px' } } }
+        });
+    }
+
+    function renderDualAxisLineChart(id, categories, lineData, barData) {
+        safeRender(id, {
+            series: [{ name: 'Tide Level (m)', type: 'line', data: lineData }, { name: 'Active Delays', type: 'column', data: barData }],
+            chart: { height: 240, type: 'line', toolbar: { show: false } },
+            colors: ['#1fa9b8', '#c2424b'],
+            stroke: { width: [3, 0] },
+            xaxis: { categories: categories, labels: { show: false } },
+            yaxis: [{ title: { text: 'Water Level (m)', style: { fontSize: '11px' } } }, { opposite: true, title: { text: 'Disruption Counts', style: { fontSize: '11px' } } }]
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // WHAT-IF: PILOT UNAVAILABILITY SIMULATION
+    // Reuses the per-vessel metadata already computed for the current
+    // snapshot by the main renderActiveTab() pass — no separate data fetch
+    // or recomputation is needed. For the selected terminal, every vessel
+    // currently in a pilot-dependent stage (WAITING / INBOUND / BERTHING /
+    // DEPARTURE) has the outage duration added straight onto its current
+    // wait, giving a "baseline vs simulated" comparison at a glance.
+    // ---------------------------------------------------------------------
+    function waitFlagClass(hours) {
+        if (hours <= 4) { return 'voc-flag-low'; }
+        if (hours <= 24) { return 'voc-flag-med'; }
+        return 'voc-flag-critical';
+    }
+
+    // Populated on every renderWhatIfTab() call so the Export CSV button can
+    // read the exact rows currently on screen without recomputing anything.
+    var lastWhatIfExport = { terminal: '', hours: 0, rows: [] };
+
+    function renderWhatIfTab(metadata) {
+        // ---- keep the terminal dropdown in sync with whatever terminals exist in this snapshot ----
+        var termSelect = document.getElementById('voc-whatif-terminal');
+        var allTerminals = uniqueSorted(Object.keys(metadata)
+            .map(function (k) { return metadata[k].terminal; })
+            .filter(function (t) { return t && t !== '-'; }));
+
+        if (termSelect.options.length !== allTerminals.length) {
+            var prevVal = termSelect.value;
+            termSelect.innerHTML = '';
+            allTerminals.forEach(function (t) {
+                var opt = document.createElement('option');
+                opt.value = t; opt.textContent = t;
+                termSelect.appendChild(opt);
+            });
+            if (allTerminals.indexOf(prevVal) !== -1) { termSelect.value = prevVal; }
+        }
+
+        var selectedTerminal = termSelect.value;
+        var pilotHours = parseFloat(document.getElementById('voc-whatif-hours').value) || 0;
+
+        // ---- sync the quick-preset buttons so the matching preset looks "selected" ----
+        var presetBtns = document.querySelectorAll('.voc-preset-btn');
+        for (var pi = 0; pi < presetBtns.length; pi++) {
+            var isMatch = parseFloat(presetBtns[pi].getAttribute('data-hours')) === pilotHours;
+            presetBtns[pi].classList.toggle('voc-active', isMatch);
+        }
+
+        var allMeta = Object.keys(metadata).map(function (k) { return metadata[k]; })
+            .filter(function (m) { return m.terminal === selectedTerminal && m.hasArrived && !m.hasDeparted; });
+
+        // ---- Direct impact: vessels that need an active pilot right now ----
+        var direct = allMeta.filter(function (m) { return PILOT_DEPENDENT_STAGES.indexOf(m.latestStage) !== -1; })
+            .map(function (m) {
+                var baseline = m.rowDurations[m.latestStage] || 0;
+                return { m: m, type: 'Direct', baseline: baseline, delta: pilotHours, simulated: baseline + pilotHours };
+            });
+
+        // ---- Cascade impact: vessels mid-process at the same terminal, delayed by knock-on berth congestion ----
+        var cascade = allMeta.filter(function (m) { return CASCADE_STAGES.indexOf(m.latestStage) !== -1; })
+            .map(function (m) {
+                var baseline = m.rowDurations[m.latestStage] || 0;
+                var delta = pilotHours * CASCADE_RIPPLE_FACTOR;
+                return { m: m, type: 'Cascade', baseline: baseline, delta: delta, simulated: baseline + delta };
+            });
+
+        var combined = direct.concat(cascade);
+
+        var emptyEl = document.getElementById('voc-whatif-empty');
+        var resultsEl = document.getElementById('voc-whatif-results');
+        var exportBtn = document.getElementById('voc-whatif-export-btn');
+
+        if (!selectedTerminal || combined.length === 0) {
+            emptyEl.style.display = 'block';
+            resultsEl.style.display = 'none';
+            if (exportBtn) { exportBtn.disabled = true; }
+            document.getElementById('voc-kpi-whatif-impacted').textContent = '0';
+            document.getElementById('voc-kpi-whatif-baseline').textContent = '-';
+            document.getElementById('voc-kpi-whatif-simulated').textContent = '-';
+            document.getElementById('voc-kpi-whatif-added').textContent = '0.0h';
+            lastWhatIfExport = { terminal: selectedTerminal, hours: pilotHours, rows: [] };
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        resultsEl.style.display = 'block';
+        if (exportBtn) { exportBtn.disabled = false; }
+
+        // worst-impact first, so the vessels that matter most show up at a glance
+        combined.sort(function (a, b) { return b.simulated - a.simulated; });
+
+        var categories = [], baselineData = [], simulatedData = [];
+        var sumBaseline = 0, sumSimulated = 0, sumDelta = 0;
+        var tableRows = '';
+
+        combined.forEach(function (row) {
+            var m = row.m;
+            sumBaseline += row.baseline;
+            sumSimulated += row.simulated;
+            sumDelta += row.delta;
+
+            categories.push(m.vesselId);
+            baselineData.push(parseFloat(row.baseline.toFixed(1)));
+            simulatedData.push(parseFloat(row.simulated.toFixed(1)));
+
+            var typeBadge = row.type === 'Direct' ?
+                '<span class="voc-impact-type-badge voc-type-direct">Direct</span>' :
+                '<span class="voc-impact-type-badge voc-type-cascade">Cascade</span>';
+
+            tableRows += '<tr>' +
+                '<td style="text-align:left;">' + esc(m.vesselId) + ' <span style="color:#9aa6b6;">(' + esc(m.voyageNo) + ')</span></td>' +
+                '<td>' + esc(m.latestStage) + '</td>' +
+                '<td>' + esc(m.berth) + '</td>' +
+                '<td>' + typeBadge + '</td>' +
+                '<td>' + row.baseline.toFixed(1) + 'h</td>' +
+                '<td>+' + row.delta.toFixed(1) + 'h</td>' +
+                '<td><strong>' + row.simulated.toFixed(1) + 'h</strong><span class="voc-whatif-flag ' + waitFlagClass(row.simulated) + '">' +
+                    (row.simulated <= 4 ? 'Low' : row.simulated <= 24 ? 'Moderate' : 'Critical') + '</span></td>' +
+                '</tr>';
+        });
+
+        var avgBaseline = sumBaseline / combined.length;
+        var avgSimulated = sumSimulated / combined.length;
+
+        document.getElementById('voc-kpi-whatif-impacted').textContent = String(combined.length);
+        document.getElementById('voc-kpi-whatif-baseline').textContent = avgBaseline.toFixed(1) + 'h';
+        document.getElementById('voc-kpi-whatif-simulated').textContent = avgSimulated.toFixed(1) + 'h';
+        document.getElementById('voc-kpi-whatif-added').textContent = sumDelta.toFixed(1) + 'h';
+
+        document.getElementById('voc-whatif-table-body').innerHTML = tableRows;
+
+        // ---- plain-language summary ----
+        var directCount = direct.length, cascadeCount = cascade.length;
+        var summaryParts = ['If pilots are unavailable for <strong>' + pilotHours.toFixed(1) + 'h</strong> at <strong>' + esc(selectedTerminal) + '</strong> starting now:'];
+        if (directCount > 0) {
+            summaryParts.push(directCount + ' vessel' + (directCount === 1 ? '' : 's') + ' currently needing a pilot will wait <strong>' + pilotHours.toFixed(1) + 'h longer</strong> each.');
+        }
+        if (cascadeCount > 0) {
+            summaryParts.push(cascadeCount + ' more vessel' + (cascadeCount === 1 ? '' : 's') + ' already at the terminal will see a knock-on wait of about <strong>' + (pilotHours * CASCADE_RIPPLE_FACTOR).toFixed(1) + 'h</strong> from the extra berth congestion.');
+        }
+        summaryParts.push('Average wait across all ' + combined.length + ' affected vessels rises from <strong>' + avgBaseline.toFixed(1) + 'h to ' + avgSimulated.toFixed(1) + 'h</strong>, adding <strong>' + sumDelta.toFixed(1) + ' vessel-hours</strong> of delay in total.');
+        document.getElementById('voc-whatif-summary').innerHTML = summaryParts.join(' ');
+
+        renderClusteredBarChart('voc-whatif-chart', categories, [
+            { name: 'Baseline Wait (h)', data: baselineData },
+            { name: 'With Pilot Outage (h)', data: simulatedData }
+        ], ['#15708a', '#c2424b']);
+
+        // ---- stash the rows currently on screen for CSV export ----
+        lastWhatIfExport = {
+            terminal: selectedTerminal,
+            hours: pilotHours,
+            rows: combined.map(function (row) {
+                return {
+                    vesselId: row.m.vesselId, voyageNo: row.m.voyageNo, terminal: selectedTerminal,
+                    berth: row.m.berth, stage: row.m.latestStage, type: row.type,
+                    baseline: row.baseline, delta: row.delta, simulated: row.simulated
+                };
+            })
+        };
+    }
+
+    function csvEscape(val) {
+        var s = String(val === undefined || val === null ? '' : val);
+        if (/[",\n]/.test(s)) { s = '"' + s.replace(/"/g, '""') + '"'; }
+        return s;
+    }
+
+    function exportWhatIfCsv() {
+        if (!lastWhatIfExport.rows.length) { return; }
+        var header = ['Vessel ID', 'Voyage No', 'Terminal', 'Berth', 'Stage', 'Impact Type', 'Baseline Wait (h)', 'Added Hours', 'Simulated Wait (h)'];
+        var lines = [header.map(csvEscape).join(',')];
+        lastWhatIfExport.rows.forEach(function (r) {
+            lines.push([
+                r.vesselId, r.voyageNo, r.terminal, r.berth, r.stage, r.type,
+                r.baseline.toFixed(1), r.delta.toFixed(1), r.simulated.toFixed(1)
+            ].map(csvEscape).join(','));
+        });
+        var csvContent = lines.join('\n');
+
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'pilot_outage_simulation_' + lastWhatIfExport.terminal + '_' + lastWhatIfExport.hours + 'h.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    // ---------------------------------------------------------------------
+    // TAB SWITCHING
+    // ---------------------------------------------------------------------
+    function switchTab(tabId) {
+        app.currentTab = tabId;
+        TABS.forEach(function (t) {
+            var pane = document.getElementById('voc-tab-' + t);
+            if (pane) { pane.classList.remove('voc-tab-content-active'); }
+            var item = document.getElementById('voc-menu-' + t);
+            if (item) { item.classList.remove('voc-menu-active'); }
+        });
+        var activePane = document.getElementById('voc-tab-' + tabId);
+        if (activePane) { activePane.classList.add('voc-tab-content-active'); }
+        var activeItem = document.getElementById('voc-menu-' + tabId);
+        if (activeItem) { activeItem.classList.add('voc-menu-active'); }
+        // Update the badge in the top-right header
+        var badge = document.getElementById('voc-active-badge');
+        if (badge) {
+            var meta = TAB_META.filter(function (t) { return t.id === tabId; })[0];
+            if (meta) { badge.textContent = meta.icon + ' ' + meta.label; }
+        }
+        // Defer by one frame: lets the browser apply display:block on the newly-active
+        // pane so ApexCharts gets a non-zero offsetWidth when it first measures the container.
+        window.setTimeout(function () {
+            renderActiveTab();
+            // A second, slightly-later resize pulse covers charts that rendered at
+            // zero size in a previous visit to the tab (e.g. first load race).
+            window.setTimeout(function () {
+                try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+            }, 120);
+        }, 0);
+    }
+
+    function verifyShiftMatch(timeStr, targetShift) {
+        if (targetShift === 'ALL') { return true; }
+        var hour = parseInt(timeStr.split(' ')[1].split(':')[0], 10);
+        if (targetShift === 'MORNING') { return (hour >= 6 && hour < 14); }
+        if (targetShift === 'AFTERNOON') { return (hour >= 14 && hour < 22); }
+        if (targetShift === 'NIGHT') { return (hour >= 22 || hour < 6); }
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // CORE ANALYTICS + RENDER PASS
+    // Mirrors renderActiveTab() from the HTML twin: every control change
+    // (timeline, filters, search, sort, tab) re-runs this single pass over
+    // app.events, then renders only the DOM for the active tab AND
+    // re-publishes the 3D scene markers so the map matches the snapshot.
+    // ---------------------------------------------------------------------
+    function renderActiveTab() {
+        if (!app.times.length) { return; }
+
+        var selectedTimestamp = document.getElementById('voc-ts-select').value || app.times[app.timeIndex];
+        var filterValue = document.getElementById('voc-status-filter').value;
+        var searchQuery = document.getElementById('voc-search-input').value.toLowerCase().trim();
+        var sortValue = document.getElementById('voc-matrix-sort').value;
+        var dateScope = document.getElementById('voc-date-filter').value;
+        var shiftScope = document.getElementById('voc-shift-filter').value;
+
+        var cutoff = parseEventDate(selectedTimestamp);
+        var cutoffTime = cutoff.getTime();
+
+        var idx = app.times.indexOf(selectedTimestamp);
+        if (idx !== -1) { app.timeIndex = idx; }
+
+        // ---- Core filter pass ----
+        var filtered = app.events.filter(function (r) {
+            var d = parseEventDate(r.event_time);
+            if (d.getTime() > cutoffTime) { return false; }
+            if (dateScope !== 'ALL' && r.event_time.indexOf(dateScope) !== 0) { return false; }
+            if (!verifyShiftMatch(r.event_time, shiftScope)) { return false; }
+            return true;
+        });
+
+        var groups = {}, metadata = {};
+        var activeInPort = 0, preArrival = 0, departed = 0;
+        var totalImports = 0, totalExports = 0, cumulativeCapacity = 0;
+        var sumAnchorageWait = 0, countAnchorage = 0;
+        var sumCranes = 0, countCranes = 0, totalCargoHours = 0;
+        var countDelayedVoyages = 0, totalVoyages = 0;
+
+        var envWeather = 'CLEAR', envTide = 0.0;
+
+        var shippingLineDelayMap = {}, delayReasonCounts = {}, containerTypeCounts = {};
+        var opsScatterPoints = [], timelineTideMap = {}, timelineDelayCountMap = {};
+
+        var strictBerthImports = {};
+        var strictBerthExports = {};
+
+        var vesselClassMap = {};
+        var vesselStageMap = {};
+        STAGES.forEach(function (s) { vesselStageMap[s] = 0; });
+        var capacityRangeMap = { 'Under 3k TEU': 0, '3k - 6k TEU': 0, '6k - 10k TEU': 0, 'Above 10k TEU': 0 };
+
+        filtered.forEach(function (r) {
+            var key = r.voyage_no + '_' + r.vessel_id;
+            if (!groups[key]) {
+                groups[key] = [];
+                metadata[key] = {
+                    vesselId: r.vessel_id, voyageNo: r.voyage_no, shippingLine: r.shipping_line,
+                    vesselClass: r.vessel_class, capacity: r.teu_capacity || 0,
+                    importTeu: r.import_teu || 0, exportTeu: r.export_teu || 0,
+                    anchorageWait: r.anchorage_wait_hours || 0, cargoHours: r.cargo_hours || 0,
+                    cranes: r.cranes_assigned || 0, terminal: '-', berth: '-',
+                    stageDelays: {}, substagesList: [], hasArrived: false, hasDeparted: false,
+                    totalRowHours: 0, latestEventTime: parseEventDate(r.event_time), latestSubstage: '-',
+                    latestRow: r
+                };
+            }
+
+            var meta = metadata[key];
+            if (r.terminal) { meta.terminal = r.terminal; }
+            if (r.berth) { meta.berth = r.berth; }
+
+            var timeStr = r.event_time;
+            var currentEventDate = parseEventDate(timeStr);
+
+            if (currentEventDate.getTime() >= meta.latestEventTime.getTime()) {
+                meta.latestEventTime = currentEventDate;
+                meta.latestSubstage = r.substage || r.stage;
+                meta.latestRow = r;
+            }
+
+            if (!timelineTideMap.hasOwnProperty(timeStr)) {
+                timelineTideMap[timeStr] = r.tide_level || 0;
+                timelineDelayCountMap[timeStr] = 0;
+            }
+
+            if (r.delay_reason && String(r.delay_reason).trim() !== '') {
+                meta.stageDelays[r.stage] = r.delay_reason;
+                delayReasonCounts[r.delay_reason] = (delayReasonCounts[r.delay_reason] || 0) + 1;
+                timelineDelayCountMap[timeStr]++;
+                shippingLineDelayMap[r.shipping_line] = (shippingLineDelayMap[r.shipping_line] || 0) + 1;
+            }
+
+            if (r.container_type) {
+                containerTypeCounts[r.container_type] = (containerTypeCounts[r.container_type] || 0) + 1;
+            }
+
+            if (currentEventDate.getTime() === cutoffTime) {
+                if (r.weather) { envWeather = r.weather; }
+                if (r.tide_level) { envTide = r.tide_level; }
+            }
+
+            meta.substagesList.push({
+                timeStr: r.event_time, stage: r.stage, substage: r.substage,
+                cranes: r.cranes_assigned || '-', weather: r.weather || '-', delay: r.delay_reason || '-'
+            });
+
+            if (r.stage === 'CARGO' && r.cranes_assigned > 0) {
+                sumCranes += r.cranes_assigned;
+                countCranes++;
+            }
+
+            groups[key].push({ time: currentEventDate, stage: r.stage });
+        });
+
+        var matrixDataRows = [];
+
+        Object.keys(groups).forEach(function (key) {
+            var meta = metadata[key];
+            var events = groups[key].sort(function (a, b) { return a.time - b.time; });
+            var latest = events[events.length - 1];
+
+            if (events.some(function (e) { return e.stage !== 'PLANNING'; })) { meta.hasArrived = true; }
+            if (latest.stage === 'DEPARTURE') { meta.hasDeparted = true; }
+            meta.latestStage = latest.stage;
+
+            var rowDurations = {};
+            STAGES.forEach(function (s) { rowDurations[s] = 0; });
+            for (var i = 0; i < events.length; i++) {
+                var nextTime = (i < events.length - 1) ? events[i + 1].time : cutoff;
+                rowDurations[events[i].stage] += Math.max(0, (nextTime - events[i].time) / (1000 * 60 * 60));
+            }
+            meta.rowDurations = rowDurations;
+            STAGES.forEach(function (s) { meta.totalRowHours += rowDurations[s]; });
+
+            if (meta.hasArrived) {
+                totalVoyages++;
+                totalImports += meta.importTeu;
+                totalExports += meta.exportTeu;
+                cumulativeCapacity += meta.capacity;
+
+                if (Object.keys(meta.stageDelays).length > 0) { countDelayedVoyages++; }
+                if (meta.anchorageWait > 0) { sumAnchorageWait += meta.anchorageWait; countAnchorage++; }
+
+                vesselClassMap[meta.vesselClass] = (vesselClassMap[meta.vesselClass] || 0) + 1;
+                vesselStageMap[latest.stage] = (vesselStageMap[latest.stage] || 0) + 1;
+
+                if (meta.capacity < 3000) { capacityRangeMap['Under 3k TEU']++; }
+                else if (meta.capacity <= 6000) { capacityRangeMap['3k - 6k TEU']++; }
+                else if (meta.capacity <= 10000) { capacityRangeMap['6k - 10k TEU']++; }
+                else { capacityRangeMap['Above 10k TEU']++; }
+
+                if (meta.terminal !== '-' && meta.berth !== '-') {
+                    var geoKey = meta.terminal + '\u2794' + meta.berth;
+                    strictBerthImports[geoKey] = (strictBerthImports[geoKey] || 0) + meta.importTeu;
+                    strictBerthExports[geoKey] = (strictBerthExports[geoKey] || 0) + meta.exportTeu;
+                }
+
+                if (meta.cargoHours > 0) {
+                    totalCargoHours += meta.cargoHours;
+                    opsScatterPoints.push({ x: meta.cranes, y: parseFloat(((meta.importTeu + meta.exportTeu) / meta.cargoHours).toFixed(1)) });
+                }
+
+                if (meta.hasDeparted) { departed++; } else { activeInPort++; }
+            } else {
+                preArrival++;
+            }
+
+            if (filterValue === 'IN_PORT' && (!meta.hasArrived || meta.hasDeparted)) { return; }
+            if (filterValue === 'PRE_ARRIVAL' && meta.hasArrived) { return; }
+            if (filterValue === 'DEPARTED' && !meta.hasDeparted) { return; }
+
+            if (searchQuery) {
+                var mId = meta.vesselId.toLowerCase().indexOf(searchQuery) !== -1;
+                var mLine = meta.shippingLine.toLowerCase().indexOf(searchQuery) !== -1;
+                var mSub = meta.substagesList.some(function (s) { return s.substage.toLowerCase().indexOf(searchQuery) !== -1; });
+                if (!mId && !mLine && !mSub) { return; }
+            }
+
+            matrixDataRows.push({ key: key, meta: meta, rowDurations: rowDurations });
+        });
+
+        matrixDataRows.sort(function (a, b) {
+            if (sortValue === 'TOTAL_TIME_DESC') { return b.meta.totalRowHours - a.meta.totalRowHours; }
+            if (sortValue === 'RECENT_EVENT_DESC') { return b.meta.latestEventTime - a.meta.latestEventTime; }
+            if (sortValue === 'VESSEL_ID_ASC') { return a.meta.vesselId.localeCompare(b.meta.vesselId); }
+            if (sortValue === 'CARGO_VOLUME_DESC') { return (b.meta.importTeu + b.meta.exportTeu) - (a.meta.importTeu + a.meta.exportTeu); }
+            return 0;
+        });
+
+        // ---- Per-tab DOM rendering ----
+        if (app.currentTab === 'executive') {
+            document.getElementById('voc-kpi-exe-tat').textContent = totalVoyages > 0 ? (totalCargoHours / totalVoyages * 1.8).toFixed(1) + 'h' : '0.0h';
+            document.getElementById('voc-kpi-exe-cap').textContent = cumulativeCapacity > 0 ? ((totalImports + totalExports) / cumulativeCapacity * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('voc-kpi-exe-delpct').textContent = totalVoyages > 0 ? (countDelayedVoyages / totalVoyages * 100).toFixed(1) + '%' : '0.0%';
+
+            renderBarChart('voc-exe-demurrage-chart', Object.keys(shippingLineDelayMap), Object.values(shippingLineDelayMap), 'Delay Frequency');
+            renderDonutChart('voc-exe-delay-pie', Object.keys(delayReasonCounts), Object.values(delayReasonCounts));
+
+        } else if (app.currentTab === 'vessels') {
+            document.getElementById('voc-kpi-vsl-active').textContent = activeInPort;
+            document.getElementById('voc-kpi-vsl-plan').textContent = preArrival;
+            document.getElementById('voc-kpi-vsl-anch').textContent = countAnchorage > 0 ? (sumAnchorageWait / countAnchorage).toFixed(1) + 'h' : '0.0h';
+
+            var header = document.getElementById('voc-matrix-header');
+            header.innerHTML = '<th style="position:sticky;left:0;z-index:5;">Vessel Infrastructure</th>';
+            STAGES.forEach(function (s) { header.innerHTML += '<th>' + s + '</th>'; });
+            header.innerHTML += '<th>Total</th>';
+
+            var tbody = document.getElementById('voc-matrix-body');
+            tbody.innerHTML = '';
+
+            matrixDataRows.forEach(function (row) {
+                var key = row.key, meta = row.meta, rowDurations = row.rowDurations;
+                var subHtml = '';
+                meta.substagesList.forEach(function (s) {
+                    subHtml += '<tr><td>' + esc(s.timeStr) + '</td><td>' + esc(s.stage) + '</td><td><code>' + esc(s.substage) + '</code></td>' +
+                        '<td>' + esc(s.cranes) + '</td><td>' + esc(s.weather) + '</td><td>' + esc(s.delay) + '</td></tr>';
+                });
+
+                var formattedTime = meta.latestEventTime.toISOString().split('T')[1].substring(0, 5);
+
+                var rowHtml = '<tr class="voc-vessel-row" data-key="' + esc(key) + '">' +
+                    '<td class="voc-vessel-axis-cell">' +
+                        '\u25B6 ' + esc(meta.vesselId) + ' <span style="font-size:10px;font-weight:normal;color:#5c6b80;">(' + esc(meta.voyageNo) + ')</span><br>' +
+                        '<span class="voc-berth-badge">' + esc(meta.terminal) + '/' + esc(meta.berth) + '</span>' +
+                        '<span style="display:block;font-size:9.5px;color:#5c6b80;font-weight:normal;margin-top:3px;background:#f4f7fa;padding:1px 4px;border-radius:3px;">' +
+                            '\u23F1\uFE0F Upd: ' + esc(meta.latestSubstage) + ' (' + formattedTime + ')' +
+                        '</span>' +
+                    '</td>';
+
+                STAGES.forEach(function (s) {
+                    var d = rowDurations[s];
+                    var hClass = d > 0 ? (d <= 4 ? 'voc-cell-low' : d <= 24 ? 'voc-cell-med' : 'voc-cell-critical') : 'voc-cell-empty';
+                    rowHtml += '<td class="' + hClass + '"><strong>' + (d > 0 ? d.toFixed(1) + 'h' : '-') + '</strong>' +
+                        (meta.stageDelays[s] ? '<span class="voc-delay-warning-tag">\u26A0\uFE0F ' + esc(meta.stageDelays[s]) + '</span>' : '') + '</td>';
+                });
+
+                rowHtml += '<td>' + meta.totalRowHours.toFixed(1) + 'h</td></tr>' +
+                    '<tr class="voc-drilldown-row" id="voc-sub-' + esc(key) + '"><td colspan="' + (STAGES.length + 2) + '"><div class="voc-drilldown-container">' +
+                    '<table class="voc-subtable"><thead><tr><th>Timestamp</th><th>Stage</th><th>Substage</th><th>Cranes</th><th>Weather</th><th>Alert Context</th></tr></thead><tbody>' + subHtml + '</tbody></table>' +
+                    '</div></td></tr>';
+
+                tbody.innerHTML += rowHtml;
+            });
+
+            renderDonutChart('voc-vsl-mix-donut', Object.keys(vesselClassMap), Object.values(vesselClassMap));
+            renderBarChart('voc-vsl-capacity-bar', Object.keys(capacityRangeMap), Object.values(capacityRangeMap), 'Vessels Count');
+            renderBarChart('voc-vsl-stage-bar', Object.keys(vesselStageMap), Object.values(vesselStageMap), 'Queue Count');
+
+        } else if (app.currentTab === 'terminals') {
+            document.getElementById('voc-kpi-term-imp').textContent = totalImports.toLocaleString() + ' TEU';
+            document.getElementById('voc-kpi-term-exp').textContent = totalExports.toLocaleString() + ' TEU';
+            document.getElementById('voc-kpi-term-occupancy').textContent = activeInPort > 0 ? Math.min(100, (activeInPort * 12)).toFixed(0) + '%' : '0%';
+
+            var allGeoCategories = uniqueSorted(Object.keys(strictBerthImports).concat(Object.keys(strictBerthExports)));
+            var finalImportValues = allGeoCategories.map(function (cat) { return strictBerthImports[cat] || 0; });
+            var finalExportValues = allGeoCategories.map(function (cat) { return strictBerthExports[cat] || 0; });
+
+            renderClusteredBarChart('voc-term-geo-bar', allGeoCategories, [
+                { name: 'Imports Throughput (TEU)', data: finalImportValues },
+                { name: 'Exports Throughput (TEU)', data: finalExportValues }
+            ], ['#2c8f4e', '#1fa9b8']);
+            renderDonutChart('voc-term-type-pie', Object.keys(containerTypeCounts), Object.values(containerTypeCounts));
+
+        } else if (app.currentTab === 'operations') {
+            document.getElementById('voc-kpi-ops-cranes').textContent = countCranes > 0 ? (sumCranes / countCranes).toFixed(1) : '0.0';
+            document.getElementById('voc-kpi-ops-speed').textContent = totalCargoHours > 0 ? ((totalImports + totalExports) / totalCargoHours).toFixed(1) + ' TEU/h' : '0.0 TEU/h';
+
+            renderScatterChart('voc-ops-efficiency-scatter', opsScatterPoints);
+
+        } else if (app.currentTab === 'environment') {
+            document.getElementById('voc-kpi-env-weather').textContent = envWeather;
+            document.getElementById('voc-kpi-env-tide').textContent = envTide.toFixed(2) + 'm';
+
+            var timesSorted = Object.keys(timelineTideMap).sort().slice(-15);
+            var tides = timesSorted.map(function (t) { return parseFloat(timelineTideMap[t].toFixed(2)); });
+            var delays = timesSorted.map(function (t) { return timelineDelayCountMap[t]; });
+
+            renderDualAxisLineChart('voc-env-tide-line', timesSorted, tides, delays);
+
+        } else if (app.currentTab === 'whatif') {
+            renderWhatIfTab(metadata);
+        }
+
+        // ---- Keep the 3D scene in sync with whatever instant the console shows ----
+        syncSceneMarkers(metadata, envTide);
+
+        setStatus('Snapshot: ' + selectedTimestamp + ' | Step ' + (app.timeIndex + 1) + ' of ' + app.times.length +
+            ' | Tide: ' + envTide.toFixed(2) + 'm | Weather: ' + envWeather +
+            ' | In Port: ' + activeInPort + ' | Pre-Arrival: ' + preArrival + ' | Departed: ' + departed);
+
+        document.getElementById('voc-ts-select').value = selectedTimestamp;
+        app.isFirstLoad = false;
+    }
+
+    // ---------------------------------------------------------------------
+    // TIMELINE PLAYBACK
+    // ---------------------------------------------------------------------
+    function stepToIndex(i) {
+        app.timeIndex = i;
+        document.getElementById('voc-ts-select').selectedIndex = i;
+        renderActiveTab();
+    }
+
+    function stepPlayback(direction) {
+        var next = app.timeIndex + direction;
+        if (next < 0 || next >= app.times.length) { return; }
+        stepToIndex(next);
+    }
+
+    function togglePlayback() {
+        var btn = document.getElementById('voc-play-btn');
+        if (app.playbackHandle) {
+            window.clearInterval(app.playbackHandle);
+            app.playbackHandle = null;
+            app.playing = false;
+            btn.textContent = '\u25B6 Play';
+            btn.classList.remove('voc-active');
+            return;
+        }
+        app.playing = true;
+        btn.textContent = '\u23F8 Pause';
+        btn.classList.add('voc-active');
+        var intervalMs = +document.getElementById('voc-speed').value || CONFIG.DEFAULT_INTERVAL_MS;
+        app.playbackHandle = window.setInterval(function () {
+            var next = app.timeIndex + 1;
+            if (next >= app.times.length) {
+                window.clearInterval(app.playbackHandle);
+                app.playbackHandle = null;
+                app.playing = false;
+                btn.textContent = '\u25B6 Play';
+                btn.classList.remove('voc-active');
+                return;
+            }
+            stepToIndex(next);
+        }, intervalMs);
+    }
+
+    // ---------------------------------------------------------------------
+    // LOAD
+    // ---------------------------------------------------------------------
+    function onLoad() {
+        initUi();
+        initBerthMarkers();
+        publishTideMarker('-');
+        setStatus('Loading ApexCharts and vessel lifecycle data...');
+
+        ensureApexCharts()
+            .then(function () { return apiGetText(CONFIG.CSV_URL); })
+            .then(parseCsv)
+            .then(function (rows) {
+                app.events = rows.filter(function (x) { return x.event_time; });
+                app.times = uniqueSorted(app.events.map(function (x) { return x.event_time; }));
+
+                populateTimelineSelect();
+
+                if (app.times.length) {
+                    app.timeIndex = 0;
+                    document.getElementById('voc-ts-select').selectedIndex = 0;
+                    // Defer one frame so the widget body is fully painted before
+                    // ApexCharts measures container dimensions for the first render.
+                    window.setTimeout(function () {
+                        renderActiveTab();
+                        window.setTimeout(function () {
+                            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+                        }, 120);
+                    }, 0);
+                } else {
+                    setStatus('No events found in CSV', true);
+                }
+            })
+            .catch(function (err) {
+                setStatus('Failed to load vessel lifecycle CSV or chart library: ' +
+                    (err && err.message ? err.message : err), true);
+            });
+    }
+
+    widget.addEvent('onLoad', onLoad);
+    return app;
+});

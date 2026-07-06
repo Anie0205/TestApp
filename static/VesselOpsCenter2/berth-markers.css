@@ -1,17 +1,30 @@
 /* berth-markers.css */
-/* The class/id name must match what you define in the JS options */
-#custom-berth-poi, .custom-berth-poi {
-    /* Set the physical size of your marker */
-    width: 40px;
-    height: 40px;
-    display: block;
 
-    /* Pull your custom PNG (replace with your actual working URL) */
+#custom-berth-poi-free, #custom-berth-poi-occupied {
+    /* Force strict dimensions so the engine doesn't collapse the POI */
+    width: 42px !important;
+    height: 42px !important;
+    display: block !important;
+    
+    /* Pull your specific custom PNG */
     background-image: url('https://test-app-lyart-six.vercel.app/static/VesselOpsCenter2/berth.png');
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
+    
+    /* Optional: Soften the edges and lift it off the map */
+    border-radius: 6px;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.4);
+}
 
-    /* Optional: A slight shadow so it pops against the satellite imagery */
-    filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6));
+/* 🟢 Green tint for available berths */
+#custom-berth-poi-free {
+    background-color: rgba(44, 160, 44, 0.25); 
+    border: 2px solid #2ca02c;
+}
+
+/* 🔴 Red tint for occupied berths */
+#custom-berth-poi-occupied {
+    background-color: rgba(214, 39, 40, 0.25); 
+    border: 2px solid #d62728;
 }

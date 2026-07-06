@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>JNPA V12 Enterprise Control Tower</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{font-family:Inter,Arial;background:#f7f9fc;margin:0;color:#1f2937}
+header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 20px}
+.layout{display:grid;grid-template-columns:260px 1fr 360px;gap:12px;padding:12px}
+.panel,.card,.chart{background:#fff;border:1px solid #e5e7eb;border-radius:12px}
+.panel{padding:14px}.chart{padding:10px;margin-top:10px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.card{padding:10px}.v{font-size:24px;font-weight:700;color:#0f4c81}
+.small{font-size:12px;color:#6b7280}
+.badge{padding:4px 8px;border-radius:12px;background:#eef}
+h3{margin:6px 0}
+</style></head>
+<body>
+<header><h2>JNPA V12 Enterprise Digital Twin Control Tower</h2></header>
+<div class="layout">
+<div class="panel">
+<h3>Filters</h3>
+<select style="width:100%"><option>All Terminals</option></select><br><br>
+<select style="width:100%"><option>All Flows</option></select>
+<h3>Modules</h3>
+<ul>
+<li>Executive</li><li>Marine</li><li>Yard</li><li>Customs</li>
+<li>Rail</li><li>Process Mining</li><li>Digital Twin</li><li>Data Quality</li>
+</ul>
+</div>
+
+<div>
+<div class="kpis">
+<div class="card"><div>Operational Health</div><div class="v">86</div></div>
+<div class="card"><div>Containers</div><div class="v">20K</div></div>
+<div class="card"><div>Vessels</div><div class="v">1.2K</div></div>
+<div class="card"><div>Avg Dwell</div><div class="v">7.8d</div></div>
+<div class="card"><div>SLA</div><div class="v">91%</div></div>
+<div class="card"><div>Risk</div><div class="v">Moderate</div></div>
+</div>
+
+<div class="chart"><h3>Terminal Benchmarking</h3><div id="c1"></div></div>
+<div class="chart"><h3>Yard Intelligence</h3><div id="c2"></div></div>
+<div class="chart">
+<h3>Investigation Workbench</h3>
+<table width="100%"><tr><th>Container</th><th>Terminal</th><th>Status</th><th>Action</th></tr>
+<tr><td>Interactive drilldown placeholder</td><td>NSFT</td><td>Long Stay</td><td>Investigate</td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<h3>Narrative Insight Engine</h3>
+<div class="badge">Executive Summary</div>
+<p>Throughput remains stable. GTI leads terminal volumes. Long-stay inventory requires attention.</p>
+<div class="badge">Marine</div>
+<p>Crane productivity remains above baseline. Review vessels exceeding turnaround thresholds.</p>
+<div class="badge">Yard</div>
+<p>Containers exceeding 7-day dwell are primary congestion drivers.</p>
+<div class="badge">Customs</div>
+<p>Monitor OOC processing delays and backlog accumulation.</p>
+
+<h3>Alerts</h3>
+<ul>
+<li>⚠ Long-stay inventory exceeds threshold</li>
+<li>⚠ Dwell outliers detected</li>
+<li>ℹ Throughput concentration at top terminal</li>
+</ul>
+
+<h3>Recommendations</h3>
+<ul>
+<li>Prioritize evacuation of aged inventory</li>
+<li>Review terminal-level dwell variance</li>
+<li>Investigate negative dwell records</li>
+</ul>
+</div>
+</div>
+
+<script>
+new ApexCharts(document.querySelector("#c1"),{
+chart:{type:'bar',height:300},
+series:[{data:[4080,4025,3995,3974,3926]}],
+xaxis:{categories:['GTI','NSIGT','NSFT','NSICT','BMCT']}
+}).render();
+
+new ApexCharts(document.querySelector("#c2"),{
+chart:{type:'bar',height:300},
+series:[{data:[1200,3400,5200,6100,4100]}],
+xaxis:{categories:['0-24h','24-72h','72-168h','168-336h','336+h']}
+}).render();
+</script>
+</body></html>

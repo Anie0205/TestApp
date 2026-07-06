@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JNPA Control Tower Dashboard - CSV Playback</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+    </style>
+</head>
+<body class="p-4 md:p-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">JNPA Control Tower Dashboard</h1>
+        <p class="text-sm text-slate-500">Live Telemetry & CSV Playback Environment</p>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Event Console -->
+        <div id="eventConsole" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 h-96 overflow-y-auto mono-font text-xs">
+            <!-- Events will populate here -->
+        </div>
+
+        <!-- Charts Area -->
+        <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <canvas id="telemetryChart" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200"></canvas>
+            <div id="berthMap" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let csvEvents = [];
+        let playbackIndex = 0;
+        const CSV_URL = 'data.csv'; // Replace with your actual path
+
+        /**
+         * Fetches and parses CSV data to populate dashboard state
+         */
+        async function fetchCSVData() {
+            try {
+                const response = await fetch(CSV_URL);
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                const headers = lines[0].split(',').map(h => h.trim());
+                
+                csvEvents = lines.slice(1).map(line => {
+                    const values = line.split(',');
+                    return headers.reduce((obj, header, index) => {
+                        obj[header] = values[index]?.trim();
+                        return obj;
+                    }, {});
+                });
+                
+                console.log("Data loaded successfully:", csvEvents);
+                initializeEvents();
+            } catch (err) {
+                console.error("Failed to load CSV:", err);
+                document.getElementById('eventConsole').innerHTML = `<p class="text-red-500">Error loading data: ${err.message}</p>`;
+            }
+        }
+
+        // --- Mock Logic (Retained from your original structure) ---
+        function evaluateEventStateMutations(event) {
+            const consoleEl = document.getElementById('eventConsole');
+            consoleEl.innerHTML += `<div>[${new Date().toLocaleTimeString()}] Processing: ${JSON.stringify(event)}</div>`;
+        }
+
+        function resetDigitalTwinState() { playbackIndex = 0; }
+        function updateUIComponents() { /* Your UI update logic */ }
+        function initializeTelemetryCharts() { /* Chart initialization */ }
+        function renderBerthMapGrid() { /* Grid logic */ }
+
+        function initializeEvents() {
+            // Dashboard playback initialization logic
+            console.log("Initializing dashboard with", csvEvents.length, "events.");
+        }
+
+        window.onload = () => {
+            initializeTelemetryCharts();
+            renderBerthMapGrid();
+            // Start the loading process
+            fetchCSVData();
+        };
+    </script>
+</body>
+</html>

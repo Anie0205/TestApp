@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>JNPA Phase 3 Control Tower</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<style>
+body{margin:0;font-family:Segoe UI,Arial;background:#f7f9fc}
+header{background:#fff;border-bottom:1px solid #ddd;padding:12px 18px}
+.layout{display:grid;grid-template-columns:260px 1fr 340px;height:calc(100vh - 60px)}
+.side,.right{background:#fff;overflow:auto;border-right:1px solid #e5e7eb}
+.right{border-left:1px solid #e5e7eb;border-right:none}
+.main{overflow:auto;padding:12px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
+.v{font-size:26px;font-weight:700;color:#0f4c81}
+.chart{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px;margin-top:10px}
+.insight{background:#eef6ff;border-left:4px solid #2563eb;padding:8px;margin:8px 0}
+.alert{background:#fff7ed;border-left:4px solid #f59e0b;padding:8px;margin:8px 0}
+</style>
+</head>
+<body>
+<header><b>JNPA Phase 3 – Executive Analytics Engine</b></header>
+<div class="layout">
+<div class="side">
+<div style="padding:12px">
+<h3>Filters</h3>
+<select id="terminal" style="width:100%"><option>All</option></select>
+<p><small>Phase 3 focuses on Executive KPIs, Marine, Yard and Insight Engine.</small></p>
+</div>
+</div>
+
+<div class="main">
+<div class="kpis" id="kpis"></div>
+<div class="chart"><div id="throughput"></div></div>
+<div class="chart"><div id="dwell"></div></div>
+</div>
+
+<div class="right">
+<div style="padding:12px">
+<h3>Narrative Insights</h3>
+<div id="insights"></div>
+<h3>Alerts</h3>
+<div id="alerts"></div>
+</div>
+</div>
+</div>
+
+<script>
+const files=['container_master.csv','yard_operations.csv','berth_crane_operations.csv','digital_twin_events.csv'];
+
+Promise.all(files.map(f=>fetch(f).then(r=>r.text()).then(t=>new Promise(res=>Papa.parse(t,{header:true,skipEmptyLines:true,complete:x=>res(x.data)})))))
+.then(r=>{
+ const cm=r[0], yard=r[1], berth=r[2], events=r[3];
+
+ let imports=cm.filter(x=>x.flow_type==='IMPORT').length;
+ let exports=cm.filter(x=>x.flow_type==='EXPORT').length;
+ let dwell=yard.map(x=>+x.dwell_hours||0);
+ let avg=dwell.reduce((a,b)=>a+b,0)/dwell.length;
+ let longstay=dwell.filter(x=>x>168).length;
+ let crane=berth.map(x=>+x.crane_moves_per_hour||0);
+ let avgCrane=(crane.reduce((a,b)=>a+b,0)/crane.length).toFixed(1);
+
+ const cards=[
+ ['Containers',cm.length],
+ ['Imports',imports],
+ ['Exports',exports],
+ ['Avg Dwell',avg.toFixed(1)+'h'],
+ ['Avg Crane MPH',avgCrane],
+ ['Long Stay',longstay],
+ ['Events',events.length]
+ ];
+ document.getElementById('kpis').innerHTML=
+ cards.map(c=>`<div class="card"><div>${c[0]}</div><div class="v">${c[1]}</div></div>`).join('');
+
+ let term={}; cm.forEach(x=>term[x.terminal]=(term[x.terminal]||0)+1);
+ new ApexCharts(document.querySelector("#throughput"),{
+ chart:{type:'bar',height:320},
+ series:[{name:'Containers',data:Object.values(term)}],
+ xaxis:{categories:Object.keys(term)},
+ title:{text:'Terminal Throughput Ranking'}
+ }).render();
+
+ let buckets={'0-24':0,'24-72':0,'72-168':0,'168+':0};
+ dwell.forEach(d=>{if(d<24)buckets['0-24']++; else if(d<72)buckets['24-72']++; else if(d<168)buckets['72-168']++; else buckets['168+']++;});
+ new ApexCharts(document.querySelector("#dwell"),{
+ chart:{type:'bar',height:320},
+ series:[{data:Object.values(buckets)}],
+ xaxis:{categories:Object.keys(buckets)},
+ title:{text:'Yard Dwell Distribution'}
+ }).render();
+
+ let top=Object.entries(term).sort((a,b)=>b[1]-a[1])[0];
+ document.getElementById('insights').innerHTML=`
+ <div class="insight">Top throughput terminal: <b>${top[0]}</b> (${top[1]} containers).</div>
+ <div class="insight">Average dwell is <b>${avg.toFixed(1)} hours</b>.</div>
+ <div class="insight">${longstay} containers exceed 7-day dwell threshold.</div>
+ <div class="insight">Average crane productivity is <b>${avgCrane} MPH</b>.</div>`;
+
+ document.getElementById('alerts').innerHTML=`
+ <div class="alert">Review long-stay inventory exceeding 168 hours.</div>
+ <div class="alert">Investigate any negative dwell records from yard data.</div>`;
+});
+</script>
+</body></html>

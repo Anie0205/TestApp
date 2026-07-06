@@ -1,0 +1,3415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JNPA Control Tower — Integrated Simulation</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ─── Design tokens ─────────────────────────────────── */
+:root {
+  --bg:        #f4f6f9;
+  --surface:   #ffffff;
+  --surface-2: #f8fafc;
+  --border:    #e4e9f0;
+  --border-2:  #edf0f5;
+  --text-1:    #0e1523;
+  --text-2:    #3d4e68;
+  --text-3:    #6b7a99;
+  --text-4:    #9aa5be;
+  --accent:    #2563eb;
+  --accent-lt: #eff4ff;
+  --green:     #16a34a;
+  --green-lt:  #f0fdf4;
+  --amber:     #d97706;
+  --amber-lt:  #fffbeb;
+  --red:       #dc2626;
+  --indigo:    #4f46e5;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 1px 3px rgba(14,21,35,0.06), 0 1px 2px rgba(14,21,35,0.04);
+  --shadow-md: 0 4px 16px rgba(14,21,35,0.08), 0 1px 3px rgba(14,21,35,0.05);
+  --shadow-lg: 0 12px 40px rgba(14,21,35,0.12), 0 4px 12px rgba(14,21,35,0.07);
+  --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ─── Google Fonts ──────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ─── Reset & base ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16.5px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.mono { font-family: var(--font-mono); }
+
+/* ─── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+
+/* ─── Top Nav ───────────────────────────────────────── */
+.topnav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 0 22px;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.topnav-brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.topnav-brand-icon {
+  width: 42px; height: 42px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+}
+.topnav-brand h1 { font-size: 18px; font-weight: 800; color: var(--text-1); letter-spacing: -0.3px; line-height: 1.15; }
+.topnav-brand p  { font-size: 11.5px; font-weight: 600; color: var(--text-4); letter-spacing: 1.4px; text-transform: uppercase; margin-top: 2px; }
+
+/* Stat strip (system + KPI values combined) */
+.topnav-stats {
+  display: flex; align-items: stretch; gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  flex: 1;
+  max-width: 920px;
+}
+.topnav-stat {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 16px;
+  border-right: 1px solid var(--border);
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.topnav-stat:last-child { border-right: none; }
+.topnav-stat .stat-icon { font-size: 19px; flex-shrink: 0; }
+.topnav-stat .stat-text { display: flex; flex-direction: column; gap: 2px; }
+.topnav-stat .lbl { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: 0.8px; text-transform: uppercase; }
+.topnav-stat .val { font-size: 17px; font-weight: 800; font-family: var(--font-mono); }
+.topnav-stat .val.blue   { color: var(--accent); }
+.topnav-stat .val.indigo { color: var(--indigo); }
+.topnav-stat .val.green  { color: var(--green); }
+.topnav-stat .val.amber  { color: var(--amber); }
+.topnav-stat .val.slate  { color: var(--text-2); }
+
+.topnav-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ─── Buttons ───────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 16px;
+  font-size: 13px; font-weight: 700;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  letter-spacing: 0.2px;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary   { background: var(--accent); color: #fff; border-color: #1d4ed8; box-shadow: 0 1px 3px rgba(37,99,235,0.25); }
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-success   { background: var(--green); color: #fff; border-color: #15803d; box-shadow: 0 1px 3px rgba(22,163,74,0.25); }
+.btn-success:hover:not(:disabled) { background: #15803d; }
+.btn-ghost     { background: var(--surface); color: var(--text-2); border-color: var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text-4); }
+.btn-danger    { background: var(--red); color: #fff; }
+.btn-sm  { padding: 6px 12px; font-size: 11.5px; }
+.btn-lg  { padding: 11px 24px; font-size: 15px; }
+.btn-icon { padding: 6px 8px; }
+
+/* ─── Alert Banner ──────────────────────────────────── */
+.alert-banner {
+  position: sticky; top: 76px; z-index: 30;
+  padding: 0 20px;
+}
+.alert-banner-inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border: 1px solid; border-top: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  font-size: 13.5px; font-weight: 600;
+}
+.alert-congestion  { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.alert-tide        { background:#eff6ff; border-color:#93c5fd; color:#1e3a8a; }
+.alert-customs     { background:#f5f3ff; border-color:#c4b5fd; color:#3b0764; }
+.alert-inspection  { background:#fff7ed; border-color:#fed7aa; color:#7c2d12; }
+.alert-end         { background:#f0fdf4; border-color:#86efac; color:#14532d; }
+.alert-btn-congestion  { background:#f59e0b; color:#fff; border-color:#d97706; }
+.alert-btn-tide        { background:#3b82f6; color:#fff; border-color:#2563eb; }
+.alert-btn-customs     { background:#8b5cf6; color:#fff; border-color:#7c3aed; }
+.alert-btn-inspection  { background:#f97316; color:#fff; border-color:#ea580c; }
+.alert-btn-end         { background:#22c55e; color:#fff; border-color:#16a34a; }
+
+/* ─── Main layout ───────────────────────────────────── */
+.app-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  padding: 14px 20px 0;
+  height: calc(100vh - 76px);
+  overflow: hidden;
+}
+.col-left  { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 4px; padding-bottom: 84px; }
+.col-right { display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden; padding-bottom: 0; }
+
+/* ─── Tab navigation ────────────────────────────────── */
+.tabbar {
+  display: flex; gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+.tab-btn {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 12px;
+  font-size: 13.5px; font-weight: 700;
+  color: var(--text-3);
+  background: transparent;
+  border: none; border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tab-btn:hover { color: var(--text-1); background: var(--surface-2); }
+.tab-btn.active { background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(37,99,235,0.3); }
+.tab-panel { display: none; flex-direction: column; gap: 12px; }
+.tab-panel.active { display: flex; }
+
+/* ─── Cards ─────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 11px;
+  border-bottom: 1px solid var(--border-2);
+}
+.card-title {
+  font-size: 14.5px; font-weight: 700; color: var(--text-1);
+  letter-spacing: 0.1px;
+  display: flex; align-items: center; gap: 7px;
+}
+.card-body { padding: 16px 18px; }
+.card-badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 5px;
+  background: var(--surface-2); color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+/* ─── Data Explorer ─────────────────────────────────── */
+.explorer-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 18px; border-bottom: 1px solid var(--border-2);
+}
+.explorer-dataset-tabs { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
+.explorer-dataset-btn {
+  padding: 7px 13px; font-size: 12.5px; font-weight: 700; color: var(--text-3);
+  background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: all .15s ease;
+  white-space: nowrap;
+}
+.explorer-dataset-btn:hover { color: var(--text-1); }
+.explorer-dataset-btn.active { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(37,99,235,0.3); }
+.explorer-search-wrap { position: relative; flex: 1; min-width: 220px; }
+.explorer-search-wrap input {
+  width: 100%; padding: 8px 12px 8px 32px; font-size: 13px; font-family: var(--font-sans);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  outline: none; color: var(--text-1);
+}
+.explorer-search-wrap input:focus { border-color: var(--accent); background: var(--surface); }
+.explorer-search-wrap::before {
+  content: '🔍'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 12.5px; opacity: .6;
+}
+.explorer-meta { font-size: 12px; color: var(--text-4); font-weight: 600; white-space: nowrap; }
+.explorer-table-wrap { overflow: auto; max-height: calc(100vh - 380px); border: 1px solid var(--border-2); border-radius: var(--radius-md); }
+.explorer-table { width: 100%; border-collapse: collapse; font-size: 12.3px; font-family: var(--font-mono); }
+.explorer-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2); color: var(--text-3);
+  font-family: var(--font-sans); font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+  text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.explorer-table tbody td {
+  padding: 7px 12px; border-bottom: 1px solid var(--border-2); color: var(--text-2); white-space: nowrap;
+}
+.explorer-table tbody tr:hover { background: var(--accent-lt); }
+.explorer-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.explorer-table tbody tr:nth-child(even):hover { background: var(--accent-lt); }
+.explorer-empty { padding: 46px 20px; text-align: center; color: var(--text-4); }
+.explorer-empty .ee-icon { font-size: 30px; margin-bottom: 8px; }
+.explorer-pagination { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; gap: 10px; flex-wrap: wrap; }
+mark.explorer-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* ─── Vessel Tracker ────────────────────────────────── */
+.vt-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 18px; border-bottom: 1px solid var(--border-2);
+}
+.vt-search-wrap { position: relative; flex: 1; min-width: 220px; }
+.vt-search-wrap input {
+  width: 100%; padding: 8px 12px 8px 32px; font-size: 13px; font-family: var(--font-sans);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  outline: none; color: var(--text-1);
+}
+.vt-search-wrap input:focus { border-color: var(--accent); background: var(--surface); }
+.vt-search-wrap::before {
+  content: '🔍'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 12.5px; opacity: .6;
+}
+.vt-table-wrap { overflow: auto; max-height: 46vh; border: 1px solid var(--border-2); border-radius: var(--radius-md); }
+.vt-table { width: 100%; border-collapse: collapse; font-size: 12.3px; }
+.vt-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2); color: var(--text-3);
+  font-family: var(--font-sans); font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+  text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.vt-table tbody td { padding: 7px 12px; border-bottom: 1px solid var(--border-2); color: var(--text-2); white-space: nowrap; font-family: var(--font-mono); }
+.vt-table tbody td.vt-vessel-id { font-family: var(--font-sans); font-weight: 700; color: var(--text-1); }
+.vt-table tbody tr:hover { background: var(--accent-lt); }
+.vt-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.vt-table tbody tr:nth-child(even):hover { background: var(--accent-lt); }
+.vt-num-imp { color: var(--accent); font-weight: 700; }
+.vt-num-exp { color: var(--green); font-weight: 700; }
+.vt-matrix-wrap { overflow: auto; max-height: 42vh; border: 1px solid var(--border-2); border-radius: var(--radius-md); }
+.vt-matrix { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.vt-matrix thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface-2); color: var(--text-3);
+  font-family: var(--font-sans); font-size: 9.8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+  text-align: center; padding: 9px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.vt-matrix thead th:first-child { text-align: left; left: 0; z-index: 4; }
+.vt-matrix tbody td { padding: 6px 8px; border-bottom: 1px solid var(--border-2); text-align: center; font-family: var(--font-mono); font-size: 10.8px; white-space: nowrap; }
+.vt-matrix tbody td.vt-vessel-id {
+  position: sticky; left: 0; z-index: 1;
+  text-align: left; font-family: var(--font-sans); font-weight: 700; color: var(--text-1);
+  background: var(--surface); border-right: 1px solid var(--border-2);
+}
+.vt-matrix tbody tr:nth-child(even) td.vt-vessel-id { background: var(--surface-2); }
+.vt-cell-done    { background: var(--green-lt); color: #15803d; font-weight: 700; }
+.vt-cell-current { background: var(--accent-lt); color: var(--accent); font-weight: 800; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.vt-cell-pending { color: var(--text-4); }
+.vt-legend { display: flex; align-items: center; gap: 16px; padding: 4px 18px 12px; font-size: 11.5px; color: var(--text-3); flex-wrap: wrap; }
+.vt-legend-swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+/* ─── Bottom Playback Dock ──────────────────────────── */
+.playback-dock {
+  position: fixed;
+  left: 20px; bottom: 16px;
+  width: calc(50% - 26px);
+  max-width: 620px;
+  min-width: 380px;
+  z-index: 35;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.playback-dock .playback-controls { display: flex; gap: 5px; flex-shrink: 0; }
+.playback-dock .btn { padding: 8px 14px; font-size: 13px; }
+.playback-seek { flex: 1; display: flex; align-items: center; gap: 9px; min-width: 0; }
+.playback-seek label {
+  font-size: 12px; font-weight: 700; color: var(--text-4);
+  letter-spacing: 0.8px; text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+}
+
+/* ─── Range slider ──────────────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  flex: 1; height: 4px;
+  background: var(--border);
+  border-radius: 999px; outline: none; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+  transition: box-shadow 0.15s;
+}
+input[type="range"]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 5px rgba(37,99,235,0.2); }
+input[type="range"]:disabled { opacity: 0.4; }
+
+/* ─── KPI row (compact, inside header strip OR card) ─── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; flex-shrink: 0; }
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.kpi-card .kpi-label { font-size: 11px; font-weight: 700; color: var(--text-4); letter-spacing: 0.6px; text-transform: uppercase; }
+.kpi-card .kpi-val   { font-size: 24px; font-weight: 800; color: var(--text-1); line-height: 1; }
+.kpi-card .kpi-unit  { font-size: 11.5px; font-weight: 500; color: var(--text-4); margin-left: 3px; }
+.kpi-card.blue  .kpi-val { color: var(--accent); }
+.kpi-card.green .kpi-val { color: var(--green); }
+.kpi-card.amber .kpi-val { color: var(--amber); }
+
+/* ─── Pillars (enlarged) ────────────────────────────── */
+.pillars-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; flex-shrink: 0; }
+.pillar-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.pillar-header {
+  padding: 13px 16px 12px;
+  border-bottom: 1px solid var(--border-2);
+  display: flex; align-items: center; gap: 10px;
+}
+.pillar-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pillar-title { font-size: 12.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+.pillar-body  { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.pillar-row   { display: flex; justify-content: space-between; align-items: center; }
+.pillar-row .pk { font-size: 13px; font-weight: 500; color: var(--text-3); }
+.pillar-row .pv { font-size: 14.5px; font-weight: 700; color: var(--text-1); font-family: var(--font-mono); }
+.pillar-row .pv.amber  { color: var(--amber); }
+.pillar-row .pv.blue   { color: var(--accent); }
+.pillar-row .pv.green  { color: var(--green); }
+.pillar-divider { height: 1px; background: var(--border-2); margin: 4px 0; }
+
+/* ─── Berth matrix ──────────────────────────────────── */
+.berth-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+.berth-cell {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 12px 10px;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: default;
+  background: var(--surface-2);
+}
+.berth-cell .berth-id   { font-size: 11px; font-weight: 700; color: var(--text-4); letter-spacing: 0.5px; }
+.berth-cell .berth-name { font-size: 13px; font-weight: 700; color: var(--text-2); margin-top: 2px; word-break: break-all; }
+.berth-cell .berth-st   { font-size: 11.5px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 5px; color: var(--text-4); }
+
+.berth-empty    { background: var(--surface-2); border-color: var(--border); }
+.berth-occupied { background: #eff6ff; border-color: #93c5fd; }
+.berth-occupied .berth-id { color: #1d4ed8; }
+.berth-occupied .berth-st { color: #2563eb; }
+.berth-maint    { background: #fff7ed; border-color: #fed7aa; }
+.berth-maint    .berth-st { color: #d97706; }
+
+/* ─── Telemetry charts ──────────────────────────────── */
+.chart-wrap { position: relative; width: 100%; height: 130px; }
+
+/* ─── Stage distribution (right panel) ─────────────── */
+.stage-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
+.stage-cell {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 7px; text-align: center;
+}
+.stage-cell .sc-label { font-size: 11px; font-weight: 700; color: var(--text-4); letter-spacing: 0.6px; text-transform: uppercase; display: block; }
+.stage-cell .sc-val   { font-size: 21px; font-weight: 800; color: var(--text-1); display: block; margin-top: 3px; }
+.stage-cell.st-anchored .sc-val  { color: var(--amber); }
+.stage-cell.st-moored   .sc-val  { color: var(--indigo); }
+.stage-cell.st-ops      .sc-val  { color: var(--accent); }
+.stage-cell.st-done     .sc-val  { color: var(--green); }
+.stage-cell.st-sailed   .sc-val  { color: var(--text-4); }
+
+/* ─── Event console (scoped scroll) ─────────────────── */
+.event-console {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  overflow-y: scroll;
+  flex: 1;
+  min-height: 0;
+  scrollbar-gutter: stable;
+}
+.event-console-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: 8px; color: var(--text-4);
+  padding: 20px; text-align: center;
+}
+.event-console-empty .ec-icon { font-size: 34px; }
+.event-console-empty .ec-title { font-size: 15px; font-weight: 700; color: var(--text-2); }
+.event-console-empty .ec-sub   { font-size: 12px; color: var(--text-4); line-height: 1.5; }
+
+/* ─── Modals ─────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(14,21,35,0.50);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto; padding: 32px 16px;
+}
+.modal-backdrop.hidden { display: none; }
+.modal-box {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  width: 100%;
+  display: flex; flex-direction: column;
+  margin: auto;
+  max-height: calc(100vh - 64px);
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border-2);
+  position: sticky; top: 0; background: var(--surface);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  z-index: 2; flex-shrink: 0;
+}
+.modal-header h2 { font-size: 16.5px; font-weight: 800; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px; color: var(--text-3);
+  transition: all 0.15s;
+}
+.modal-close:hover { background: #fee2e2; border-color: #fca5a5; color: var(--red); }
+.modal-body { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.modal-footer {
+  padding: 14px 22px; border-top: 1px solid var(--border-2);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  position: sticky; bottom: 0; background: var(--surface);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  z-index: 2; flex-shrink: 0;
+}
+
+/* ─── Sim Gen Modal specifics ───────────────────────── */
+.sg-section-label {
+  font-size: 10.5px; font-weight: 800; color: var(--text-4);
+  letter-spacing: 2px; text-transform: uppercase;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border-2);
+  margin-bottom: 10px;
+}
+.sg-field { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sg-field label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.sg-field input[type="number"] {
+  width: 100px; font-size: 12.5px; font-family: var(--font-mono);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 5px 9px; background: var(--surface-2); color: var(--text-1);
+  outline: none; transition: border-color 0.15s;
+}
+.sg-field input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.sg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+.sg-section { margin-bottom: 18px; }
+.sg-preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.sg-preset-btn {
+  padding: 8px 10px; font-size: 11.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer; text-align: left;
+  color: var(--text-2); transition: all 0.15s; font-family: var(--font-sans);
+}
+.sg-preset-btn:hover { background: var(--accent-lt); border-color: var(--accent); color: var(--accent); }
+.sg-chip {
+  display: inline-block; padding: 4px 9px; font-size: 10.5px; font-weight: 700;
+  border-radius: 4px; cursor: pointer; border: 1px solid var(--border);
+  background: transparent; color: var(--text-3);
+  font-family: var(--font-sans); letter-spacing: 0.3px;
+  transition: all 0.15s; margin: 0 3px 4px 0;
+}
+
+/* ─── Progress bar ──────────────────────────────────── */
+.progress-wrap { padding: 0 22px 12px; }
+.progress-meta { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--text-3); margin-bottom: 5px; }
+.progress-track { background: var(--border); border-radius: 999px; height: 5px; overflow: hidden; }
+.progress-fill  { height: 5px; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 999px; transition: width 0.3s ease; }
+
+/* ─── Status pills ──────────────────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.pill-green  { background: #dcfce7; color: #15803d; }
+.pill-amber  { background: #fef3c7; color: #b45309; }
+.pill-blue   { background: #dbeafe; color: #1d4ed8; }
+.pill-purple { background: #f3e8ff; color: #6d28d9; }
+.pill-slate  { background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); }
+
+/* ─── Toast ─────────────────────────────────────────── */
+#toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  min-width: 280px; max-width: 380px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 18px; border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg); font-size: 13.5px; font-weight: 600;
+  animation: toastIn 0.25s ease; border: 1px solid;
+}
+.toast-success { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.toast-error   { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+.toast-info    { background: var(--accent-lt); border-color: #93c5fd; color: #1e3a8a; }
+@keyframes toastIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+/* ─── File status rows ──────────────────────────────── */
+.file-status-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.file-status-icon { font-size: 16px; flex-shrink: 0; }
+.file-status-body { flex: 1; min-width: 0; }
+.file-status-name { font-size: 13.5px; font-weight: 700; color: var(--text-1); }
+.file-status-desc { font-size: 11.5px; color: var(--text-4); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ─── Tailwind shims (for JS-generated classes) ──────── */
+.bg-slate-50  { background-color: #f8fafc; }
+.bg-slate-100 { background-color: #f1f5f9; }
+.bg-slate-900 { background-color: #0f172a; }
+.border-slate-100 { border-color: #f1f5f9; }
+.border-slate-200 { border-color: #e2e8f0; }
+.text-slate-400 { color: #94a3b8; }
+.text-slate-500 { color: #64748b; }
+.text-slate-600 { color: #475569; }
+.text-slate-700 { color: #334155; }
+.text-slate-800 { color: #1e293b; }
+.text-slate-900 { color: #0f172a; }
+</style>
+</head>
+<body>
+
+<!-- ── Top Nav ────────────────────────────────────────── -->
+<header class="topnav">
+  <div class="topnav-brand">
+    <div class="topnav-brand-icon">🏢</div>
+    <div>
+      <h1>JNPA Control Tower</h1>
+      <p>Integrated Simulation</p>
+    </div>
+  </div>
+
+  <div class="topnav-stats">
+    <div class="topnav-stat">
+      <span class="stat-icon">🕐</span>
+      <div class="stat-text"><span class="lbl">Sim Clock</span><span id="globalClock" class="val blue mono">—</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">🌊</span>
+      <div class="stat-text"><span class="lbl">Tide</span><span id="tideGauge" class="val indigo mono">0.00m</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">🚢</span>
+      <div class="stat-text"><span class="lbl">Fleet</span><span id="vesselsInPort" class="val green mono">0</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">🚛</span>
+      <div class="stat-text"><span class="lbl">Trucks</span><span id="truckQueue" class="val amber mono">0</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">📊</span>
+      <div class="stat-text"><span class="lbl">Events</span><span id="kpiScheduled" class="val slate mono">0</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">⚓</span>
+      <div class="stat-text"><span class="lbl">Moored</span><span id="kpiMoored" class="val blue mono">0</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">🏁</span>
+      <div class="stat-text"><span class="lbl">Sailed</span><span id="kpiSailed" class="val green mono">0</span></div>
+    </div>
+    <div class="topnav-stat">
+      <span class="stat-icon">🗂️</span>
+      <div class="stat-text"><span class="lbl">Registry</span><span id="kpiSync" class="val slate mono">0</span></div>
+    </div>
+  </div>
+
+  <div class="topnav-actions">
+    <button id="btnAutoLoad" onclick="openModal('simGenModal')" class="btn btn-success" title="Generate Simulation">⚡</button>
+    <button onclick="openModal('loadStatusModal')" class="btn btn-ghost" id="btnLoadStatus" title="Data Status">
+      <span id="loadStatusDot" style="width:7px;height:7px;border-radius:50%;background:#cbd5e1;display:inline-block;flex-shrink:0;"></span>
+      📡<span id="loadStatusLabel" style="display:none;">Data Status</span>
+    </button>
+    <button onclick="openModal('searchModal')" class="btn btn-ghost" title="Trace Finder">🔍</button>
+    <button onclick="openModal('settingsModal')" class="btn btn-primary" title="Settings">⚙️</button>
+  </div>
+</header>
+
+<!-- ── Alert Banner ───────────────────────────────────── -->
+<div id="alertBanner" class="alert-banner hidden">
+  <div id="alertBannerInner" class="alert-banner-inner">
+    <span id="alertIcon" style="font-size:15px;flex-shrink:0;">⚠️</span>
+    <div style="flex:1;min-width:0;">
+      <span id="alertTitle" style="font-weight:800;font-size:11.5px;letter-spacing:1px;text-transform:uppercase;margin-right:6px;"></span>
+      <span id="alertMessage" style="font-size:13.5px;"></span>
+    </div>
+    <button id="btnContinue" onclick="continuePlayback()" class="btn btn-sm" style="flex-shrink:0;">▶ Continue</button>
+    <button onclick="dismissAlert()" style="font-size:18px;font-weight:700;opacity:0.5;cursor:pointer;background:none;border:none;line-height:1;padding:0 2px;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+  </div>
+</div>
+
+<!-- ── Main Layout ────────────────────────────────────── -->
+<main class="app-main">
+
+  <!-- LEFT COLUMN ─────────────────────────────────────── -->
+  <div class="col-left">
+
+    <!-- Tab Navigation -->
+    <div class="tabbar">
+      <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">📋 Overview</button>
+      <button class="tab-btn" data-tab="berths" onclick="switchTab('berths')">⚓ Berth Matrix</button>
+      <button class="tab-btn" data-tab="telemetry" onclick="switchTab('telemetry')">📈 Telemetry Plots</button>
+      <button class="tab-btn" data-tab="explorer" onclick="switchTab('explorer')">🗂️ Data Explorer</button>
+      <button class="tab-btn" data-tab="vessels" onclick="switchTab('vessels')">🚢 Vessel Tracker</button>
+    </div>
+
+    <!-- TAB: Overview -->
+    <div class="tab-panel active" id="tabpanel-overview">
+
+      <!-- Infrastructure Pillars -->
+      <div class="pillars-grid">
+        <!-- Maritime -->
+        <div class="pillar-card">
+          <div class="pillar-header" style="background:#eff6ff;">
+            <div class="pillar-dot" style="background:#2563eb;"></div>
+            <span class="pillar-title" style="color:#1d4ed8;">I · Maritime Status</span>
+          </div>
+          <div class="pillar-body">
+            <div class="pillar-row"><span class="pk">Scheduled Fleet</span><span class="pv" id="lblShipScheduled">0</span></div>
+            <div class="pillar-row"><span class="pk">Anchorage Waiting</span><span class="pv amber" id="lblShipAnchored">0</span></div>
+            <div class="pillar-row"><span class="pk">Moored / At Berth</span><span class="pv blue" id="lblShipMoored">0</span></div>
+            <div class="pillar-divider"></div>
+            <div class="pillar-row"><span class="pk">Avg Anchorage Wait</span><span class="pv amber" id="lblAvgAnchorWait">0.0 h</span></div>
+            <div class="pillar-row"><span class="pk">Avg Cargo Hours</span><span class="pv" id="lblAvgCargoHours">0.0 h</span></div>
+          </div>
+        </div>
+        <!-- Yard -->
+        <div class="pillar-card">
+          <div class="pillar-header" style="background:#f0fdf4;">
+            <div class="pillar-dot" style="background:#16a34a;"></div>
+            <span class="pillar-title" style="color:#15803d;">II · Yard Allocations</span>
+          </div>
+          <div class="pillar-body">
+            <div class="pillar-row"><span class="pk">Yard A — Dry Cargo</span><span class="pv" id="lblYardADry">4,500 TEU</span></div>
+            <div class="pillar-row"><span class="pk">Yard B — Dry Cargo</span><span class="pv" id="lblYardBDry">3,800 TEU</span></div>
+            <div class="pillar-row"><span class="pk">Yard C — Reefer</span><span class="pv green" id="lblYardCReefer">1,200 TEU</span></div>
+            <div class="pillar-row"><span class="pk">Yard D — Reefer</span><span class="pv green" id="lblYardDReefer">900 TEU</span></div>
+          </div>
+        </div>
+        <!-- Gates -->
+        <div class="pillar-card">
+          <div class="pillar-header" style="background:#fffbeb;">
+            <div class="pillar-dot" style="background:#d97706;"></div>
+            <span class="pillar-title" style="color:#b45309;">III · Port Boundaries</span>
+          </div>
+          <div class="pillar-body">
+            <div class="pillar-row"><span class="pk">Inbound Gate (OCR)</span><span class="pv" id="lblEntryGate">Inactive</span></div>
+            <div class="pillar-row"><span class="pk">North Exit</span><span class="pv" id="lblExitNorth">Inactive</span></div>
+            <div class="pillar-row"><span class="pk">South Exit</span><span class="pv" id="lblExitSouth">Inactive</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB: Berth Matrix -->
+    <div class="tab-panel" id="tabpanel-berths">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">⚓ Berth State Matrix</span>
+          <select id="filterTerminal" style="font-size:13px;font-weight:600;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-2);outline:none;cursor:pointer;">
+            <option value="ALL">All Terminals (T1–T4)</option>
+            <option value="T1">T1 — Dry (B1, B2, B3)</option>
+            <option value="T2">T2 — Dry (B4, B5, B6)</option>
+            <option value="T3">T3 — Reefer (B7, B8)</option>
+            <option value="T4">T4 — Reefer (B9, B10)</option>
+          </select>
+        </div>
+        <div class="card-body">
+          <div class="berth-grid" id="berthLayoutContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Telemetry Plots -->
+    <div class="tab-panel" id="tabpanel-telemetry">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Live Telemetry Plots</span>
+          <span class="card-badge">Real-time</span>
+        </div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <div class="chart-wrap"><canvas id="bottleneckChart"></canvas></div>
+            <div class="chart-wrap"><canvas id="customsDistributionChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Data Explorer -->
+    <div class="tab-panel" id="tabpanel-explorer">
+      <div class="card" style="display:flex;flex-direction:column;">
+        <div class="card-header">
+          <span class="card-title">🗂️ Generated Data Explorer</span>
+          <span class="card-badge" id="explorerRowCountBadge">0 rows</span>
+        </div>
+
+        <div class="explorer-toolbar">
+          <div class="explorer-dataset-tabs" id="explorerDatasetTabs"></div>
+          <div class="explorer-search-wrap">
+            <input id="explorerSearchInput" type="text" placeholder="Search keyword — e.g. V0001, BERTH_CONGESTION, JNPU-EX, MH-46-TRK-0007..." oninput="explorerOnSearchInput()">
+          </div>
+          <span class="explorer-meta" id="explorerMatchMeta"></span>
+        </div>
+
+        <div class="card-body" style="padding-top:12px;">
+          <div class="explorer-table-wrap" id="explorerTableWrap">
+            <div class="explorer-empty">
+              <div class="ee-icon">🗂️</div>
+              <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">No data generated yet</div>
+              <div style="font-size:12.5px;">Run the Simulation Generator (⚡) to populate vessels, containers, trucks and lifecycle events.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="explorer-pagination">
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="explorerChangePage(-1)">◀ Prev</button>
+            <button class="btn btn-ghost btn-sm" onclick="explorerChangePage(1)">Next ▶</button>
+            <span class="explorer-meta" id="explorerPageLabel" style="align-self:center;">Page 0 / 0</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="explorerDownloadCurrent()">⬇ Download this table (CSV)</button>
+            <button class="btn btn-success btn-sm" onclick="explorerDownloadAll()">⬇ Download all 4 CSVs</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Vessel Tracker -->
+    <div class="tab-panel" id="tabpanel-vessels">
+
+      <!-- Planning Summary -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🚢 Vessel Planning Summary <span style="font-weight:500;color:var(--text-4);font-size:12px;">— import/export TEU as scheduled by the generator</span></span>
+          <span class="card-badge" id="vtPlanningCountBadge">0 vessels</span>
+        </div>
+        <div class="vt-toolbar">
+          <div class="vt-search-wrap">
+            <input id="vtSearchInput" type="text" placeholder="Filter by vessel ID, line, class, terminal, scenario..." oninput="vtOnSearchInput()">
+          </div>
+          <span class="explorer-meta" id="vtMatchMeta"></span>
+        </div>
+        <div class="card-body" style="padding-top:10px;">
+          <div class="vt-table-wrap" id="vtPlanningTableWrap">
+            <div class="explorer-empty">
+              <div class="ee-icon">🚢</div>
+              <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">No vessels generated yet</div>
+              <div style="font-size:12.5px;">Run the Simulation Generator (⚡) to see planned import/export volumes per vessel.</div>
+            </div>
+          </div>
+        </div>
+        <div class="vt-legend" style="padding-top:0;">
+          <button class="btn btn-ghost btn-sm" onclick="vtDownloadPlanning()" style="margin-left:18px;">⬇ Download planning table (CSV)</button>
+        </div>
+      </div>
+
+      <!-- Stage Matrix -->
+      <div class="card" style="flex:1;">
+        <div class="card-header">
+          <span class="card-title">🔀 Vessel × Lifecycle Stage Matrix <span style="font-weight:500;color:var(--text-4);font-size:12px;">— live, updates as playback moves each vessel through its stages</span></span>
+          <span class="card-badge" id="vtMatrixStatusBadge">Not started</span>
+        </div>
+        <div class="card-body" style="padding-top:10px;">
+          <div class="vt-matrix-wrap" id="vtMatrixWrap">
+            <div class="explorer-empty">
+              <div class="ee-icon">🔀</div>
+              <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">No playback data yet</div>
+              <div style="font-size:12.5px;">Click <strong>▶ Play</strong> or <strong>⏭ Step</strong> on the bottom dock — each vessel lights up here as it reaches a new stage.</div>
+            </div>
+          </div>
+        </div>
+        <div class="vt-legend">
+          <span><span class="vt-legend-swatch" style="background:var(--green-lt);box-shadow:inset 0 0 0 1px #bbf7d0;"></span>Reached (timestamp shown)</span>
+          <span><span class="vt-legend-swatch" style="background:var(--accent-lt);box-shadow:inset 0 0 0 1.5px var(--accent);"></span>Current stage</span>
+          <span><span class="vt-legend-swatch" style="background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--border);"></span>Not reached yet</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN ────────────────────────────────────── -->
+  <div class="col-right">
+
+    <!-- Stage Distribution -->
+    <div class="card" style="flex-shrink:0;">
+      <div class="card-header">
+        <span class="card-title">🔄 Fleet Stage Distribution</span>
+      </div>
+      <div class="card-body" style="padding-top:12px;">
+        <div class="stage-grid">
+          <div class="stage-cell">
+            <span class="sc-label">Scheduled</span>
+            <span id="stage_eta" class="sc-val">0</span>
+          </div>
+          <div class="stage-cell st-anchored">
+            <span class="sc-label">Anchored</span>
+            <span id="stage_anch" class="sc-val">0</span>
+          </div>
+          <div class="stage-cell st-moored">
+            <span class="sc-label">Moored</span>
+            <span id="stage_moored" class="sc-val">0</span>
+          </div>
+          <div class="stage-cell st-ops">
+            <span class="sc-label">Crane Ops</span>
+            <span id="stage_ops" class="sc-val">0</span>
+          </div>
+          <div class="stage-cell st-done">
+            <span class="sc-label">Done</span>
+            <span id="stage_done" class="sc-val">0</span>
+          </div>
+          <div class="stage-cell st-sailed">
+            <span class="sc-label">Sailed</span>
+            <span id="stage_sailed" class="sc-val">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Console -->
+    <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+      <div class="card-header" style="flex-shrink:0;">
+        <span class="card-title">
+          <span id="livePulseSignal" style="color:#22c55e;animation:pulse 1.5s infinite;">●</span>
+          Telemetry Stream
+          <span style="font-size:11px;color:var(--text-4);font-weight:500;">↑ newest first</span>
+        </span>
+        <span id="lblPlaybackStatus" class="pill pill-slate mono" style="font-size:11px;">idle</span>
+      </div>
+      <div id="eventConsole" class="event-console">
+        <div class="event-console-empty">
+          <div class="ec-icon">🎛️</div>
+          <div class="ec-title">No simulation data loaded</div>
+          <div class="ec-sub">Click <strong>⚡</strong> in the toolbar to configure and run the in-browser JNPA engine.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<!-- ── Floating Bottom Playback Dock ──────────────────── -->
+<div class="playback-dock">
+  <div class="playback-controls">
+    <button id="btnPlay"  class="btn btn-primary">▶ Play</button>
+    <button id="btnStep"  class="btn btn-ghost">⏭ Step</button>
+    <button id="btnReset" class="btn btn-ghost" style="color:var(--text-4);">↺ Restart</button>
+  </div>
+  <div class="playback-seek">
+    <label>Timeline</label>
+    <input id="timelineSlider" type="range" min="0" max="0" value="0" disabled>
+    <span id="lblTimelineProgress" class="mono" style="font-size:13.5px;font-weight:700;color:var(--accent);white-space:nowrap;">0 / 0</span>
+  </div>
+</div>
+
+<!-- ── Toast Container ────────────────────────────────── -->
+<div id="toastContainer"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════════════ -->
+
+<!-- Data Status Modal -->
+<div id="loadStatusModal" class="modal-backdrop hidden">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-header">
+      <h2>📡 Data Source Status</h2>
+      <button class="modal-close" onclick="closeModal('loadStatusModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;color:var(--text-3);margin-bottom:6px;">
+          <span>Overall Load Progress</span>
+          <span id="overallLoadPct" class="mono">0 / 5 files</span>
+        </div>
+        <div class="progress-track"><div id="overallLoadBar" class="progress-fill" style="width:0%;"></div></div>
+      </div>
+      <div id="fileStatusList"></div>
+    </div>
+    <div class="modal-footer">
+      <p style="font-size:12px;color:var(--text-4);">Data is generated in-browser by the simulation engine.</p>
+      <button onclick="closeModal('loadStatusModal');openModal('simGenModal');" class="btn btn-success btn-sm">↺ Generate New</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-backdrop hidden">
+  <div class="modal-box" style="max-width:460px;">
+    <div class="modal-header">
+      <h2>⚙️ Control Room</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="sg-section-label" style="margin-bottom:12px;">Playback Velocity</div>
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:600;color:var(--text-2);">Speed Modifier</span>
+          <span id="lblPlaybackSpeed" class="pill pill-blue mono">1 Event / Cycle</span>
+        </div>
+        <input id="overrideSpeed" type="range" min="1" max="50" step="1" value="1" style="width:100%;">
+      </div>
+      <div class="sg-section-label" style="margin-bottom:12px;">Security Checks</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--green-lt);border:1px solid #bbf7d0;border-radius:var(--radius-md);margin-bottom:10px;">
+        <span style="font-size:18px;">✅</span>
+        <div>
+          <div style="font-size:13.5px;font-weight:700;color:#166534;">DES Sequence Verified</div>
+          <div style="font-size:11.5px;color:#15803d;margin-top:3px;">State machines update cleanly from simulation output</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-4);line-height:1.7;">
+        <p>• Vessel drafts respect <em>Draft ≤ Depth + Tide</em> at all mooring requests.</p>
+        <p>• Shipping bills confirm <em>T(LEO) &lt; T(Load)</em> sequencing.</p>
+        <p>• Customs releases verify <em>T(OOC) &lt; T(GateOut)</em>.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span></span>
+      <button onclick="closeModal('settingsModal');openModal('simGenModal');" class="btn btn-success">⚡ Open Simulation Generator</button>
+    </div>
+  </div>
+</div>
+
+<!-- Simulation Generator Modal -->
+<div id="simGenModal" class="modal-backdrop hidden">
+  <div class="modal-box" style="max-width:680px;">
+    <div class="modal-header">
+      <h2>⚓ JNPA Simulation Generator <span class="pill pill-blue" style="font-size:10.5px;">In-Browser</span></h2>
+      <button class="modal-close" onclick="closeModal('simGenModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="sg-cols">
+        <!-- LEFT -->
+        <div>
+          <div class="sg-section">
+            <div class="sg-section-label">Fleet &amp; Arrival</div>
+            <div class="sg-field"><label>Vessels</label><input id="sg_numVessels" type="number" min="1" max="500" value="30"></div>
+            <div class="sg-field"><label>Trucks</label><input id="sg_numTrucks" type="number" min="100" max="10000" value="1000"></div>
+            <div class="sg-field"><label>Arrival Window (h)</label><input id="sg_arrivalWindow" type="number" min="6" max="360" value="48"></div>
+            <div class="sg-field"><label>Random Seed</label><input id="sg_seed" type="number" value="42" placeholder="blank=random"></div>
+          </div>
+          <div class="sg-section">
+            <div class="sg-section-label">TEU Config</div>
+            <div class="sg-field"><label>TEU Base</label><input id="sg_teuBase" type="number" min="10" max="500" value="100"></div>
+            <div class="sg-field"><label>TEU Variation (±)</label><input id="sg_teuVariation" type="number" min="0" max="10" value="2"></div>
+          </div>
+          <div class="sg-section">
+            <div class="sg-section-label">Tide Model</div>
+            <div class="sg-field"><label>Amplitude (m)</label><input id="sg_tideAmp" type="number" step="0.1" value="2.0"></div>
+            <div class="sg-field"><label>Mean Level (m)</label><input id="sg_tideMean" type="number" step="0.1" value="2.5"></div>
+            <div class="sg-field"><label>Period (h)</label><input id="sg_tidePeriod" type="number" step="0.01" value="12.42"></div>
+            <div class="sg-field"><label>UKC Margin (m)</label><input id="sg_ukc" type="number" step="0.1" value="1.0"></div>
+          </div>
+        </div>
+        <!-- RIGHT -->
+        <div>
+          <div class="sg-section">
+            <div class="sg-section-label">Quick Presets</div>
+            <div class="sg-preset-grid" id="sg_presets"></div>
+          </div>
+          <div class="sg-section">
+            <div class="sg-section-label">Scenarios</div>
+            <div id="sg_chips" style="margin-bottom:10px;"></div>
+            <div class="sg-field">
+              <label>Hit Probability (0–1)</label>
+              <input id="sg_prob" type="number" step="0.05" min="0" max="1" value="0.6">
+            </div>
+          </div>
+          <div style="background:var(--green-lt);border:1px solid #bbf7d0;border-radius:var(--radius-md);padding:12px;">
+            <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:6px;">✅ Engine Ready</div>
+            <div style="font-size:12px;color:#15803d;line-height:1.7;">Fully in-browser — no files needed. Generates vessel lifecycle, container and truck events, then loads directly into the dashboard playback engine.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Progress -->
+    <div id="sg_progressWrap" style="display:none;" class="progress-wrap">
+      <div class="progress-meta">
+        <span id="sg_progressLabel">Generating...</span>
+        <span id="sg_progressPct">0%</span>
+      </div>
+      <div class="progress-track"><div id="sg_progressBar" class="progress-fill" style="width:0%;"></div></div>
+    </div>
+    <div class="modal-footer">
+      <p id="sg_statusMsg" style="font-size:12.5px;color:var(--text-4);flex:1;line-height:1.4;">Configure parameters above, then click Generate &amp; Load.</p>
+      <button id="sg_runBtn" onclick="runSimulationAndLoad()" class="btn btn-success btn-lg">
+        ▶ Generate &amp; Load
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Search Modal -->
+<div id="searchModal" class="modal-backdrop hidden">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h2>🔍 Trace Relational Registry</h2>
+      <button class="modal-close" onclick="closeModal('searchModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-4);line-height:1.7;margin-bottom:14px;">
+        Enter any valid ID across the digital twin database — vessels (<code class="mono" style="background:var(--surface-2);padding:1px 5px;border-radius:4px;color:var(--accent);">V0001</code>), containers (<code class="mono" style="background:var(--surface-2);padding:1px 5px;border-radius:4px;color:var(--green);">JNPU-EX-V0001-001</code>), or trucks (<code class="mono" style="background:var(--surface-2);padding:1px 5px;border-radius:4px;color:var(--amber);">MH-46-TRK-0001</code>).
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input id="txtQuery" type="text" placeholder="e.g. V0001, JNPU-EX-V0001-001, MH-46-TRK-0001"
+          style="flex:1;padding:9px 12px;font-size:13.5px;border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;background:var(--surface-2);"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <button onclick="traceEntity()" class="btn btn-primary">Search</button>
+      </div>
+      <div id="searchResult" style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;color:var(--text-2);display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Master Simulation & Chart Logic -->
+<script>
+        let csvEvents = []; // Populated via user CSV file reader
+        let playbackIndex = 0;
+        let simLoop = null;
+
+        // FIX 1: vessels_master registry - loaded from vessels_master.csv for draft data
+        let vessels_master_registry = {}; // keyed by vessel_id -> { draft_design_m, teu_capacity, ... }
+
+        // In-memory telemetry datasets
+        let vessels_registry = {};
+        let simulated_truck_count = 0;
+        let simulated_container_count = 0;
+
+        // FIX 8: Container and Truck registries for Trace Finder
+        let containers_registry = {}; // keyed by container_id
+        let trucks_registry = {};     // keyed by truck plate
+
+        // FIX 4: Added Yard D for T4 reefer terminal
+        let yard_inventories = { 'Yard A': 4500, 'Yard B': 3800, 'Yard C': 1200, 'Yard D': 900 };
+
+        // FIX 5: For anchorage_wait_hours and cargo_hours tracking
+        let anchor_wait_sum = 0;
+        let anchor_wait_count = 0;
+        let cargo_hours_sum = 0;
+        let cargo_hours_count = 0;
+
+        // Stacking volumes across Yard blocks (Dry term = T1/T2, Reefer term = T3/T4)
+
+        // Terminal Berth maps tracking state based on container_type_pools mapping
+        const TERMINAL_BERTH_MAP = {
+            'T1':  { depth: 16.5, berths: ['B1', 'B2', 'B3'], activeShips: [null, null, null] },
+            'T2':  { depth: 15.0, berths: ['B4', 'B5', 'B6'], activeShips: [null, null, null] },
+            'T3':  { depth: 13.5, berths: ['B7', 'B8'], activeShips: [null, null] },
+            'T4':  { depth: 12.5, berths: ['B9', 'B10'], activeShips: [null, null] }
+        };
+
+        // Graph data points
+        const timeLogLabels = [];
+        const queueMetrics = [];
+        const shippingLineDistribution = { 'HAPAG': 0, 'ONE': 0, 'MSC': 0, 'CMA CGM': 0, 'MAERSK': 0, 'EVERGREEN': 0 };
+
+        // Alert engine state — declared here so resetDigitalTwinState can reference them
+        let alertPaused = false;
+        let pendingResume = false;
+        const firedAlerts = new Set();
+
+        // -------------------------------------------------------------
+        // -------------------------------------------------------------
+        // AUTO-FETCH ENGINE: loads all CSVs from server relative paths
+        // -------------------------------------------------------------
+
+        // Manifest of all CSV files, their roles, and load state
+        const CSV_MANIFEST = [
+            {
+                key: 'lifecycle',
+                filename: 'vessel_lifecycle_simulation.csv',
+                label: 'Vessel Lifecycle Simulation',
+                icon: '📋',
+                description: '96,000 multi-domain event rows — primary telemetry feed',
+                required: true,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'vessels',
+                filename: 'vessels_master.csv',
+                label: 'Vessels Master Registry',
+                icon: '🚢',
+                description: '50 ship records with draft, class, and TEU capacity',
+                required: true,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'berths',
+                filename: 'berths_master.csv',
+                label: 'Berths Infrastructure',
+                icon: '⚓',
+                description: '10 berth records with terminal mapping and dredge depths',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'containers',
+                filename: 'containers_master.csv',
+                label: 'Containers Master',
+                icon: '📦',
+                description: '10,000 container asset records (export + import)',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            },
+            {
+                key: 'trucks',
+                filename: 'trucks_master.csv',
+                label: 'Trucks Master Registry',
+                icon: '🚛',
+                description: '5,000 unique truck registrations with operator and fuel type',
+                required: false,
+                loaded: false,
+                rows: 0,
+                error: null
+            }
+        ];
+
+        // Render the status modal rows from current manifest state
+        function renderLoadStatusModal() {
+            const list = document.getElementById('fileStatusList');
+            if (!list) return;
+
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const pct = Math.round((loadedCount / total) * 100);
+
+            const overallBar = document.getElementById('overallLoadBar');
+            const overallPct = document.getElementById('overallLoadPct');
+            if (overallBar) overallBar.style.width = pct + '%';
+            if (overallPct) overallPct.innerText = `${loadedCount} / ${total} files`;
+
+            // Change bar color on full load
+            if (overallBar) {
+                overallBar.className = `h-2 rounded-full transition-all duration-500 ${loadedCount === total ? 'bg-emerald-500' : loadedCount > 0 ? 'bg-blue-500' : 'bg-slate-300'}`;
+            }
+
+            list.innerHTML = CSV_MANIFEST.map(f => {
+                let statusIcon, statusClass, statusText;
+                if (f.loaded) {
+                    statusIcon = '✅';
+                    statusClass = 'bg-emerald-50 border-emerald-200';
+                    statusText = `<span class="text-emerald-700 font-bold">${f.rows.toLocaleString()} rows loaded</span>`;
+                } else if (f.error) {
+                    statusIcon = '❌';
+                    statusClass = 'bg-red-50 border-red-200';
+                    statusText = `<span class="text-red-600 font-bold">${f.error}</span>`;
+                } else {
+                    statusIcon = f.required ? '⏳' : '○';
+                    statusClass = 'bg-slate-50 border-slate-200';
+                    statusText = `<span class="text-slate-400">${f.required ? 'Pending...' : 'Not loaded'}</span>`;
+                }
+
+                return `
+                    <div class="flex items-start gap-3 p-2.5 rounded-xl border ${statusClass}">
+                        <span class="text-base shrink-0 mt-0.5">${statusIcon}</span>
+                        <div class="flex-grow min-w-0">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[13px] font-extrabold text-slate-800">${f.icon} ${f.label}</span>
+                                ${f.required ? '<span class="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">Required</span>' : '<span class="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold uppercase">Optional</span>'}
+                            </div>
+                            <div class="text-[12px] text-slate-400 mt-1 truncate">${f.filename}</div>
+                            <div class="text-[13px] mt-1">${statusText}</div>
+                            <div class="text-[12px] text-slate-400 mt-1.5 leading-normal">${f.description}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update the compact header status dot + label
+        function updateHeaderLoadBadge() {
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const hasError = CSV_MANIFEST.some(f => f.error);
+            const dot = document.getElementById('loadStatusDot');
+            const lbl = document.getElementById('loadStatusLabel');
+            if (!dot || !lbl) return;
+
+            if (loadedCount === total) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-emerald-500 mr-0.5';
+                lbl.innerText = `All ${total} Files OK`;
+            } else if (hasError) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-red-500 mr-0.5 animate-pulse';
+                lbl.innerText = `Load Error`;
+            } else if (loadedCount > 0) {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-amber-400 mr-0.5 animate-pulse';
+                lbl.innerText = `${loadedCount}/${total} Loaded`;
+            } else {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-slate-300 mr-0.5';
+                lbl.innerText = 'Data Status';
+            }
+        }
+
+        // Show a brief toast notification at top-right
+        function showToast(message, type = 'info') {
+            const colorMap = {
+                success: 'bg-emerald-600 text-white',
+                error:   'bg-red-600 text-white',
+                info:    'bg-blue-600 text-white',
+                warning: 'bg-amber-500 text-white'
+            };
+            const toast = document.createElement('div');
+            toast.className = `fixed top-16 right-4 z-[9999] px-4 py-2.5 rounded-xl shadow-lg text-sm font-bold transition-all duration-300 ${colorMap[type] || colorMap.info}`;
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-8px)';
+            toast.innerText = message;
+            document.body.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            });
+
+            // Auto-dismiss after 3.5s
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-8px)';
+                setTimeout(() => toast.remove(), 350);
+            }, 3500);
+        }
+
+        // Core fetch-and-parse function for a single CSV file
+        async function fetchCSV(filename) {
+            const response = await fetch(filename, { cache: 'no-cache' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            return parseCSVText(text);
+        }
+
+        // Main orchestrator: loads all CSVs in parallel with status tracking
+        async function autoLoadAllCSVs() {
+            // Reset all manifest states
+            CSV_MANIFEST.forEach(f => { f.loaded = false; f.rows = 0; f.error = null; });
+            renderLoadStatusModal();
+            updateHeaderLoadBadge();
+
+            const btnAutoLoad = document.getElementById('btnAutoLoad');
+            if (btnAutoLoad) {
+                btnAutoLoad.disabled = true;
+                btnAutoLoad.innerText = '⏳ Loading...';
+                btnAutoLoad.className = btnAutoLoad.className.replace('bg-emerald-600 hover:bg-emerald-700', 'bg-slate-400 cursor-not-allowed');
+            }
+
+            showToast('🔄 Fetching all CSV data files from server...', 'info');
+
+            // Load all files concurrently
+            const loadTasks = CSV_MANIFEST.map(async (manifest) => {
+                try {
+                    const parsed = await fetchCSV(manifest.filename);
+                    if (parsed.length === 0) throw new Error('0 rows parsed');
+
+                    manifest.loaded = true;
+                    manifest.rows = parsed.length;
+                    manifest.error = null;
+
+                    // Route each file to its handler
+                    if (manifest.key === 'lifecycle') {
+                        ingestLifecycleCSV(parsed);
+                    } else if (manifest.key === 'vessels') {
+                        ingestVesselsMasterCSV(parsed);
+                    } else if (manifest.key === 'berths') {
+                        ingestBerthsMasterCSV(parsed);
+                    } else if (manifest.key === 'containers') {
+                        ingestContainersMasterCSV(parsed);
+                    } else if (manifest.key === 'trucks') {
+                        ingestTrucksMasterCSV(parsed);
+                    }
+
+                    showToast(`✅ ${manifest.label}: ${parsed.length.toLocaleString()} rows`, 'success');
+                } catch (err) {
+                    manifest.loaded = false;
+                    manifest.error = err.message || 'Failed';
+                    showToast(`❌ ${manifest.label}: ${manifest.error}`, 'error');
+                }
+
+                // Re-render after each file resolves (progressive updates)
+                renderLoadStatusModal();
+                updateHeaderLoadBadge();
+            });
+
+            await Promise.allSettled(loadTasks);
+
+            // Final summary toast
+            const loadedCount = CSV_MANIFEST.filter(f => f.loaded).length;
+            const total = CSV_MANIFEST.length;
+            const requiredMissing = CSV_MANIFEST.filter(f => f.required && !f.loaded);
+
+            if (requiredMissing.length > 0) {
+                showToast(`⚠️ ${requiredMissing.length} required file(s) failed to load`, 'warning');
+            } else if (loadedCount === total) {
+                showToast(`🟢 All ${total} data files loaded successfully!`, 'success');
+            } else {
+                showToast(`⚠️ ${loadedCount}/${total} files loaded (optional files missing)`, 'warning');
+            }
+
+            if (btnAutoLoad) {
+                btnAutoLoad.disabled = false;
+                btnAutoLoad.innerText = '⚡ Auto-Load Data';
+                btnAutoLoad.className = btnAutoLoad.className.replace('bg-slate-400 cursor-not-allowed', 'bg-emerald-600 hover:bg-emerald-700');
+            }
+        }
+
+        // -------------------------------------------------------------
+        // PER-FILE INGEST HANDLERS
+        // -------------------------------------------------------------
+        function ingestLifecycleCSV(parsed) {
+            let rows = parsed.filter(row => row.event_time && row.event_time.trim() !== '');
+            if (rows.length === 0) return;
+
+            rows.sort((a, b) => {
+                const tA = new Date(a.event_time.replace(' ', 'T'));
+                const tB = new Date(b.event_time.replace(' ', 'T'));
+                return tA - tB;
+            });
+
+            csvEvents = rows;
+            playbackIndex = 0;
+
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.max = csvEvents.length - 1;
+                slider.value = 0;
+                slider.disabled = false;
+            }
+
+            setElementText('lblPlaybackStatus', `Live Playback - ${csvEvents.length.toLocaleString()} Events`);
+            document.getElementById('eventConsole').innerHTML = `
+                <div class="p-2.5 rounded-lg text-emerald-800 bg-emerald-50 text-center border border-emerald-200">
+                    🟢 <b>${csvEvents.length.toLocaleString()}</b> relational events loaded from server. Click <b>Play</b> or <b>Step</b> to start the digital twin.
+                </div>
+            `;
+            resetDigitalTwinState();
+        }
+
+        function ingestVesselsMasterCSV(parsed) {
+            vessels_master_registry = {};
+            parsed.forEach(row => {
+                if (row.vessel_id) {
+                    vessels_master_registry[row.vessel_id] = {
+                        draft: parseFloat(row.draft_design_m) || 12.0,
+                        teu_capacity: row.teu_capacity,
+                        vessel_class: row.vessel_class,
+                        shipping_line: row.shipping_line
+                    };
+                }
+            });
+        }
+
+        function ingestBerthsMasterCSV(parsed) {
+            // Enrich TERMINAL_BERTH_MAP with live dredge depths from the master file
+            parsed.forEach(row => {
+                const tid = row.terminal_id;
+                if (tid && TERMINAL_BERTH_MAP[tid]) {
+                    TERMINAL_BERTH_MAP[tid].depth = parseFloat(row.dredge_depth_m) || TERMINAL_BERTH_MAP[tid].depth;
+                }
+            });
+        }
+
+        function ingestContainersMasterCSV(parsed) {
+            // Pre-populate containers_registry with master asset data
+            parsed.forEach(row => {
+                if (row.container_id) {
+                    containers_registry[row.container_id] = {
+                        id: row.container_id,
+                        vessel_id: row.vessel_id,
+                        voyage: row.voyage_no,
+                        container_type: row.container_type,
+                        direction: row.direction,
+                        yard_block: row.assigned_yard_block,
+                        yard_bay: row.assigned_yard_bay,
+                        stage: 'MANIFEST'
+                    };
+                }
+            });
+        }
+
+        function ingestTrucksMasterCSV(parsed) {
+            // Pre-populate trucks_registry with master registration data
+            parsed.forEach(row => {
+                if (row.truck_id) {
+                    trucks_registry[row.truck_id] = {
+                        id: row.truck_id,
+                        tare_weight: row.tare_weight_kg,
+                        operator: row.operator_code,
+                        fuel: row.fuel_type,
+                        vessel_id: '',
+                        stage: 'REGISTERED'
+                    };
+                }
+            });
+        }
+
+        // -------------------------------------------------------------
+        // FIX 1: VESSELS MASTER CSV LOADER (kept as fallback manual loader)
+        // (vesselsMasterInput hidden input removed - auto-fetch replaces it)
+
+        // -------------------------------------------------------------
+        // MODALS WINDOW CONTROLS
+        // -------------------------------------------------------------
+        function openModal(id) {
+            const target = document.getElementById(id);
+            if (target) target.classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            const target = document.getElementById(id);
+            if (target) target.classList.add('hidden');
+        }
+
+        // Close Modals on Outer Backdrop Clicks
+        window.onclick = function(event) {
+            const settingsModal = document.getElementById('settingsModal');
+            const searchModal = document.getElementById('searchModal');
+            const loadStatusModal = document.getElementById('loadStatusModal');
+            const simGenModal = document.getElementById('simGenModal');
+            if (event.target === settingsModal) settingsModal.classList.add('hidden');
+            if (event.target === searchModal) searchModal.classList.add('hidden');
+            if (event.target === loadStatusModal) loadStatusModal.classList.add('hidden');
+            if (event.target === simGenModal) simGenModal.classList.add('hidden');
+        };
+
+        // -------------------------------------------------------------
+        // DOM MUTATION SAFE HELPER
+        // -------------------------------------------------------------
+        function setElementText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+
+        // -------------------------------------------------------------
+        // ROBUST REVOLUTIONARY PARSER FOR HIGH-VOLUME CSV DATA
+        // -------------------------------------------------------------
+        function parseCSVText(text) {
+            const lines = text.split(/\r?\n/);
+            let result = [];
+            if (lines.length < 2) return result;
+
+            // Clean header parser - clean hidden BOM and whitespace, convert to lowercase
+            const headers = lines[0].split(',')
+                .map(h => h.trim()
+                    .replace(/^\ufeff/, '') 
+                    .replace(/^"|"$/g, '')
+                    .toLowerCase()
+                );
+            
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line) continue;
+
+                const row = [];
+                let inQuotes = false;
+                let currentField = '';
+                for (let c = 0; c < line.length; c++) {
+                    const char = line[c];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        row.push(currentField.trim());
+                        currentField = '';
+                    } else {
+                        currentField += char;
+                    }
+                }
+                row.push(currentField.trim());
+
+                if (row.length >= headers.length) {
+                    const rowObj = {};
+                    headers.forEach((h, index) => {
+                        let val = row[index] || '';
+                        // Strip quotes and carriage return artifacts (\r)
+                        val = val.replace(/^"|"$/g, '').trim();
+                        rowObj[h] = val;
+                    });
+                    result.push(rowObj);
+                }
+            }
+            return result;
+        }
+
+        // (Manual file uploader replaced by autoLoadAllCSVs fetch engine above)
+
+        // -------------------------------------------------------------
+        // PHYSICAL STATE MUTATION RESET
+        // -------------------------------------------------------------
+        function resetDigitalTwinState() {
+            playbackIndex = 0;
+            vessels_registry = {};
+            simulated_truck_count = 0;
+            simulated_container_count = 0;
+            // FIX 4: Reset Yard D too
+            yard_inventories = { 'Yard A': 4500, 'Yard B': 3800, 'Yard C': 1200, 'Yard D': 900 };
+            // FIX 8: Reset container/truck registries
+            containers_registry = {};
+            trucks_registry = {};
+            // FIX 5: Reset anchorage/cargo stats
+            anchor_wait_sum = 0;
+            anchor_wait_count = 0;
+            cargo_hours_sum = 0;
+            cargo_hours_count = 0;
+
+            // Reset terminal active slots
+            Object.keys(TERMINAL_BERTH_MAP).forEach(k => {
+                TERMINAL_BERTH_MAP[k].activeShips.fill(null);
+            });
+
+            // Reset Charts & Logs
+            timeLogLabels.length = 0;
+            queueMetrics.length = 0;
+            Object.keys(shippingLineDistribution).forEach(k => {
+                shippingLineDistribution[k] = 0;
+            });
+
+            document.getElementById('timelineSlider').value = 0;
+            setElementText('lblEntryGate', "Inactive");
+            setElementText('lblExitNorth', "Inactive");
+            setElementText('lblExitSouth', "Inactive");
+
+            // Reset alert engine state
+            alertPaused = false;
+            pendingResume = false;
+            firedAlerts.clear();
+            dismissAlert();
+
+            updateUIComponents();
+            refreshCharts();
+        }
+
+        // -------------------------------------------------------------
+        // ALERT ENGINE — detects blocking conditions, pauses playback
+        // (alertPaused, pendingResume, firedAlerts declared at top of script)
+        // -------------------------------------------------------------
+
+        // Conditions that trigger an alert pause — tuned to actual CSV data patterns
+        const ALERT_RULES = [
+            {
+                id: 'CONGESTION',
+                test: (event) => event.delay_reason === 'CONGESTION',
+                severity: 'congestion',
+                icon: '🚨',
+                title: 'Anchorage Congestion Hold',
+                message: (e) => `Vessel ${e.vessel_id} (${e.shipping_line} — ${e.vessel_class}) is waiting at outer anchorage due to berth congestion. No slot available at ${e.terminal}. Estimated anchorage wait: ${parseFloat(e.anchorage_wait_hours || 0).toFixed(1)}h.`
+            },
+            {
+                id: 'TIDE_HOLD',
+                test: (event) => event.delay_reason === 'TIDE_HOLD',
+                severity: 'tide',
+                icon: '🌊',
+                title: 'Tide Hold — UKC Safety Check',
+                message: (e) => `Vessel ${e.vessel_id} is being held at berth. Tide penalty assessed before unberthing — Under-Keel Clearance margin insufficient at current tide ${parseFloat(e.tide_level || 0).toFixed(2)}m. Waiting for rising tide window.`
+            },
+            {
+                id: 'CUSTOMS_OOC',
+                test: (event) => event.substage === 'CONTAINER_IMPORT_OOC_START',
+                severity: 'customs',
+                icon: '📋',
+                title: 'Import Customs Assessment — OOC Pending',
+                message: (e) => `Container ${e.entity_id} has entered Customs OOC (Out-of-Charge) assessment. Bill of Entry filed — clearance pending from ICEGATE. Consignee pickup is blocked until assessment is resolved.`
+            },
+            {
+                id: 'LEO_GREEN',
+                //test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO' && (event.status_details || '').includes('GREEN_CHANNEL'),
+                test: (event) => event.substage === 'CONTAINER_CUSTOMS_LEO1' && (event.status_details || '').includes('GREEN_CHANNEL1'),
+                severity: 'end',
+                icon: '✅',
+                title: 'Customs LEO — Green Channel Cleared',
+                message: (e) => `Container ${e.entity_id} received Let Export Order (LEO) via GREEN_CHANNEL. Customs RMS cleared for direct loading — no examination required.`
+            }
+        ];
+
+        // Fired-alert tracking: deduped per rule+entity (declared at top of script)
+
+        function checkEventForAlerts(event) {
+            for (const rule of ALERT_RULES) {
+                if (!rule.test(event)) continue;
+                // Build a dedupe key: rule id + entity id
+                const dedupeKey = `${rule.id}::${event.entity_id}`;
+                if (firedAlerts.has(dedupeKey)) continue;
+                firedAlerts.add(dedupeKey);
+
+                return {
+                    severity: rule.severity,
+                    icon: rule.icon,
+                    title: rule.title,
+                    message: rule.message(event)
+                };
+            }
+            return null;
+        }
+
+        function showAlertBanner(alert) {
+            const banner      = document.getElementById('alertBanner');
+            const inner       = document.getElementById('alertBannerInner');
+            const iconEl      = document.getElementById('alertIcon');
+            const titleEl     = document.getElementById('alertTitle');
+            const messageEl   = document.getElementById('alertMessage');
+            const continueBtn = document.getElementById('btnContinue');
+            if (!banner || !inner) return;
+
+            // Apply severity theme
+            inner.className = `flex items-center gap-3 px-4 py-2.5 rounded-b-xl border-x border-b shadow-md text-sm font-semibold alert-${alert.severity}`;
+            continueBtn.className = `shrink-0 px-3 py-1 rounded-lg text-[11px] font-extrabold border transition alert-btn-${alert.severity}`;
+
+            iconEl.innerText    = alert.icon;
+            titleEl.innerText   = alert.title;
+            messageEl.innerText = alert.message;
+
+            banner.classList.remove('hidden');
+        }
+
+        function dismissAlert() {
+            const banner = document.getElementById('alertBanner');
+            if (banner) banner.classList.add('hidden');
+        }
+
+        function continuePlayback() {
+            dismissAlert();
+            alertPaused = false;
+            // Resume auto-play if it was running before
+            if (pendingResume) {
+                pendingResume = false;
+                const btn = document.getElementById('btnPlay');
+                if (btn) {
+                    simLoop = setInterval(stepPlayback, 40);
+                    btn.innerText = '⏸ Pause';
+                    btn.className = 'btn btn-ghost';
+                    btn.style.background = '#fffbeb'; btn.style.color = '#b45309'; btn.style.borderColor = '#fcd34d';
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // SEQUENTIAL TIMESTEP ITERATOR (alert-aware)
+        // -------------------------------------------------------------
+        function stepPlayback() {
+            if (csvEvents.length === 0) return;
+            if (alertPaused) return; // blocked by an active alert
+
+            if (playbackIndex >= csvEvents.length) {
+                // End of timeline
+                if (simLoop) {
+                    clearInterval(simLoop);
+                    simLoop = null;
+                    const btn = document.getElementById('btnPlay');
+                    if (btn) btn.innerText = '▶ Play';
+                    btn.className = 'btn btn-primary';
+                    btn.style.background=''; btn.style.color=''; btn.style.borderColor='';
+                }
+                appendLocalConsoleLog("SYSTEM", "END_OF_STREAM", "PORT_SYS", "Playback sequence completed. All simulation events processed.", csvEvents[csvEvents.length - 1] ? csvEvents[csvEvents.length - 1].event_time : "");
+                // Show end-of-stream banner
+                showAlertBanner({
+                    severity: 'end',
+                    icon: '✅',
+                    title: 'Simulation Complete',
+                    message: `All ${csvEvents.length.toLocaleString()} events processed. Restart to replay the full simulation.`
+                });
+                return;
+            }
+
+            const overrideSpeed = document.getElementById('overrideSpeed');
+            const cycleSteps = overrideSpeed ? parseInt(overrideSpeed.value) : 1;
+
+            for (let i = 0; i < cycleSteps; i++) {
+                if (playbackIndex >= csvEvents.length) break;
+
+                const event = csvEvents[playbackIndex];
+                evaluateEventStateMutations(event);
+
+                // Check this event for blocking alert conditions
+                const alert = checkEventForAlerts(event);
+                if (alert) {
+                    alertPaused = true;
+                    // Pause auto-play loop if running
+                    if (simLoop) {
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        pendingResume = true;
+                        const btn = document.getElementById('btnPlay');
+                        if (btn) {
+                            btn.innerText = '▶ Play';
+                            btn.className = 'btn btn-primary';
+                            btn.style.background=''; btn.style.color=''; btn.style.borderColor='';
+                        }
+                    }
+                    playbackIndex++;
+                    showAlertBanner(alert);
+                    updateUIComponents();
+                    // Sync slider
+                    const slider = document.getElementById('timelineSlider');
+                    if (slider) slider.value = playbackIndex;
+                    return; // stop this cycle, wait for user
+                }
+
+                playbackIndex++;
+            }
+
+            // Sync slider
+            const slider = document.getElementById('timelineSlider');
+            if (slider) slider.value = playbackIndex;
+
+            updateUIComponents();
+        }
+
+        // -------------------------------------------------------------
+        // STATE RESOLVER - PARSES ACTUAL CSV COLUMNS & MAPS THEM
+        // -------------------------------------------------------------
+        function evaluateEventStateMutations(event) {
+            if (!event) return;
+            const time = event.event_time || '';
+            const vId = event.vessel_id || '';
+            const line = event.shipping_line || '';
+            const vClass = event.vessel_class || '';
+            const cap = event.teu_capacity || '';
+            const impTeu = parseInt(event.import_teu) || 0;
+            const expTeu = parseInt(event.export_teu) || 0;
+            const cType = event.container_type || '';
+            const term = event.terminal || '';
+            const berth = event.berth || '';
+            const stage = event.stage || '';
+            const substage = event.substage || '';
+            const cranes = event.cranes_assigned || '0';
+            const tide = parseFloat(event.tide_level) || 0.0;
+            const delay = event.delay_reason || '';
+            const entityType = event.entity_type || '';
+            const entityId = event.entity_id || '';
+            // FIX 3: Use actual status_details from CSV instead of computed description
+            const statusDetails = event.status_details || '';
+            // FIX 5: Read anchorage and cargo hours
+            const anchorWait = parseFloat(event.anchorage_wait_hours) || 0;
+            const cargoHrs = parseFloat(event.cargo_hours) || 0;
+            // FIX 7: voyage number
+            const voyageNo = event.voyage_no || '';
+
+            // Track unique shipping line occurrences in telemetry
+            if (shippingLineDistribution[line] !== undefined) {
+                shippingLineDistribution[line] += 1;
+            }
+
+            // FIX 2: Handle CONTAINER entity events
+            if (entityType === 'CONTAINER') {
+                if (!containers_registry[entityId]) {
+                    containers_registry[entityId] = {
+                        id: entityId,
+                        vessel_id: vId,
+                        voyage: voyageNo,
+                        container_type: cType,
+                        stage: substage,
+                        terminal: term
+                    };
+                } else {
+                    containers_registry[entityId].stage = substage;
+                }
+                if (substage === 'CONTAINER_DISCHARGED' || substage === 'CONTAINER_LOADED') {
+                    simulated_container_count++;
+                }
+                appendLocalConsoleLog(substage, entityType, entityId, statusDetails || `Container ${entityId}: ${substage}`, time);
+                return;
+            }
+
+            // FIX 2 & 6: Handle TRUCK entity events with real plate numbers and gate pillar updates
+            if (entityType === 'TRUCK') {
+                if (!trucks_registry[entityId]) {
+                    trucks_registry[entityId] = { id: entityId, stage: substage, vessel_id: vId };
+                } else {
+                    trucks_registry[entityId].stage = substage;
+                }
+                // FIX 6: Real truck gate events update the gate pillar displays
+                if (substage === 'TRUCK_CPP_GATE_IN' || substage === 'TRUCK_TERMINAL_GATE_IN' || substage === 'TRUCK_IMPORT_GATE_IN') {
+                    simulated_truck_count++;
+                    setElementText('lblEntryGate', `${entityId} (Entry)`);
+                } else if (substage === 'TRUCK_TERMINAL_GATE_OUT') {
+                    setElementText('lblExitNorth', `${entityId} (Cleared)`);
+                } else if (substage === 'TRUCK_IMPORT_GATE_OUT') {
+                    setElementText('lblExitSouth', `${entityId} (Cleared)`);
+                }
+                appendLocalConsoleLog(substage, entityType, entityId, statusDetails || `Truck ${entityId}: ${substage}`, time);
+                return;
+            }
+
+            // --- VESSEL entity processing below ---
+
+            // Initialize vessel state
+            if (vId && !vessels_registry[vId]) {
+                // FIX 1: Look up draft from vessels_master_registry if available
+                const masterDraft = vessels_master_registry[vId] ? vessels_master_registry[vId].draft : null;
+                vessels_registry[vId] = {
+                    id: vId,
+                    line: line,
+                    class: vClass,
+                    capacity: cap,
+                    importTeu: impTeu,
+                    exportTeu: expTeu,
+                    containerType: cType,
+                    terminal: term,
+                    berth: null,
+                    // FIX 7: Store voyage number
+                    voyage: voyageNo,
+                    stage: "SCHEDULED",
+                    tide: tide,
+                    cranes: 0,
+                    // FIX 1: draft from master CSV or fallback to vessel class defaults
+                    draft: masterDraft,
+                    // Vessel Tracker: timestamp of first arrival into each lifecycle stage
+                    stageTimestamps: {}
+                };
+            }
+
+            const vessel = vessels_registry[vId];
+            if (vessel) {
+                vessel.tide = tide;
+                vessel.cranes = cranes;
+
+                // FIX 5: Accumulate anchorage and cargo stats on ETA_RECEIVED (once per vessel)
+                if (substage === "ETA_RECEIVED") {
+                    if (anchorWait > 0) { anchor_wait_sum += anchorWait; anchor_wait_count++; }
+                    if (cargoHrs > 0) { cargo_hours_sum += cargoHrs; cargo_hours_count++; }
+                }
+
+                // Stage Transitions
+                if (substage === "ETA_RECEIVED") {
+                    markVesselStage(vessel, "SCHEDULED", time);
+                } else if (substage === "ANCHORAGE_ENTERED") {
+                    markVesselStage(vessel, "ANCHORED", time);
+                } else if (substage === "ANCHORAGE_EXITED") {
+                    markVesselStage(vessel, "TRANSIT", time);
+                } else if (substage === "BERTHED") {
+                    markVesselStage(vessel, "MOORED", time);
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                } else if (substage === "DISCHARGE_STARTED") {
+                    markVesselStage(vessel, "DISCHARGING", time);
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                    simulateYardDeposit(cType, impTeu);
+                } else if (substage === "DISCHARGE_COMPLETED") {
+                    // FIX 9: DISCHARGING_DONE was missing from stage_done counts
+                    markVesselStage(vessel, "DISCHARGING_DONE", time);
+                } else if (substage === "LOAD_STARTED") {
+                    markVesselStage(vessel, "LOADING", time);
+                    vessel.berth = berth;
+                    vessel.terminal = term;
+                    simulateYardWithdrawal(cType, expTeu);
+                } else if (substage === "LOAD_COMPLETED") {
+                    // FIX 9: LOADING_DONE was missing from stage_done counts
+                    markVesselStage(vessel, "LOADING_DONE", time);
+                } else if (substage === "UNBERTHED") {
+                    markVesselStage(vessel, "UNBERTHED", time);
+                    vessel.berth = null;
+                } else if (substage === "SAILED") {
+                    markVesselStage(vessel, "SAILED", time);
+                    vessel.berth = null;
+                }
+            }
+
+            // FIX 3: Use actual status_details from the CSV row
+            const desc = statusDetails || `Vessel ${vId} (${line} - ${vClass}) stage: ${stage} - ${substage}.${berth ? ' Berth: ' + berth + ' (' + term + ').' : ''}${cranes && cranes !== '0' ? ' Cranes: ' + cranes + '.' : ''}${delay ? ' Delay: ' + delay + '.' : ''}`;
+            appendLocalConsoleLog(substage, "VESSEL", vId, desc, time);
+        }
+
+        // -------------------------------------------------------------
+        // AUXILIARY STATE SOLVING UTILITIES
+        // -------------------------------------------------------------
+        // Advances a vessel to a new lifecycle stage and records when it got there.
+        // Powers the Vessel Tracker stage matrix (Vessel × Stage -> timestamp reached).
+        function markVesselStage(vessel, stageName, time) {
+            vessel.stage = stageName;
+            if (!vessel.stageTimestamps) vessel.stageTimestamps = {};
+            vessel.stageTimestamps[stageName] = time;
+        }
+
+        function simulateYardDeposit(cType, teus) {
+            const increment = Math.round(teus / 10);
+            simulated_container_count += teus;
+            if (cType === 'REEFER_CARGO') {
+                // FIX 4: Split reefer cargo between Yard C and Yard D
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard C'] += increment;
+                } else {
+                    yard_inventories['Yard D'] += increment;
+                }
+            } else {
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard A'] += increment;
+                } else {
+                    yard_inventories['Yard B'] += increment;
+                }
+            }
+        }
+
+        function simulateYardWithdrawal(cType, teus) {
+            const decrement = Math.round(teus / 10);
+            if (cType === 'REEFER_CARGO') {
+                // FIX 4: Split reefer withdrawal between Yard C and Yard D
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard C'] = Math.max(0, yard_inventories['Yard C'] - decrement);
+                } else {
+                    yard_inventories['Yard D'] = Math.max(0, yard_inventories['Yard D'] - decrement);
+                }
+            } else {
+                if (Math.random() < 0.5) {
+                    yard_inventories['Yard A'] = Math.max(0, yard_inventories['Yard A'] - decrement);
+                } else {
+                    yard_inventories['Yard B'] = Math.max(0, yard_inventories['Yard B'] - decrement);
+                }
+            }
+        }
+
+        // FIX 6: simulateGateActivity removed - real TRUCK entity events now handle gate pillar updates directly
+
+        // -------------------------------------------------------------
+        // PLAYBACK UNIFIED DISPLAY SOLVER
+        // -------------------------------------------------------------
+        function updateUIComponents() {
+            if (csvEvents.length === 0) return;
+            const currentEvent = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
+            if (!currentEvent) return;
+
+            // Global Metadata Sync
+            setElementText('globalClock', currentEvent.event_time || '');
+            setElementText('tideGauge', (parseFloat(currentEvent.tide_level) || 0.0).toFixed(2) + "m");
+            setElementText('lblTimelineProgress', `${playbackIndex.toLocaleString()} / ${csvEvents.length.toLocaleString()}`);
+
+            // Counter KPIs
+            const totalShips = Object.keys(vessels_registry).length;
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in moored/operating count
+            const mooredShips = Object.values(vessels_registry).filter(v => 
+                v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || 
+                v.stage === 'DONE' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE'
+            ).length;
+            const sailedShips = Object.values(vessels_registry).filter(v => v.stage === 'SAILED').length;
+            
+            // Total Active Relational Entities in dashboard registry
+            const totalEntities = totalShips + simulated_container_count + simulated_truck_count;
+
+            setElementText('kpiScheduled', playbackIndex.toLocaleString());
+            setElementText('kpiMoored', mooredShips);
+            setElementText('kpiSailed', sailedShips);
+            setElementText('kpiSync', totalEntities.toLocaleString());
+
+            // Pillars
+            const scheduledCount = Object.values(vessels_registry).filter(v => v.stage === 'SCHEDULED').length;
+            const anchoredCount = Object.values(vessels_registry).filter(v => v.stage === 'ANCHORED').length;
+            setElementText('lblShipScheduled', scheduledCount);
+            setElementText('lblShipAnchored', anchoredCount);
+            setElementText('lblShipMoored', mooredShips);
+
+            setElementText('stage_eta', scheduledCount);
+            setElementText('stage_anch', anchoredCount);
+            setElementText('stage_moored', Object.values(vessels_registry).filter(v => v.stage === 'MOORED').length);
+            setElementText('stage_ops', Object.values(vessels_registry).filter(v => v.stage === 'DISCHARGING' || v.stage === 'LOADING').length);
+            // FIX 9: Include DISCHARGING_DONE and LOADING_DONE in "Done" stage count
+            setElementText('stage_done', Object.values(vessels_registry).filter(v => v.stage === 'DONE' || v.stage === 'UNBERTHED' || v.stage === 'DISCHARGING_DONE' || v.stage === 'LOADING_DONE').length);
+            setElementText('stage_sailed', sailedShips);
+
+            setElementText('vesselsInPort', `${mooredShips} In Port`);
+
+            // Yard Allocations
+            setElementText('lblYardADry', `${yard_inventories['Yard A'].toLocaleString()} TEU`);
+            setElementText('lblYardBDry', `${yard_inventories['Yard B'].toLocaleString()} TEU`);
+            setElementText('lblYardCReefer', `${yard_inventories['Yard C'].toLocaleString()} TEU`);
+            // FIX 4: Update Yard D
+            setElementText('lblYardDReefer', `${yard_inventories['Yard D'].toLocaleString()} TEU`);
+
+            // FIX 5: Update anchorage wait and cargo hours averages
+            if (anchor_wait_count > 0) {
+                setElementText('lblAvgAnchorWait', `${(anchor_wait_sum / anchor_wait_count).toFixed(1)} h`);
+            }
+            if (cargo_hours_count > 0) {
+                setElementText('lblAvgCargoHours', `${(cargo_hours_sum / cargo_hours_count).toFixed(1)} h`);
+            }
+
+            // Active Queue lengths
+            const queueInbound = Math.round(simulated_truck_count % 11);
+            setElementText('truckQueue', `${queueInbound} Active`);
+
+            // Append Chart Trackers - Safe Substring parsing
+            const timeStr = currentEvent.event_time && currentEvent.event_time.length >= 16 ? currentEvent.event_time.substring(11, 16) : '00:00';
+            if (timeLogLabels.length === 0 || timeLogLabels[timeLogLabels.length - 1] !== timeStr) {
+                timeLogLabels.push(timeStr);
+                queueMetrics.push(queueInbound);
+                if (timeLogLabels.length > 15) {
+                    timeLogLabels.shift();
+                    queueMetrics.shift();
+                }
+            }
+
+            renderBerthMapGrid();
+            refreshCharts();
+            maybeRefreshVesselMatrix();
+        }
+
+        function renderBerthMapGrid() {
+            const grid = document.getElementById('berthLayoutContainer');
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            const filterTerminalEl = document.getElementById('filterTerminal');
+            const filterTerminal = filterTerminalEl ? filterTerminalEl.value : 'ALL';
+
+            Object.entries(TERMINAL_BERTH_MAP).forEach(([termName, termObj]) => {
+                if (filterTerminal !== 'ALL' && filterTerminal !== termName) return;
+
+                termObj.berths.forEach((bName) => {
+                    // Direct solver: dynamic lookup into vessels_registry
+                    const ship = Object.values(vessels_registry).find(v => 
+                        v.berth === bName && 
+                        (v.stage === 'MOORED' || v.stage === 'DISCHARGING' || v.stage === 'LOADING' || v.stage === 'DONE')
+                    );
+                    const isOccupied = !!ship;
+
+                    // Compute dynamic depth based on current clock tide values
+                    let activeTide = 0;
+                    if (csvEvents.length > 0) {
+                        const currentEvent = csvEvents[Math.min(playbackIndex, csvEvents.length - 1)];
+                        if (currentEvent) {
+                            activeTide = parseFloat(currentEvent.tide_level) || 0;
+                        }
+                    }
+                    const liveWaterDepth = termObj.depth + activeTide;
+
+                    const berthCard = document.createElement('div');
+                    berthCard.className = `p-3 border rounded-xl shadow-xs transition duration-300 flex flex-col justify-between ${isOccupied ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`;
+
+                    let cardHTML = `
+                        <div>
+                            <span class="text-[10px] uppercase font-black text-slate-400 block leading-none">${termName}</span>
+                            <span class="text-[14px] font-bold block mt-1 leading-none ${isOccupied ? 'text-blue-700' : 'text-slate-700'}">${bName}</span>
+                            <div class="text-[11px] text-slate-500 mt-2">Dredge: ${termObj.depth}m</div>
+                            <div class="text-[11px] font-bold text-slate-800">Dynamic: ${liveWaterDepth.toFixed(1)}m</div>
+                        </div>
+                    `;
+
+                    if (isOccupied && ship) {
+                        // FIX 1: Look up real draft from vessels_master_registry
+                        const masterInfo = vessels_master_registry[ship.id];
+                        const displayDraft = ship.draft ? ship.draft.toFixed(1) : (masterInfo ? masterInfo.draft.toFixed(1) : '12.0');
+                        cardHTML += `
+                            <div class="mt-2.5 pt-2.5 border-t border-slate-200 text-[11px] text-slate-600 space-y-1">
+                                <div class="font-extrabold text-blue-800 truncate" style="font-size:14px;">🚢 ${ship.id} (${ship.line})</div>
+                                <div>Draft: <b>${displayDraft}m</b></div>
+                                <span class="inline-block mt-1 px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[11px] uppercase leading-none">${ship.stage}</span>
+                            </div>
+                        `;
+                    } else {
+                        cardHTML += `
+                            <div class="mt-2.5 text-center py-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-white border border-slate-100 rounded-md">
+                                Available
+                            </div>
+                        `;
+                    }
+
+                    berthCard.innerHTML = cardHTML;
+                    grid.appendChild(berthCard);
+                });
+            });
+        }
+
+        // -------------------------------------------------------------
+        // UNIFIED PLAYBACK LOGGER (Crisp Legibility Highlight Blocks)
+        // -------------------------------------------------------------
+        function appendLocalConsoleLog(type, domain, entity, desc, timestamp) {
+            const consoleBox = document.getElementById('eventConsole');
+            if (!consoleBox) return;
+
+            const styleColorMap = {
+                'ETA_RECEIVED': 'text-blue-900 bg-blue-50 border-blue-200',
+                'ANCHORAGE_ENTERED': 'text-blue-900 bg-blue-100/60 border-blue-200',
+                'ANCHORAGE_EXITED': 'text-indigo-900 bg-indigo-50/50 border-indigo-200',
+                'BERTHED': 'text-indigo-900 bg-indigo-50 border-indigo-200',
+                'DISCHARGE_STARTED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'DISCHARGE_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'LOAD_STARTED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'LOAD_COMPLETED': 'text-emerald-900 bg-emerald-100 border-emerald-200',
+                'SAILED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'UNBERTHED': 'text-slate-800 bg-slate-50 border-slate-200',
+                'BUNKERING_STARTED': 'text-purple-900 bg-purple-50 border-purple-200',
+                'BUNKERING_COMPLETED': 'text-teal-900 bg-teal-50 border-teal-200',
+                'PROGRESS_20': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_40': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_60': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                'PROGRESS_80': 'text-blue-800 bg-blue-50/40 border-blue-100',
+                // FIX 2: Container substage colors
+                'CONTAINER_BOOKED': 'text-sky-900 bg-sky-50 border-sky-200',
+                'CONTAINER_SB_FILED': 'text-sky-900 bg-sky-100 border-sky-200',
+                'CONTAINER_CUSTOMS_LEO': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_YARD_STACK_START': 'text-slate-800 bg-slate-50 border-slate-200',
+                'CONTAINER_YARD_STACKED': 'text-slate-900 bg-slate-100 border-slate-200',
+                'CONTAINER_LOADED': 'text-emerald-900 bg-emerald-50 border-emerald-200',
+                'CONTAINER_DISCHARGED': 'text-cyan-900 bg-cyan-50 border-cyan-200',
+                'CONTAINER_IMPORT_OOC_START': 'text-violet-900 bg-violet-50 border-violet-200',
+                'CONTAINER_CUSTOMS_OOC': 'text-violet-900 bg-violet-100 border-violet-200',
+                'CONTAINER_IMPORT_DISPATCH': 'text-teal-900 bg-teal-50 border-teal-200',
+                // FIX 2: Truck substage colors
+                'TRUCK_CPP_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_CPP_GATE_OUT': 'text-amber-900 bg-amber-100 border-amber-200',
+                'TRUCK_TERMINAL_PRE_GATE': 'text-orange-900 bg-orange-50 border-orange-200',
+                'TRUCK_TERMINAL_GATE_IN': 'text-orange-900 bg-orange-100 border-orange-200',
+                'TRUCK_TERMINAL_GATE_OUT': 'text-orange-800 bg-orange-50/60 border-orange-100',
+                'TRUCK_IMPORT_GATE_IN': 'text-amber-900 bg-amber-50 border-amber-200',
+                'TRUCK_IMPORT_GATE_OUT': 'text-amber-800 bg-amber-50/60 border-amber-100',
+            };
+
+            const blockClass = styleColorMap[type] || 'text-slate-800 bg-slate-50/60 border-slate-200';
+            const logTime = (timestamp && timestamp.length >= 19) ? timestamp.substring(11, 19) : '00:00:00';
+
+            const logLine = document.createElement('div');
+            logLine.innerHTML = `
+                <div class="flex items-start gap-2.5 p-3 border rounded-xl ${blockClass} shadow-2xs leading-relaxed" style="font-size:13px;margin-bottom:6px;">
+                    <span class="text-slate-400 font-mono font-bold shrink-0" style="font-size:13.5px;">${logTime}</span>
+                    <div class="flex-grow">
+                        <span class="font-extrabold tracking-wide uppercase mr-1" style="font-size:12px;">[${type}]</span>
+                        <span class="font-mono font-bold text-slate-950" style="font-size:14px;">(${entity})</span>
+                        <p class="text-slate-800 mt-0.5 font-medium" style="font-size:13px;">${desc}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Remove helper initial note if present
+            if (consoleBox.children.length === 1 && consoleBox.children[0].innerText.includes('//')) {
+                consoleBox.innerHTML = '';
+            }
+
+            // Prepend so newest entry appears at the top
+            consoleBox.insertBefore(logLine, consoleBox.firstChild);
+
+            // Cap log entries at 300 to prevent DOM bloat
+            while (consoleBox.children.length > 300) {
+                consoleBox.removeChild(consoleBox.lastChild);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // SAFE NATIVE CHART.JS PLOTS
+        // -------------------------------------------------------------
+        let scaleChart = null;
+        let distChart = null;
+
+        function initializeTelemetryCharts() {
+            Chart.defaults.color = '#64748b';
+            Chart.defaults.font.family = 'Plus Jakarta Sans, sans-serif';
+
+            // Chart 1: Pre-Gate Queue Length Tracking
+            const scaleCtxEl = document.getElementById('bottleneckChart');
+            if (scaleCtxEl) {
+                const scaleCtx = scaleCtxEl.getContext('2d');
+                scaleChart = new Chart(scaleCtx, {
+                    type: 'line',
+                    data: {
+                        labels: timeLogLabels,
+                        datasets: [{
+                            label: 'Gated Trucks Inside Terminals',
+                            data: queueMetrics,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 1.5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
+                            x: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                        }
+                    }
+                });
+            }
+
+            // Chart 2: Telemetry Shipping Line Distribution
+            const distCtxEl = document.getElementById('customsDistributionChart');
+            if (distCtxEl) {
+                const distCtx = distCtxEl.getContext('2d');
+                distChart = new Chart(distCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ["HAPAG", "ONE", "MSC", "CMA CGM", "MAERSK", "EVERGREEN"],
+                        datasets: [{
+                            label: 'Log Transactions Count',
+                            data: [0, 0, 0, 0, 0, 0],
+                            backgroundColor: ['#10b981', '#2563eb', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 9 } } },
+                            x: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function refreshCharts() {
+            if (scaleChart) {
+                scaleChart.update();
+            }
+            if (distChart) {
+                distChart.data.datasets[0].data = [
+                    shippingLineDistribution['HAPAG'] || 0,
+                    shippingLineDistribution['ONE'] || 0,
+                    shippingLineDistribution['MSC'] || 0,
+                    shippingLineDistribution['CMA CGM'] || 0,
+                    shippingLineDistribution['MAERSK'] || 0,
+                    shippingLineDistribution['EVERGREEN'] || 0
+                ];
+                distChart.update();
+            }
+        }
+
+        // -------------------------------------------------------------
+        // UNIFIED PLAYBACK SEARCH TRACEABILITY ENGINE
+        // -------------------------------------------------------------
+        function traceEntity() {
+            const txtQuery = document.getElementById('txtQuery');
+            const rawQuery = txtQuery ? txtQuery.value.trim().toUpperCase() : '';
+            const resultBox = document.getElementById('searchResult');
+            if (!resultBox) return;
+            resultBox.classList.remove('hidden');
+            resultBox.innerHTML = '';
+
+            if (!rawQuery) {
+                resultBox.innerHTML = `<span class="text-red-500 font-semibold">Please enter a valid ID (e.g., V0001, JNPU-EX-V0001-001, MH-46-TRK-0001).</span>`;
+                return;
+            }
+
+            // Vessel check
+            const vMatch = vessels_registry[rawQuery];
+            if (vMatch) {
+                // FIX 1: Show draft from vessels_master if loaded, else from vessel class
+                const draftVal = vMatch.draft ? vMatch.draft.toFixed(1) : (vessels_master_registry[rawQuery] ? vessels_master_registry[rawQuery].draft.toFixed(1) : '12.0');
+                resultBox.innerHTML = `
+                    <div class="font-bold text-blue-800 bg-blue-50 p-2.5 rounded-lg border border-blue-100">🚢 Vessel: ${vMatch.id} (${vMatch.line})</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-sm">
+                        <div>Vessel Class: <b>${vMatch.class}</b></div>
+                        <div>Design Capacity: <b>${vMatch.capacity} TEU</b></div>
+                        <div>Assigned Port: <b>Terminal ${vMatch.terminal} / Berth ${vMatch.berth || 'Unscheduled'}</b></div>
+                        <div>Design Draft: <b>${draftVal}m</b></div>
+                        <div>Voyage No: <b>${vMatch.voyage || 'N/A'}</b></div>
+                        <div class="border-t border-slate-100 pt-1.5 mt-1">Cargo Planned: 📥 ${vMatch.importTeu} Imports | 📤 ${vMatch.exportTeu} Exports</div>
+                        <div>Current Playback State: <span class="px-2.5 py-1 bg-blue-100 text-blue-800 rounded font-bold uppercase text-[11px]">${vMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            // FIX 8: Container ID lookup
+            const cMatch = containers_registry[rawQuery];
+            if (cMatch) {
+                resultBox.innerHTML = `
+                    <div class="font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-100">📦 Container: ${cMatch.id}</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-sm">
+                        <div>Vessel: <b>${cMatch.vessel_id}</b> | Voyage: <b>${cMatch.voyage}</b></div>
+                        <div>Type: <b>${cMatch.container_type}</b> | Terminal: <b>${cMatch.terminal || 'N/A'}</b></div>
+                        <div>Current Stage: <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded font-bold uppercase text-[11px]">${cMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            // FIX 8: Truck ID lookup (normalize input for partial match)
+            const tMatch = trucks_registry[rawQuery];
+            if (tMatch) {
+                resultBox.innerHTML = `
+                    <div class="font-bold text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-100">🚛 Truck: ${tMatch.id}</div>
+                    <div class="mt-2 space-y-1 text-slate-700 text-sm">
+                        <div>Last Vessel: <b>${tMatch.vessel_id}</b></div>
+                        <div>Last Stage: <span class="px-2.5 py-1 bg-amber-100 text-amber-800 rounded font-bold uppercase text-[11px]">${tMatch.stage}</span></div>
+                    </div>
+                `;
+                return;
+            }
+
+            resultBox.innerHTML = `<span class="text-red-500 font-bold">❌ ID not found. Try vessel IDs (V0001–V0050), container IDs (JNPU-EX-V0001-001), or truck plates (MH-46-TRK-0001).</span>`;
+        }
+
+        // -------------------------------------------------------------
+        // SAFE EVENT BINDING INITIALIZER
+        // -------------------------------------------------------------
+        function initializeEvents() {
+            const btnStep = document.getElementById('btnStep');
+            if (btnStep) {
+                btnStep.onclick = () => {
+                    // Manual step always clears alert pause — user explicitly advances
+                    if (alertPaused) {
+                        alertPaused = false;
+                        dismissAlert();
+                    }
+                    stepPlayback();
+                };
+            }
+
+            const btnPlay = document.getElementById('btnPlay');
+            if (btnPlay) {
+                btnPlay.onclick = function() {
+                    if (csvEvents.length === 0) {
+                        alert("Please load a simulated vessel_lifecycle_simulation.csv file first.");
+                        return;
+                    }
+                    if (simLoop) {
+                        // Pause
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        pendingResume = false;
+                        this.innerText = '▶ Play';
+                        this.className = 'btn btn-primary';
+                        this.style.background=''; this.style.color=''; this.style.borderColor='';
+                    } else {
+                        // Play — if alert is shown, dismiss it first
+                        if (alertPaused) {
+                            alertPaused = false;
+                            dismissAlert();
+                        }
+                        simLoop = setInterval(stepPlayback, 40);
+                        this.innerText = '⏸ Pause';
+                        this.className = 'btn btn-ghost';
+                        this.style.background = '#fffbeb'; this.style.color = '#b45309'; this.style.borderColor = '#fcd34d';
+                    }
+                };
+            }
+
+            const btnReset = document.getElementById('btnReset');
+            if (btnReset) {
+                btnReset.onclick = () => {
+                    if (simLoop) {
+                        clearInterval(simLoop);
+                        simLoop = null;
+                        const btnPlayEl = document.getElementById('btnPlay');
+                        if (btnPlayEl) {
+                            btnPlayEl.innerText = '▶ Play';
+                            btnPlayEl.className = 'btn btn-primary';
+                            btnPlayEl.style.background=''; btnPlayEl.style.color=''; btnPlayEl.style.borderColor='';
+                        }
+                    }
+                    resetDigitalTwinState();
+                };
+            }
+
+            const filterTerminal = document.getElementById('filterTerminal');
+            if (filterTerminal) {
+                filterTerminal.onchange = () => renderBerthMapGrid();
+            }
+
+            const overrideSpeed = document.getElementById('overrideSpeed');
+            if (overrideSpeed) {
+                overrideSpeed.oninput = function() {
+                    setElementText('lblPlaybackSpeed', `${this.value} Events / Cycle`);
+                };
+            }
+
+            // Timeline Seeker slider scrubbing logic
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.oninput = function() {
+                    const targetIndex = parseInt(this.value);
+                    // Dismiss any active alert when scrubbing
+                    alertPaused = false;
+                    pendingResume = false;
+                    dismissAlert();
+                    if (targetIndex < playbackIndex) {
+                        // Sliding backwards: reset states and replay to point
+                        resetDigitalTwinState();
+                        document.getElementById('eventConsole').innerHTML = '';
+                        while (playbackIndex < targetIndex) {
+                            evaluateEventStateMutations(csvEvents[playbackIndex]);
+                            playbackIndex++;
+                        }
+                    } else {
+                        // Sliding forwards: incremental state evaluation
+                        while (playbackIndex < targetIndex) {
+                            evaluateEventStateMutations(csvEvents[playbackIndex]);
+                            playbackIndex++;
+                        }
+                    }
+                    updateUIComponents();
+                };
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // JNPA SIMULATION ENGINE (in-browser)
+        // ═══════════════════════════════════════════════════════════
+
+        // ── Seeded RNG (Mulberry32) ──────────────────────────────
+        function mulberry32(seed) {
+            return function() {
+                seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+                let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+        function makeRng(seed) {
+            const fn = (seed != null) ? mulberry32(seed) : () => Math.random();
+            return { random: () => fn(), uniform: (lo, hi) => lo + fn() * (hi - lo) };
+        }
+        function sortedUniform(rng, n, lo, hi) {
+            const arr = Array.from({length: n}, () => rng.uniform(lo, hi));
+            arr.sort((a, b) => a - b);
+            return arr;
+        }
+
+        // ── Date helpers ─────────────────────────────────────────
+        function simAddMs(d, ms)  { return new Date(d.getTime() + ms); }
+        function simAddMin(d, m)  { return simAddMs(d, m * 60000); }
+        function simAddHrs(d, h)  { return simAddMs(d, h * 3600000); }
+        function simDiffHrs(a, b) { return (b.getTime() - a.getTime()) / 3600000; }
+        function simFmtDt(d)      { return d.toISOString().replace('T',' ').substring(0,19); }
+
+        // ── Tide ─────────────────────────────────────────────────
+        function makeSimTideFn(cfg) {
+            return t => cfg.tideMeanM + cfg.tideAmplitudeM *
+                Math.cos((2 * Math.PI * (simDiffHrs(cfg.startDate, t) - cfg.tidePhaseOffsetH)) / cfg.tidePeriodH);
+        }
+
+        // ── Scenario Engine ──────────────────────────────────────
+        function makeSimScenarioEngine(cfg, rng) {
+            const active = new Set(cfg.scenarios);
+            const hit = () => rng.random() < cfg.scenarioProbability;
+            function vesselModifiers(vesselClass, eta) {
+                const m = { etaSlipH:0, teuImportFactor:1, teuExportFactor:1, craneReduction:0,
+                    weatherHoldH:0, bunkeringExtraH:0, extraAnchorageH:0, portClosedUntil:null,
+                    gateDelayMin:0, customsDelayH:0, reeferDiversionH:0, channelDepthCutM:0, extraLog:[] };
+                for (const s of active) {
+                    if (s === 'NORMAL') {}
+                    else if (s === 'BERTH_CONGESTION' && hit()) { const e=rng.uniform(2,8); m.extraAnchorageH+=e; m.extraLog.push(`BERTH_CONGESTION:+${e.toFixed(1)}h_anchorage`); }
+                    else if (s === 'EQUIPMENT_FAILURE' && hit()) { m.craneReduction+=1; m.weatherHoldH+=rng.uniform(1,3); m.extraLog.push('EQUIPMENT_FAILURE:crane_breakdown'); }
+                    else if (s === 'MONSOON_DISRUPTION' && hit()) { const e=rng.uniform(3,12); m.weatherHoldH+=e; m.extraLog.push(`MONSOON_DISRUPTION:ops_suspended_${e.toFixed(1)}h`); }
+                    else if (s === 'CUSTOMS_BACKLOG' && hit()) { const e=rng.uniform(2,8); m.customsDelayH+=e; m.extraLog.push(`CUSTOMS_BACKLOG:+${e.toFixed(1)}h_clearance`); }
+                    else if (s === 'LABOUR_STRIKE' && hit()) { m.craneReduction+=Math.max(1,Math.floor((cfg.craneAssignment[vesselClass]||2)/2)); m.weatherHoldH+=rng.uniform(2,6); m.extraLog.push('LABOUR_STRIKE:reduced_gang_productivity'); }
+                    else if (s === 'CYCLONE_WARNING') { const cs=simAddHrs(cfg.startDate,48),ce=simAddHrs(cs,rng.uniform(12,36)); if((cs<=eta&&eta<=ce)||hit()){m.portClosedUntil=ce;m.extraLog.push(`CYCLONE_WARNING:port_closed_until_${simFmtDt(ce)}`);} }
+                    else if (s === 'POWER_OUTAGE' && hit()) { const e=rng.uniform(1,4); m.weatherHoldH+=e; m.extraLog.push(`POWER_OUTAGE:yard_rmg_down_${e.toFixed(1)}h`); }
+                    else if (s === 'VESSEL_LATE_ARRIVAL' && hit()) { const e=rng.uniform(4,24); m.etaSlipH+=e; m.extraLog.push(`VESSEL_LATE_ARRIVAL:+${e.toFixed(1)}h_ETA_slip`); }
+                    else if (s === 'DANGEROUS_CARGO_HOLD' && hit()) { m.customsDelayH+=rng.uniform(6,24); m.extraLog.push('DANGEROUS_CARGO_HOLD:IMDG_extended_inspection'); }
+                    else if (s === 'REEFER_FAILURE' && hit()) { m.reeferDiversionH+=rng.uniform(2,8); m.extraLog.push('REEFER_FAILURE:plug_bank_failure'); }
+                    else if (s === 'CHANNEL_DRAFT_ALERT' && hit()) { m.channelDepthCutM+=rng.uniform(0.5,1.5); m.extraLog.push('CHANNEL_DRAFT_ALERT:reduced_navigable_depth'); }
+                    else if (s === 'DOUBLE_BANKING' && hit()) { m.craneReduction+=1; m.bunkeringExtraH+=rng.uniform(0.5,2); m.extraLog.push('DOUBLE_BANKING:crane_conflict_adjacent_vessel'); }
+                    else if (s === 'SURGE_IMPORTS' && hit()) { m.teuImportFactor*=rng.uniform(1.3,2.0); m.extraLog.push('SURGE_IMPORTS:import_TEU_surge'); }
+                    else if (s === 'GATE_SYSTEM_OUTAGE' && hit()) { m.gateDelayMin+=Math.floor(rng.uniform(30,120)); m.extraLog.push('GATE_SYSTEM_OUTAGE:IT_manual_processing'); }
+                }
+                return m;
+            }
+            function containerCustomsDelay(direction, mod) {
+                let base = mod.customsDelayH;
+                if (direction === 'IMPORT' && active.has('REEFER_FAILURE')) base += mod.reeferDiversionH * 0.5;
+                return base;
+            }
+            return { vesselModifiers, containerCustomsDelay };
+        }
+
+        // ── Berth Scheduler ──────────────────────────────────────
+        function makeSimBerthScheduler(cfg, getTide) {
+            const busyUntil = {};
+            for (const terms of Object.values(cfg.terminalTopology))
+                for (const ti of Object.values(terms))
+                    for (const b of ti.berths) busyUntil[b] = new Date(cfg.startDate);
+            function findBerth(berths, depth, draft, earliest, depthCut=0) {
+                const trMs = cfg.transitDelayMin * 60000;
+                let scan = new Date(earliest);
+                const eff = depth - depthCut, ukc = cfg.ukcSafetyMarginM;
+                for (let i=0; i<20000; i++) {
+                    for (const b of berths) {
+                        if (busyUntil[b] > scan) continue;
+                        if ((eff+getTide(scan)-draft)>=ukc && (eff+getTide(simAddMs(scan,trMs))-draft)>=ukc)
+                            return { berth:b, anchorageExit:new Date(scan), berthTime:simAddMs(scan,trMs) };
+                    }
+                    scan = simAddMin(scan,5);
+                }
+                return { berth:berths[0], anchorageExit:earliest, berthTime:simAddMin(earliest,cfg.transitDelayMin) };
+            }
+            function lockBerth(b, until) { busyUntil[b] = until; }
+            return { findBerth, lockBerth };
+        }
+
+        // ── Assembler ────────────────────────────────────────────
+        function simAssembleVessel(p) {
+            const { vesselId, voyageNo, shippingLine, vesselClass, draft, teuCapacity,
+                importTeu, exportTeu, cargoType, terminal, yardBlock,
+                etaReceived, anchorageEnter, berthAssigned, berthTime, anchorageExit,
+                anchorageWaitHours, cargoHours, dischargeStart, dischargeEnd,
+                loadStart, loadEnd, bunkeringStart, bunkeringEnd,
+                unberthTime, sailedTime, tideHoldSeconds, cranesAssigned,
+                mod, exportTruckCounterStart, cfg, getTide, rng, scenarioEngine } = p;
+
+            const raw = [], containerRows = [];
+            let etc = exportTruckCounterStart;
+            const totalDelayH = mod.extraAnchorageH + mod.weatherHoldH + mod.bunkeringExtraH + tideHoldSeconds/3600;
+            const delayReason = mod.extraLog.length ? mod.extraLog.join('; ') : anchorageWaitHours > 2 ? 'CONGESTION' : '';
+            const ev = (t,stage,sub,cr,dr,ent,eid,desc) => raw.push([t,stage,sub,cr,dr,ent,eid,desc]);
+
+            ev(etaReceived,'PLANNING','ETA_RECEIVED',0,'','VESSEL',vesselId,`Vessel ${vesselId} (${shippingLine} ${vesselClass}) transmitted active transponder ETA.`);
+            ev(anchorageEnter,'PLANNING','ANCHORAGE_ENTERED',0,delayReason,'VESSEL',vesselId,`Vessel entered outer anchorage. Wait: ${delayReason||'NORMAL'}.`);
+            ev(anchorageExit,'PLANNING','ANCHORAGE_EXITED',0,delayReason,'VESSEL',vesselId,`Anchorage cleared. Pilotage to Berth ${berthAssigned}.`);
+            ev(berthTime,'MOORING','BERTHED',cranesAssigned,'','VESSEL',vesselId,`Moored at ${terminal} Berth ${berthAssigned}. Cranes: ${cranesAssigned}.`);
+            ev(dischargeStart,'CARGO','DISCHARGE_STARTED',cranesAssigned,'','VESSEL',vesselId,`Discharge started for ${importTeu} TEUs.`);
+            for (const pp of [20,40,60,80]) { const t=simAddMs(dischargeStart,(dischargeEnd-dischargeStart)*(pp/100)); ev(t,'CARGO',`DISCHARGE_PROGRESS_${pp}PCT`,cranesAssigned,'','VESSEL',vesselId,`Discharge ${pp}% complete.`); }
+            ev(dischargeEnd,'CARGO','DISCHARGE_COMPLETED',cranesAssigned,'','VESSEL',vesselId,`All ${importTeu} import containers discharged.`);
+            if (mod.weatherHoldH>0) { const ws=simAddMin(dischargeEnd,5),we=simAddHrs(ws,mod.weatherHoldH); ev(ws,'DISRUPTION','WEATHER_HOLD_STARTED',0,mod.extraLog.join('; '),'VESSEL',vesselId,`Ops suspended.`); ev(we,'DISRUPTION','WEATHER_HOLD_LIFTED',0,'','VESSEL',vesselId,'Operations resumed.'); }
+            ev(loadStart,'CARGO','LOAD_STARTED',cranesAssigned,'','VESSEL',vesselId,`Loading ${exportTeu} export TEUs.`);
+            for (const pp of [20,40,60,80]) { const t=simAddMs(loadStart,(loadEnd-loadStart)*(pp/100)); ev(t,'CARGO',`LOAD_PROGRESS_${pp}PCT`,cranesAssigned,'','VESSEL',vesselId,`Load ${pp}% complete.`); }
+            ev(loadEnd,'CARGO','LOAD_COMPLETED',cranesAssigned,'','VESSEL',vesselId,'Export loading finalized. LEO cleared.');
+            ev(bunkeringStart,'SERVICE','BUNKERING_STARTED',0,'','VESSEL',vesselId,'Bunker barge secured.');
+            ev(bunkeringEnd,'SERVICE','BUNKERING_COMPLETED',0,'','VESSEL',vesselId,'Bunkering complete.');
+            const xd = tideHoldSeconds>0 ? 'TIDE_HOLD' : '';
+            ev(unberthTime,'MOORING','UNBERTHED',0,xd,'VESSEL',vesselId,`Mooring released. Tide hold: ${Math.floor(tideHoldSeconds/60)} min.`);
+            ev(sailedTime,'MOORING','SAILED',0,xd,'VESSEL',vesselId,`Vessel ${vesselId} cleared harbor limits.`);
+
+            // Export containers
+            const lh = simDiffHrs(loadStart,loadEnd);
+            const gXms = mod.gateDelayMin*60000;
+            const cXms = scenarioEngine.containerCustomsDelay('EXPORT',mod)*3600000;
+            for (let k=1; k<=exportTeu; k++) {
+                etc++;
+                const cId=`JNPU-EX-${vesselId}-${String(k).padStart(3,'0')}`;
+                const tPlate=`${cfg.truckPlatePrefix}-${String(((etc-1)%cfg.numTrucks)+1).padStart(4,'0')}`;
+                const wt=12000+(k*37)%18000;
+                const tBk=simAddHrs(etaReceived,-(24+k*0.1));
+                const tSb=simAddMin(simAddHrs(tBk,1),15);
+                const ins=k%7===0;
+                const tLeo=simAddMs(tSb,3600000+(ins?4*3600000:15*60000)+cXms);
+                const tCi=simAddMin(simAddHrs(tLeo,1),30);
+                const tCo=simAddMin(tCi,30);
+                const tPg=simAddMin(tCo,15);
+                const tGi=simAddMs(tPg,10*60000+(k%11===0?15*60000:0)+gXms);
+                const tSs=simAddMin(tGi,10), tSt=simAddMin(tSs,5+(k%13===0?20:0));
+                const tGo=simAddMin(tSt,5);
+                const tLd=simAddMs(loadStart,lh*(k/(exportTeu+1))*3600000);
+                containerRows.push({ container_id:cId, direction:'EXPORT', container_type:cargoType==='DRY_VAN'?'DRY':'REEFER', vessel_id:vesselId, voyage_no:voyageNo, gross_weight_kg:wt, assigned_yard_block:yardBlock, assigned_yard_bay:`BAY-${String(k).padStart(3,'0')}` });
+                for (const row of [
+                    [tBk,'PLANNING','CONTAINER_BOOKED',0,'','CONTAINER',cId,`Booking confirmed. Weight: ${wt} kg.`],
+                    [tSb,'CUSTOMS','CONTAINER_SB_FILED',0,'','CONTAINER',cId,'Shipping Bill filed via ICEGATE.'],
+                    [tLeo,'CUSTOMS','CONTAINER_CUSTOMS_LEO',0,'','CONTAINER',cId,`LEO granted. RMS: ${ins?'SCANNER_PHYSICAL_HOLD':'GREEN_CHANNEL'}.`],
+                    [tCi,'GATES','TRUCK_CPP_GATE_IN',0,'','TRUCK',tPlate,`Truck ${tPlate} reached CPP.`],
+                    [tCo,'GATES','TRUCK_CPP_GATE_OUT',0,'','TRUCK',tPlate,'EIR printed.'],
+                    [tPg,'GATES','TRUCK_TERMINAL_PRE_GATE',0,'','TRUCK',tPlate,`VGM: ${wt} kg. OCR: SUCCESS.`],
+                    [tGi,'GATES','TRUCK_TERMINAL_GATE_IN',0,'','TRUCK',tPlate,`Gate-In. Routing to ${yardBlock}.`],
+                    [tSs,'YARD','CONTAINER_YARD_STACK_START',0,'','CONTAINER',cId,`RMG lift in ${yardBlock}.`],
+                    [tSt,'YARD','CONTAINER_YARD_STACKED',0,'','CONTAINER',cId,k%13===0?'Rehandling penalty.':'Safe stack placement.'],
+                    [tGo,'GATES','TRUCK_TERMINAL_GATE_OUT',0,'','TRUCK',tPlate,'Empty transporter gated out.'],
+                    [tLd,'CARGO','CONTAINER_LOADED',cranesAssigned,'','CONTAINER',cId,`Quay Crane hoisted onto ${vesselId}.`],
+                ]) raw.push(row);
+            }
+
+            // Import containers
+            const dh = simDiffHrs(dischargeStart,dischargeEnd);
+            const cXmsI = scenarioEngine.containerCustomsDelay('IMPORT',mod)*3600000;
+            for (let k=1; k<=importTeu; k++) {
+                const cId=`JNPU-IM-${vesselId}-${String(k).padStart(3,'0')}`;
+                const tPlate=`${cfg.truckPlatePrefix}-${String(((etc-importTeu+k-1)%cfg.numTrucks)+1).padStart(4,'0')}`;
+                const wt=14000+(k*22)%15000;
+                const tDs=simAddMs(dischargeStart,dh*(k/(importTeu+1))*3600000);
+                const tSs=simAddMin(tDs,10),tSt=simAddMin(tSs,5);
+                const tOs=simAddMin(tSt,20);
+                const tOo=simAddMs(tOs,2.5*3600000+cXmsI);
+                const tGi=simAddMs(tOo,30*60000+gXms);
+                const tDp=simAddMin(tGi,10),tGo=simAddMin(tDp,8);
+                containerRows.push({ container_id:cId, direction:'IMPORT', container_type:cargoType==='DRY_VAN'?'DRY':'REEFER', vessel_id:vesselId, voyage_no:voyageNo, gross_weight_kg:wt, assigned_yard_block:yardBlock, assigned_yard_bay:`BAY-${String(k).padStart(3,'0')}` });
+                for (const row of [
+                    [tDs,'CARGO','CONTAINER_DISCHARGED',cranesAssigned,'','CONTAINER',cId,`Import discharged from ${vesselId}.`],
+                    [tSs,'YARD','CONTAINER_YARD_STACK_START',0,'','CONTAINER',cId,`RMG grounding in ${yardBlock}.`],
+                    [tSt,'YARD','CONTAINER_YARD_STACKED',0,'','CONTAINER',cId,'Container grounded.'],
+                    [tOs,'CUSTOMS','CONTAINER_IMPORT_OOC_START',0,'','CONTAINER',cId,'Bill of Entry filed.'],
+                    [tOo,'CUSTOMS','CONTAINER_CUSTOMS_OOC',0,'','CONTAINER',cId,'ICEGATE Out-of-Charge granted.'],
+                    [tGi,'GATES','TRUCK_IMPORT_GATE_IN',0,'','TRUCK',tPlate,`Consignee truck ${tPlate} gated in.`],
+                    [tDp,'YARD','CONTAINER_IMPORT_DISPATCH',0,'','CONTAINER',cId,`RMG loaded onto chassis ${tPlate}.`],
+                    [tGo,'GATES','TRUCK_IMPORT_GATE_OUT',0,'','TRUCK',tPlate,`Truck ${tPlate} gated out.`],
+                ]) raw.push(row);
+            }
+
+            const base = { vessel_id:vesselId, voyage_no:voyageNo, shipping_line:shippingLine,
+                vessel_class:vesselClass, teu_capacity:teuCapacity,
+                import_teu:importTeu, export_teu:exportTeu, container_type:cargoType,
+                terminal, berth:berthAssigned, anchorage_wait_hours:anchorageWaitHours,
+                cargo_hours:cargoHours, total_delay_hours:Math.round(totalDelayH*100)/100,
+                active_scenarios:cfg.scenarios.join('; ') };
+
+            const eventRows = raw.map(([et,stage,substage,cr,dr,ent,eid,desc]) => ({
+                ...base,
+                event_time: simFmtDt(et),
+                berth: ent==='VESSEL'||['CONTAINER_LOADED','CONTAINER_DISCHARGED'].includes(substage)?berthAssigned:'',
+                stage, substage, cranes_assigned:cr, delay_reason:dr,
+                tide_level: Math.round(getTide(et)*100)/100,
+                entity_type:ent, entity_id:eid, status_details:desc,
+            }));
+
+            const vesselRow = { vessel_id:vesselId, shipping_line:shippingLine, vessel_class:vesselClass, teu_capacity:teuCapacity };
+            return { eventRows, containerRows, vesselRow, exportTruckCounter:etc };
+        }
+
+        // ── Main runner ──────────────────────────────────────────
+        function simRunEngine(cfg) {
+            const rng = makeRng(cfg.randomSeed);
+            const getTide = makeSimTideFn(cfg);
+            const scheduler = makeSimBerthScheduler(cfg, getTide);
+            const scenEng  = makeSimScenarioEngine(cfg, rng);
+            const classes  = Object.keys(cfg.vesselClasses);
+            const cargos   = Object.keys(cfg.terminalTopology);
+            const offsets  = sortedUniform(rng, cfg.numVessels, 0, cfg.arrivalWindowHours);
+
+            let allEvents=[], allContainers=[], allVessels=[], etc=0;
+
+            for (let i=1; i<=cfg.numVessels; i++) {
+                const vid    = `V${String(i).padStart(4,'0')}`;
+                const voyNo  = `VOY${String(i).padStart(5,'0')}`;
+                const line   = cfg.shippingLines[(i-1)%cfg.shippingLines.length];
+                const vc     = classes[(i-1)%classes.length];
+                const draft  = cfg.vesselClasses[vc];
+                const teuCap = cfg.vesselTeuCapacity[vc];
+                const rawEta = simAddHrs(cfg.startDate, offsets[i-1]);
+                const mod    = scenEng.vesselModifiers(vc, rawEta);
+
+                const etaRec = simAddMin(simAddHrs(rawEta, mod.etaSlipH), -120);
+                const ancIn  = simAddMin(etaRec, 15);
+                const imp = Math.max(1, Math.round((cfg.teuBase+(i%5-cfg.teuVariation)*10)*mod.teuImportFactor));
+                const exp = Math.max(1, Math.round((cfg.teuBase+((i+2)%5-cfg.teuVariation)*10)*mod.teuExportFactor));
+
+                const cargo = cargos[(i-1)%cargos.length];
+                const termKeys = Object.keys(cfg.terminalTopology[cargo]);
+                const tid = termKeys[(i-1)%termKeys.length];
+                const ti  = cfg.terminalTopology[cargo][tid];
+
+                let earliest = new Date(ancIn);
+                if (mod.portClosedUntil) earliest = new Date(Math.max(earliest, mod.portClosedUntil));
+                earliest = simAddHrs(earliest, mod.extraAnchorageH);
+
+                const { berth, anchorageExit, berthTime } = scheduler.findBerth(ti.berths, ti.depth, draft, earliest, mod.channelDepthCutM);
+                const ancWait = Math.round(simDiffHrs(ancIn, anchorageExit)*10)/10;
+                const cranes  = Math.max(1, (cfg.craneAssignment[vc]||2) - mod.craneReduction);
+                const cHours  = Math.round(Math.max(imp*5, exp*10)/60*10)/10;
+                const dFrac   = (imp*5)/(imp*5+exp*10);
+                const dH=cHours*dFrac, lH=cHours*(1-dFrac);
+
+                const dStart=simAddMin(berthTime,15), dEnd=simAddHrs(dStart,dH);
+                const lStart=simAddMs(dEnd,15*60000+mod.weatherHoldH*3600000), lEnd=simAddHrs(lStart,lH);
+                const bkS=simAddMin(lEnd,15), bkE=simAddHrs(bkS,1+mod.bunkeringExtraH);
+
+                let unberth=simAddMin(bkE,15), ths=0;
+                const effD=ti.depth-mod.channelDepthCutM;
+                for (let g=0; g<10000&&(effD+getTide(unberth)-draft)<cfg.ukcSafetyMarginM; g++) { unberth=simAddMin(unberth,5); ths+=300; }
+                const sailed=simAddMin(unberth,30);
+                scheduler.lockBerth(berth, unberth);
+
+                const res = simAssembleVessel({
+                    vesselId:vid, voyageNo:voyNo, shippingLine:line, vesselClass:vc, draft, teuCapacity:teuCap,
+                    importTeu:imp, exportTeu:exp, cargoType:cargo, terminal:tid, yardBlock:ti.yard,
+                    etaReceived:etaRec, anchorageEnter:ancIn, berthAssigned:berth, berthTime,
+                    anchorageExit, anchorageWaitHours:ancWait, cargoHours:cHours,
+                    dischargeStart:dStart, dischargeEnd:dEnd, loadStart:lStart, loadEnd:lEnd,
+                    bunkeringStart:bkS, bunkeringEnd:bkE, unberthTime:unberth, sailedTime:sailed,
+                    tideHoldSeconds:ths, cranesAssigned:cranes, mod,
+                    exportTruckCounterStart:etc, cfg, getTide, rng, scenarioEngine:scenEng,
+                });
+                allEvents.push(...res.eventRows);
+                allContainers.push(...res.containerRows);
+                allVessels.push(res.vesselRow);
+                etc = res.exportTruckCounter;
+            }
+
+            allEvents.sort((a,b) => a.event_time.localeCompare(b.event_time));
+            return { lifecycle:allEvents, containers:allContainers, vessels:allVessels };
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // SIMULATION GENERATOR UI
+        // ═══════════════════════════════════════════════════════════
+
+        const SIM_ALL_SCENARIOS = [
+            'NORMAL','BERTH_CONGESTION','EQUIPMENT_FAILURE','MONSOON_DISRUPTION','CUSTOMS_BACKLOG',
+            'LABOUR_STRIKE','CYCLONE_WARNING','POWER_OUTAGE','VESSEL_LATE_ARRIVAL','DANGEROUS_CARGO_HOLD',
+            'REEFER_FAILURE','CHANNEL_DRAFT_ALERT','DOUBLE_BANKING','SURGE_IMPORTS','GATE_SYSTEM_OUTAGE',
+        ];
+        const SIM_SCENARIO_COLOR = {
+            NORMAL:'#22c55e', BERTH_CONGESTION:'#f97316', EQUIPMENT_FAILURE:'#ef4444',
+            MONSOON_DISRUPTION:'#3b82f6', CUSTOMS_BACKLOG:'#8b5cf6', LABOUR_STRIKE:'#ec4899',
+            CYCLONE_WARNING:'#dc2626', POWER_OUTAGE:'#f59e0b', VESSEL_LATE_ARRIVAL:'#6366f1',
+            DANGEROUS_CARGO_HOLD:'#7c3aed', REEFER_FAILURE:'#0ea5e9', CHANNEL_DRAFT_ALERT:'#14b8a6',
+            DOUBLE_BANKING:'#d97706', SURGE_IMPORTS:'#10b981', GATE_SYSTEM_OUTAGE:'#64748b',
+        };
+        const SIM_PRESETS = {
+            'Normal':      { scenarios:['NORMAL'],                              scenarioProbability:0.6, numVessels:30, numTrucks:1000, arrivalWindowHours:48 },
+            'Congestion':  { scenarios:['BERTH_CONGESTION','CUSTOMS_BACKLOG','GATE_SYSTEM_OUTAGE'], scenarioProbability:0.8, numVessels:50, numTrucks:1000, arrivalWindowHours:72 },
+            'Monsoon':     { scenarios:['MONSOON_DISRUPTION','EQUIPMENT_FAILURE','VESSEL_LATE_ARRIVAL'], scenarioProbability:0.7, numVessels:40, numTrucks:1000, arrivalWindowHours:48 },
+            'Cyclone':     { scenarios:['CYCLONE_WARNING','SURGE_IMPORTS','POWER_OUTAGE'],        scenarioProbability:0.9, numVessels:30, numTrucks:1000, arrivalWindowHours:48 },
+            'Labour':      { scenarios:['LABOUR_STRIKE','GATE_SYSTEM_OUTAGE'],                   scenarioProbability:0.85,numVessels:30, numTrucks:1000, arrivalWindowHours:48 },
+            'Reefer':      { scenarios:['REEFER_FAILURE','DANGEROUS_CARGO_HOLD'],                scenarioProbability:0.6, numVessels:20, numTrucks:800,  arrivalWindowHours:48 },
+            'Draft Alert': { scenarios:['CHANNEL_DRAFT_ALERT','BERTH_CONGESTION'],              scenarioProbability:0.75,numVessels:30, numTrucks:1000, arrivalWindowHours:48 },
+        };
+
+        const SIM_BASE_CFG = {
+            truckPlatePrefix:'MH-46-TRK',
+            truckOperators:['CONTRANS','GATEWAY_LOG','INDIA_PORT_TRANS','NHAVA_CARGO'],
+            truckFuelTypes:['CNG','DIESEL','LNG','ELECTRIC'],
+            vesselClasses:{ Feeder:9.2, Regional:11.0, Panamax:12.6, ULCV:14.6 },
+            vesselTeuCapacity:{ Feeder:2500, Regional:4800, Panamax:8500, ULCV:14000 },
+            craneAssignment:{ Feeder:2, Regional:2, Panamax:3, ULCV:4 },
+            shippingLines:['EVERGREEN','HAPAG','MSC','CMA CGM','MAERSK','ONE','COSCO','PIL'],
+            terminalTopology:{
+                DRY_VAN:{ T1:{berths:['B1','B2','B3'],depth:16.5,yard:'Yard A'}, T2:{berths:['B4','B5','B6'],depth:15.0,yard:'Yard B'} },
+                REEFER_CARGO:{ T3:{berths:['B7','B8'],depth:13.5,yard:'Yard C'}, T4:{berths:['B9','B10'],depth:12.5,yard:'Yard D'} },
+            },
+            tidePhaseOffsetH:4.0, transitDelayMin:45, berthMaintenance:{},
+        };
+
+        let sg_activeScenarios = new Set(['NORMAL']);
+
+        function sgBuildUI() {
+            // Preset buttons
+            const presetEl = document.getElementById('sg_presets');
+            if (presetEl) {
+                presetEl.innerHTML = '';
+                for (const name of Object.keys(SIM_PRESETS)) {
+                    const btn = document.createElement('button');
+                    btn.className = 'sg-preset-btn';
+                    btn.textContent = name;
+                    btn.onclick = () => sgApplyPreset(name);
+                    presetEl.appendChild(btn);
+                }
+            }
+            // Scenario chips
+            sgRefreshChips();
+        }
+
+        function sgRefreshChips() {
+            const el = document.getElementById('sg_chips');
+            if (!el) return;
+            el.innerHTML = '';
+            for (const s of SIM_ALL_SCENARIOS) {
+                const on = sg_activeScenarios.has(s);
+                const c  = SIM_SCENARIO_COLOR[s];
+                const btn = document.createElement('button');
+                btn.style.cssText = `padding:5px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;
+                    border:1px solid ${on?c:'#d0d5dd'};background:${on?c+'22':'transparent'};color:${on?c:'#6b7280'};`;
+                btn.textContent = s.replace(/_/g,' ');
+                btn.onclick = () => sgToggleScenario(s);
+                el.appendChild(btn);
+            }
+        }
+
+        function sgToggleScenario(s) {
+            if (s === 'NORMAL') { sg_activeScenarios = new Set(['NORMAL']); }
+            else { sg_activeScenarios.delete('NORMAL'); sg_activeScenarios.has(s)?sg_activeScenarios.delete(s):sg_activeScenarios.add(s); if(!sg_activeScenarios.size) sg_activeScenarios.add('NORMAL'); }
+            sgRefreshChips();
+        }
+
+        function sgApplyPreset(name) {
+            const p = SIM_PRESETS[name]; if (!p) return;
+            sg_activeScenarios = new Set(p.scenarios);
+            sgRefreshChips();
+            if (p.numVessels)         document.getElementById('sg_numVessels').value = p.numVessels;
+            if (p.numTrucks)          document.getElementById('sg_numTrucks').value  = p.numTrucks;
+            if (p.arrivalWindowHours) document.getElementById('sg_arrivalWindow').value = p.arrivalWindowHours;
+            if (p.scenarioProbability !== undefined) document.getElementById('sg_prob').value = p.scenarioProbability;
+        }
+
+        function sgSetProgress(pct, label) {
+            const bar = document.getElementById('sg_progressBar');
+            const lbl = document.getElementById('sg_progressLabel');
+            const pctLbl = document.getElementById('sg_progressPct');
+            if (bar) bar.style.width = pct + '%';
+            if (lbl) lbl.textContent = label;
+            if (pctLbl) pctLbl.textContent = pct + '%';
+        }
+
+        function runSimulationAndLoad() {
+            const btn = document.getElementById('sg_runBtn');
+            const statusMsg = document.getElementById('sg_statusMsg');
+            const progressWrap = document.getElementById('sg_progressWrap');
+
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating...'; }
+            if (progressWrap) progressWrap.style.display = 'block';
+            sgSetProgress(5, 'Initialising engine...');
+
+            const seedVal = document.getElementById('sg_seed').value.trim();
+            const cfg = {
+                ...SIM_BASE_CFG,
+                numVessels:         +document.getElementById('sg_numVessels').value,
+                numTrucks:          +document.getElementById('sg_numTrucks').value,
+                arrivalWindowHours: +document.getElementById('sg_arrivalWindow').value,
+                randomSeed:         seedVal === '' ? null : +seedVal,
+                teuBase:            +document.getElementById('sg_teuBase').value,
+                teuVariation:       +document.getElementById('sg_teuVariation').value,
+                tideAmplitudeM:     +document.getElementById('sg_tideAmp').value,
+                tideMeanM:          +document.getElementById('sg_tideMean').value,
+                tidePeriodH:        +document.getElementById('sg_tidePeriod').value,
+                ukcSafetyMarginM:   +document.getElementById('sg_ukc').value,
+                scenarioProbability:+document.getElementById('sg_prob').value,
+                scenarios:          [...sg_activeScenarios],
+                startDate:          new Date(2026,2,1,0,0,0),
+            };
+
+            // Defer to allow UI to update
+            setTimeout(() => {
+                try {
+                    sgSetProgress(20, 'Running vessel scheduling...');
+                    const result = simRunEngine(cfg);
+                    sgSetProgress(75, 'Loading into dashboard...');
+
+                    // Feed into dashboard ingestion pipeline
+                    ingestLifecycleCSV(result.lifecycle);
+                    sgSetProgress(88, 'Loading vessel registry...');
+                    ingestVesselsMasterCSV(result.vessels.map(v => ({
+                        vessel_id: v.vessel_id, shipping_line: v.shipping_line,
+                        vessel_class: v.vessel_class, teu_capacity: v.teu_capacity,
+                        draft_design_m: SIM_BASE_CFG.vesselClasses[v.vessel_class] || 12.0,
+                    })));
+                    sgSetProgress(94, 'Loading container registry...');
+                    ingestContainersMasterCSV(result.containers);
+                    sgSetProgress(100, 'Done!');
+
+                    // Update manifest-style status badge
+                    const dot = document.getElementById('loadStatusDot');
+                    const lbl = document.getElementById('loadStatusLabel');
+                    if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-emerald-500 mr-0.5';
+                    if (lbl) lbl.innerText = `Sim: ${result.lifecycle.length.toLocaleString()} Events`;
+
+                    if (statusMsg) statusMsg.textContent = `✅ ${result.lifecycle.length.toLocaleString()} events generated from ${cfg.numVessels} vessels. Ready to play.`;
+                    showToast(`🟢 Simulation loaded — ${result.lifecycle.length.toLocaleString()} events ready!`, 'success');
+
+                    // Refresh Data Explorer so it reflects the freshly generated dataset
+                    explorerSearch = '';
+                    const explorerSearchBox = document.getElementById('explorerSearchInput');
+                    if (explorerSearchBox) explorerSearchBox.value = '';
+                    explorerPage = 0;
+                    renderExplorerTable();
+
+                    // Refresh Vessel Tracker (planning table always; matrix resets to "not started")
+                    vtSearch = '';
+                    const vtSearchBox = document.getElementById('vtSearchInput');
+                    if (vtSearchBox) vtSearchBox.value = '';
+                    renderVesselPlanningTable();
+                    renderVesselStageMatrix();
+
+                    setTimeout(() => closeModal('simGenModal'), 800);
+                } catch(e) {
+                    console.error(e);
+                    if (statusMsg) statusMsg.textContent = '❌ Error: ' + e.message;
+                    showToast('❌ Simulation error: ' + e.message, 'error');
+                } finally {
+                    if (btn) { btn.disabled = false; btn.textContent = '▶ Generate & Load'; }
+                    setTimeout(() => { if (progressWrap) progressWrap.style.display = 'none'; }, 1200);
+                }
+            }, 60);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // DATA EXPLORER (searchable tables + CSV export)
+        // ═══════════════════════════════════════════════════════════
+        const EXPLORER_DATASETS = [
+            { key: 'lifecycle',  label: 'Lifecycle Events', icon: '📋' },
+            { key: 'vessels',    label: 'Vessels',          icon: '🚢' },
+            { key: 'containers', label: 'Containers',       icon: '📦' },
+            { key: 'trucks',     label: 'Trucks',           icon: '🚛' },
+        ];
+        const EXPLORER_PAGE_SIZE = 100;
+        let explorerDataset = 'lifecycle';
+        let explorerSearch  = '';
+        let explorerPage    = 0;
+        let explorerSearchDebounce = null;
+
+        // Pull the current in-memory rows for a dataset as an array of plain objects
+        function explorerGetRows(dataset) {
+            if (dataset === 'lifecycle') {
+                return csvEvents || [];
+            }
+            if (dataset === 'vessels') {
+                return Object.keys(vessels_master_registry).map(id => ({
+                    vessel_id: id,
+                    vessel_class: vessels_master_registry[id].vessel_class || '',
+                    shipping_line: vessels_master_registry[id].shipping_line || '',
+                    teu_capacity: vessels_master_registry[id].teu_capacity || '',
+                    draft_design_m: vessels_master_registry[id].draft || '',
+                }));
+            }
+            if (dataset === 'containers') {
+                return Object.values(containers_registry);
+            }
+            if (dataset === 'trucks') {
+                return explorerBuildTruckRows();
+            }
+            return [];
+        }
+
+        // Trucks aren't a standalone registry pre-generation — derive one unique row
+        // per truck plate by scanning the generated lifecycle events.
+        function explorerBuildTruckRows() {
+            const map = {};
+            for (const ev of (csvEvents || [])) {
+                if (ev.entity_type !== 'TRUCK') continue;
+                const id = ev.entity_id;
+                if (!map[id]) {
+                    map[id] = { truck_id: id, vessel_id: ev.vessel_id || '', terminal: ev.terminal || '',
+                        first_event_time: ev.event_time, last_event_time: ev.event_time,
+                        last_substage: ev.substage, gate_events_count: 0 };
+                }
+                map[id].last_event_time = ev.event_time;
+                map[id].last_substage = ev.substage;
+                map[id].gate_events_count++;
+            }
+            return Object.values(map);
+        }
+
+        // Keyword search across every column (case-insensitive substring match)
+        function explorerFilterRows(rows, query) {
+            const q = query.trim().toLowerCase();
+            if (!q) return rows;
+            return rows.filter(row =>
+                Object.values(row).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q))
+            );
+        }
+
+        function explorerEscapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        }
+
+        // Wrap matched keyword substrings in <mark> for visual scanning
+        function explorerHighlight(value, query) {
+            const s = explorerEscapeHtml(value === null || value === undefined ? '' : value);
+            const q = query.trim();
+            if (!q) return s;
+            const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return s.replace(new RegExp('(' + esc + ')', 'ig'), '<mark class="explorer-hit">$1</mark>');
+        }
+
+        function explorerOnSearchInput() {
+            clearTimeout(explorerSearchDebounce);
+            explorerSearchDebounce = setTimeout(() => {
+                explorerSearch = document.getElementById('explorerSearchInput').value;
+                explorerPage = 0;
+                renderExplorerTable();
+            }, 180);
+        }
+
+        function explorerSwitchDataset(key) {
+            explorerDataset = key;
+            explorerPage = 0;
+            renderExplorerTable();
+        }
+
+        function explorerChangePage(delta) {
+            explorerPage += delta;
+            renderExplorerTable();
+        }
+
+        function explorerBuildDatasetTabs() {
+            const wrap = document.getElementById('explorerDatasetTabs');
+            if (!wrap) return;
+            wrap.innerHTML = EXPLORER_DATASETS.map(d => {
+                const count = explorerGetRows(d.key).length;
+                return `<button class="explorer-dataset-btn ${d.key===explorerDataset?'active':''}"
+                    onclick="explorerSwitchDataset('${d.key}')">${d.icon} ${d.label} <span style="opacity:.65;">(${count.toLocaleString()})</span></button>`;
+            }).join('');
+        }
+
+        function renderExplorerTable() {
+            explorerBuildDatasetTabs();
+
+            const allRows = explorerGetRows(explorerDataset);
+            const filtered = explorerFilterRows(allRows, explorerSearch);
+            const wrap = document.getElementById('explorerTableWrap');
+            const badge = document.getElementById('explorerRowCountBadge');
+            const meta = document.getElementById('explorerMatchMeta');
+            const pageLbl = document.getElementById('explorerPageLabel');
+
+            if (badge) badge.innerText = `${allRows.length.toLocaleString()} rows`;
+
+            if (allRows.length === 0) {
+                if (wrap) wrap.innerHTML = `
+                    <div class="explorer-empty">
+                        <div class="ee-icon">🗂️</div>
+                        <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">No data generated yet</div>
+                        <div style="font-size:12.5px;">Run the Simulation Generator (⚡) to populate vessels, containers, trucks and lifecycle events.</div>
+                    </div>`;
+                if (meta) meta.innerText = '';
+                if (pageLbl) pageLbl.innerText = 'Page 0 / 0';
+                return;
+            }
+
+            if (filtered.length === 0) {
+                if (wrap) wrap.innerHTML = `
+                    <div class="explorer-empty">
+                        <div class="ee-icon">🔍</div>
+                        <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">No matches for "${explorerEscapeHtml(explorerSearch)}"</div>
+                        <div style="font-size:12.5px;">Try a different keyword — search checks every column (IDs, stages, scenarios, terminals...).</div>
+                    </div>`;
+                if (meta) meta.innerText = `0 of ${allRows.length.toLocaleString()} match`;
+                if (pageLbl) pageLbl.innerText = 'Page 0 / 0';
+                return;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(filtered.length / EXPLORER_PAGE_SIZE));
+            if (explorerPage >= totalPages) explorerPage = totalPages - 1;
+            if (explorerPage < 0) explorerPage = 0;
+            const start = explorerPage * EXPLORER_PAGE_SIZE;
+            const pageRows = filtered.slice(start, start + EXPLORER_PAGE_SIZE);
+            const cols = Object.keys(allRows[0]);
+
+            let html = '<table class="explorer-table"><thead><tr>';
+            for (const c of cols) html += `<th>${explorerEscapeHtml(c)}</th>`;
+            html += '</tr></thead><tbody>';
+            for (const row of pageRows) {
+                html += '<tr>';
+                for (const c of cols) html += `<td>${explorerHighlight(row[c], explorerSearch)}</td>`;
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            if (wrap) wrap.innerHTML = html;
+
+            if (meta) meta.innerText = explorerSearch.trim()
+                ? `${filtered.length.toLocaleString()} of ${allRows.length.toLocaleString()} match "${explorerSearch}"`
+                : `${allRows.length.toLocaleString()} total`;
+            if (pageLbl) pageLbl.innerText = `Page ${explorerPage + 1} / ${totalPages} (rows ${(start+1).toLocaleString()}–${Math.min(start+EXPLORER_PAGE_SIZE, filtered.length).toLocaleString()})`;
+        }
+
+        // ── CSV export ──────────────────────────────────────────
+        function explorerRowsToCSV(rows) {
+            if (!rows.length) return '';
+            const cols = Object.keys(rows[0]);
+            const esc = v => {
+                if (v === null || v === undefined) return '';
+                const s = String(v);
+                return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const lines = [cols.map(esc).join(',')];
+            for (const r of rows) lines.push(cols.map(c => esc(r[c])).join(','));
+            return lines.join('\n');
+        }
+
+        function explorerTriggerDownload(filename, csvText) {
+            const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function explorerDownloadCurrent() {
+            const allRows = explorerGetRows(explorerDataset);
+            if (!allRows.length) { showToast('⚠️ No data to export yet — generate a simulation first.', 'warning'); return; }
+            const isFiltered = explorerSearch.trim() !== '';
+            const rows = isFiltered ? explorerFilterRows(allRows, explorerSearch) : allRows;
+            if (!rows.length) { showToast('⚠️ No matching rows to export.', 'warning'); return; }
+            const suffix = isFiltered ? '_filtered' : '';
+            const filename = `jnpa_${explorerDataset}${suffix}.csv`;
+            explorerTriggerDownload(filename, explorerRowsToCSV(rows));
+            showToast(`⬇️ Downloaded ${filename} — ${rows.length.toLocaleString()} rows`, 'success');
+        }
+
+        function explorerDownloadAll() {
+            let any = false;
+            for (const d of EXPLORER_DATASETS) {
+                const rows = explorerGetRows(d.key);
+                if (!rows.length) continue;
+                any = true;
+                explorerTriggerDownload(`jnpa_${d.key}.csv`, explorerRowsToCSV(rows));
+            }
+            if (!any) { showToast('⚠️ No data to export yet — generate a simulation first.', 'warning'); return; }
+            showToast('⬇️ Downloaded all available CSV files', 'success');
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // VESSEL TRACKER (planning summary + live stage matrix)
+        // ═══════════════════════════════════════════════════════════
+        const VESSEL_STAGE_ORDER = ['SCHEDULED','ANCHORED','TRANSIT','MOORED','DISCHARGING','DISCHARGING_DONE','LOADING','LOADING_DONE','UNBERTHED','SAILED'];
+        const VESSEL_STAGE_LABELS = {
+            SCHEDULED:'Scheduled', ANCHORED:'Anchored', TRANSIT:'Transit', MOORED:'Moored',
+            DISCHARGING:'Discharging', DISCHARGING_DONE:'Discharge Done', LOADING:'Loading',
+            LOADING_DONE:'Load Done', UNBERTHED:'Unberthed', SAILED:'Sailed',
+        };
+        let vtSearch = '';
+        let vtSearchDebounce = null;
+        let vtMatrixLastRender = 0;
+
+        function vtOnSearchInput() {
+            clearTimeout(vtSearchDebounce);
+            vtSearchDebounce = setTimeout(() => {
+                vtSearch = document.getElementById('vtSearchInput').value;
+                renderVesselPlanningTable();
+                renderVesselStageMatrix();
+            }, 180);
+        }
+
+        function vtFilterRows(rows, query) {
+            const q = query.trim().toLowerCase();
+            if (!q) return rows;
+            return rows.filter(r =>
+                Object.values(r).some(v => v !== null && v !== undefined && typeof v !== 'object' && String(v).toLowerCase().includes(q))
+            );
+        }
+
+        // Derive one planning row per vessel straight from the generated lifecycle
+        // events — import/export TEU, terminal/berth, delay and scenario fields are
+        // fixed at generation time (the "plan"), independent of playback progress.
+        function vtBuildPlanningRows() {
+            const map = {};
+            for (const ev of (csvEvents || [])) {
+                const vId = ev.vessel_id;
+                if (!vId) continue;
+                if (!map[vId]) {
+                    const impTeu = parseInt(ev.import_teu) || 0;
+                    const expTeu = parseInt(ev.export_teu) || 0;
+                    map[vId] = {
+                        vessel_id: vId,
+                        voyage_no: ev.voyage_no || '',
+                        shipping_line: ev.shipping_line || '',
+                        vessel_class: ev.vessel_class || '',
+                        teu_capacity: ev.teu_capacity || '',
+                        terminal: ev.terminal || '',
+                        berth: ev.berth || '',
+                        import_teu_planned: impTeu,
+                        export_teu_planned: expTeu,
+                        total_planned_teu: impTeu + expTeu,
+                        anchorage_wait_hours: ev.anchorage_wait_hours || 0,
+                        cargo_hours: ev.cargo_hours || 0,
+                        total_delay_hours: ev.total_delay_hours || 0,
+                        active_scenarios: ev.active_scenarios || '',
+                    };
+                }
+                // VESSEL-type rows always carry the authoritative assigned berth/terminal
+                if (ev.entity_type === 'VESSEL' && ev.berth) {
+                    map[vId].terminal = ev.terminal || map[vId].terminal;
+                    map[vId].berth = ev.berth;
+                }
+            }
+            return Object.values(map).sort((a, b) => a.vessel_id.localeCompare(b.vessel_id));
+        }
+
+        function vtEmptyState(icon, title, sub) {
+            return `<div class="explorer-empty"><div class="ee-icon">${icon}</div>
+                <div style="font-weight:700;color:var(--text-2);margin-bottom:4px;">${title}</div>
+                <div style="font-size:12.5px;">${sub}</div></div>`;
+        }
+
+        function renderVesselPlanningTable() {
+            const rows = vtBuildPlanningRows();
+            const filtered = vtFilterRows(rows, vtSearch);
+            const wrap = document.getElementById('vtPlanningTableWrap');
+            const badge = document.getElementById('vtPlanningCountBadge');
+            const meta = document.getElementById('vtMatchMeta');
+
+            if (badge) badge.innerText = `${rows.length.toLocaleString()} vessels`;
+
+            if (rows.length === 0) {
+                if (wrap) wrap.innerHTML = vtEmptyState('🚢', 'No vessels generated yet',
+                    'Run the Simulation Generator (⚡) to see planned import/export volumes per vessel.');
+                if (meta) meta.innerText = '';
+                return;
+            }
+            if (filtered.length === 0) {
+                if (wrap) wrap.innerHTML = vtEmptyState('🔍', `No vessels match "${explorerEscapeHtml(vtSearch)}"`,
+                    'Try a different keyword — search checks vessel ID, line, class, terminal, and active scenarios.');
+                if (meta) meta.innerText = `0 of ${rows.length.toLocaleString()} match`;
+                return;
+            }
+
+            let html = `<table class="vt-table"><thead><tr>
+                <th>Vessel</th><th>Voyage</th><th>Line</th><th>Class</th><th>TEU Cap.</th>
+                <th>Terminal</th><th>Berth</th><th>Import TEU (planned)</th><th>Export TEU (planned)</th>
+                <th>Total Planned TEU</th><th>Anchorage Wait</th><th>Cargo Hours</th><th>Total Delay</th><th>Active Scenarios</th>
+            </tr></thead><tbody>`;
+            for (const r of filtered) {
+                html += `<tr>
+                    <td class="vt-vessel-id">${explorerEscapeHtml(r.vessel_id)}</td>
+                    <td>${explorerEscapeHtml(r.voyage_no)}</td>
+                    <td>${explorerEscapeHtml(r.shipping_line)}</td>
+                    <td>${explorerEscapeHtml(r.vessel_class)}</td>
+                    <td>${explorerEscapeHtml(r.teu_capacity)}</td>
+                    <td>${explorerEscapeHtml(r.terminal)}</td>
+                    <td>${explorerEscapeHtml(r.berth)}</td>
+                    <td class="vt-num-imp">${explorerEscapeHtml(r.import_teu_planned)}</td>
+                    <td class="vt-num-exp">${explorerEscapeHtml(r.export_teu_planned)}</td>
+                    <td>${explorerEscapeHtml(r.total_planned_teu)}</td>
+                    <td>${explorerEscapeHtml(r.anchorage_wait_hours)} h</td>
+                    <td>${explorerEscapeHtml(r.cargo_hours)} h</td>
+                    <td>${explorerEscapeHtml(r.total_delay_hours)} h</td>
+                    <td>${explorerEscapeHtml(r.active_scenarios)}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            if (wrap) wrap.innerHTML = html;
+            if (meta) meta.innerText = vtSearch.trim()
+                ? `${filtered.length.toLocaleString()} of ${rows.length.toLocaleString()} match "${vtSearch}"`
+                : '';
+        }
+
+        function vtDownloadPlanning() {
+            const rows = vtBuildPlanningRows();
+            if (!rows.length) { showToast('⚠️ No data to export yet — generate a simulation first.', 'warning'); return; }
+            const isFiltered = vtSearch.trim() !== '';
+            const rowsOut = isFiltered ? vtFilterRows(rows, vtSearch) : rows;
+            if (!rowsOut.length) { showToast('⚠️ No matching rows to export.', 'warning'); return; }
+            const filename = `jnpa_vessel_planning${isFiltered ? '_filtered' : ''}.csv`;
+            explorerTriggerDownload(filename, explorerRowsToCSV(rowsOut));
+            showToast(`⬇️ Downloaded ${filename} — ${rowsOut.length.toLocaleString()} rows`, 'success');
+        }
+
+        // Compact "MM-DD HH:MM" rendering of a "YYYY-MM-DD HH:MM:SS" event_time string
+        function vtStageTimeShort(t) {
+            if (!t) return '';
+            return t.length >= 16 ? t.substring(5, 16) : t;
+        }
+
+        // Only redraw the matrix while the Vessel Tracker tab is visible, and at
+        // most a few times a second — cheap during Step, harmless during fast Play.
+        function maybeRefreshVesselMatrix() {
+            const panel = document.getElementById('tabpanel-vessels');
+            if (!panel || !panel.classList.contains('active')) return;
+            const now = Date.now();
+            if (now - vtMatrixLastRender < 200) return;
+            renderVesselStageMatrix();
+        }
+
+        function renderVesselStageMatrix() {
+            vtMatrixLastRender = Date.now();
+            const wrap = document.getElementById('vtMatrixWrap');
+            const statusBadge = document.getElementById('vtMatrixStatusBadge');
+            const vessels = Object.values(vessels_registry).sort((a, b) => a.id.localeCompare(b.id));
+
+            if (vessels.length === 0) {
+                if (wrap) wrap.innerHTML = vtEmptyState('🔀', 'No playback data yet',
+                    'Click <strong>▶ Play</strong> or <strong>⏭ Step</strong> on the bottom dock — each vessel lights up here as it reaches a new stage.');
+                if (statusBadge) statusBadge.innerText = 'Not started';
+                return;
+            }
+
+            const visible = vtSearch.trim()
+                ? vessels.filter(v => vtFilterRows([{ id: v.id, line: v.line, class: v.class, terminal: v.terminal, stage: v.stage, berth: v.berth, voyage: v.voyage }], vtSearch).length > 0)
+                : vessels;
+
+            if (visible.length === 0) {
+                if (wrap) wrap.innerHTML = vtEmptyState('🔍', `No vessels match "${explorerEscapeHtml(vtSearch)}"`, 'Try a different keyword.');
+                if (statusBadge) statusBadge.innerText = `0 / ${vessels.length}`;
+                return;
+            }
+
+            let html = '<table class="vt-matrix"><thead><tr><th>Vessel</th>';
+            for (const s of VESSEL_STAGE_ORDER) html += `<th>${VESSEL_STAGE_LABELS[s]}</th>`;
+            html += '</tr></thead><tbody>';
+            for (const v of visible) {
+                const curIdx = VESSEL_STAGE_ORDER.indexOf(v.stage);
+                html += `<tr><td class="vt-vessel-id">${explorerEscapeHtml(v.id)}</td>`;
+                for (let i = 0; i < VESSEL_STAGE_ORDER.length; i++) {
+                    const stageName = VESSEL_STAGE_ORDER[i];
+                    const ts = v.stageTimestamps ? v.stageTimestamps[stageName] : null;
+                    let cls = 'vt-cell-pending', content = '—';
+                    if (ts) {
+                        cls = (i === curIdx) ? 'vt-cell-current' : 'vt-cell-done';
+                        content = vtStageTimeShort(ts);
+                    }
+                    html += `<td class="${cls}">${content}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            if (wrap) wrap.innerHTML = html;
+
+            const sailedCount = vessels.filter(v => v.stage === 'SAILED').length;
+            if (statusBadge) statusBadge.innerText = `${visible.length}/${vessels.length} shown · ${sailedCount} sailed`;
+        }
+
+        // -------------------------------------------------------------
+        // TAB NAVIGATION (Overview / Berth Matrix / Telemetry Plots)
+        // -------------------------------------------------------------
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabName);
+            });
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === `tabpanel-${tabName}`);
+            });
+            // Charts need a resize nudge after becoming visible again
+            if (tabName === 'telemetry') {
+                setTimeout(() => {
+                    if (typeof scaleChart !== 'undefined' && scaleChart) scaleChart.resize();
+                    if (typeof distChart !== 'undefined' && distChart) distChart.resize();
+                }, 50);
+            }
+            if (tabName === 'berths') {
+                renderBerthMapGrid();
+            }
+            if (tabName === 'explorer') {
+                renderExplorerTable();
+            }
+            if (tabName === 'vessels') {
+                renderVesselPlanningTable();
+                renderVesselStageMatrix();
+            }
+        }
+
+        window.onload = () => {
+            initializeTelemetryCharts();
+            initializeEvents();
+            renderBerthMapGrid();
+            renderLoadStatusModal();
+            updateHeaderLoadBadge();
+            sgBuildUI();
+            explorerBuildDatasetTabs();
+            // Open sim generator on first load so user sees it immediately
+            openModal('simGenModal');
+        };
+
+    </script>
+</body>
+</html>
