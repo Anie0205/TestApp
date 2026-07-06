@@ -206,7 +206,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     function setStatus(text, isError) {
         if (!app.statusBar) { return; }
         app.statusBar.textContent = text;
-        app.statusBar.style.color = isError ? '#C0392B' : '#374151';
+        app.statusBar.style.color = isError ? '#c2424b' : '#5c6b80';
     }
 
     // Gives each vessel a stable slot on a small ring around ANCH so that when several
@@ -252,7 +252,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 },
                 render: {
                     style: 'icon',
-                    color: '#2ca02c',
+                    color: '#2c8f4e',
                     iconName: 'transportation-dock'
                 },
                 options: { projection: { from: 'WGS84' } }
@@ -277,7 +277,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             },
             render: {
                 style: 'icon',
-                color: occupied ? '#d62728' : '#2ca02c',
+                color: occupied ? '#c2424b' : '#2c8f4e',
                 iconName: 'transportation-dock'
             },
             options: { projection: { from: 'WGS84' } }
@@ -302,7 +302,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
             render: {
                 style: 'text',
                 text: '\uD83C\uDF0A ' + safe(value),
-                color: '#d62728',
+                color: '#1fa9b8',
                 scale: 1.2
             },
             options: { projection: { from: 'WGS84' } }
@@ -338,7 +338,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 style: 'text', // glyph-based marker; if your platform names this style differently
                                 // (e.g. 'label'), swap it here - the rest of the payload is unchanged.
                 text: CONFIG.VESSEL_SYMBOL,
-                color: '#0B5CAB',
+                color: '#15708a',
                 scale: CONFIG.VESSEL_MARKER_SCALE
             },
             options: { projection: { from: 'WGS84' } }
@@ -367,19 +367,13 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // ---------------------------------------------------------------------
     // UI - STYLES
     // ---------------------------------------------------------------------
-    
-    var APTOS_FONT = "@font-face{font-family:'Aptos';src:url(data:font/ttf;base64,AAEAAAAUAQAABABAR0RERgF5/boAAtOAAAACjEdQT1PtlGGtAALWDAAAd+BHU1VCn062nwADTewAAA80T1MvMkr5pwYAAAHIAAAAYFNUQVTR/M//AANdIAAAAHxjbWFwCHaCBgAAFkQAAAsMY3Z0ICGdFcYAADLkAAAAwGZwZ21Xiw8QAAAhUAAAD4NnYXNwAAcAGwAC03QAAAAMZ2x5Zi06/zMAAD20AAF92mhlYWQkovWaAAABTAAAADZoaGVhDPwN3gAAAYQAAAAkaG10eEImvNUAAAIoAAAUHGtlcm6guJNzAAG7kAABBExsb2NhJQ2CuQAAM6QAAAoQbWF4cAiEEOYAAAGoAAAAIG1ldGE2o3hTAANdnAAAAQJuYW1lb7af/wACv9wAABN1cG9zdP+fADIAAtNUAAAAIHByZXBwhf8TAAAw1AAAAg8AAQAAAAICj5wnOw1fDzz1AAsIAAAAAADdpHX6AAAAAOJoMjX8Af3NCXUIFAAAAAYAAgAAAAAAAAABAAAHg/2/AAAKJvwB+PIJdQgAAAAAAAAAAAAAAAAAAAAFBwABAAAFBwDAABAAcAAIAAIAEAAvAQAAAQJMD4MACAABAAQEfAGQAAUACAUzBM0AAACaBTMEzQAAAs0AZgLbAAACCwAEAgICAgIEIAAChwAAAAMAAAAAAAAAAE1TICAAwAAN/fwHg/2/AAAIFAIzIAABnwAAAAADzgVCAAAAIAADA8UAAAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgEtwAIBLcACAS3AAgH" + 
-        /* ... Paste the rest of the massive base64 font string from your HTML here ... */
-        "AkwCA/8gAkwCC/8gAkwCG/);}";
-
     var STYLE =
         '<style>' +
-        APTOS_FONT +
-        /* ---- reset / base ---- */
+        /* ---- reset / base (JNPA DTCCC maritime theme: navy/teal, Aptos) ---- */
         '.voc-wrap,.voc-wrap *{box-sizing:border-box;}' +
         /* outer scrollable container – fills whatever space the platform allocates */
-        '.voc-wrap{font-family:\'Aptos\', -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
-            'background:#f3f4f6;color:#1f2937;line-height:1.4;' +
+        '.voc-wrap{font-family:"Aptos","Segoe UI",Roboto,Helvetica,Arial,sans-serif;' +
+            'background:#e9eef3;color:#0e2a47;line-height:1.45;' +
             'position:absolute;top:0;left:0;right:0;bottom:0;' +
             'overflow:auto;-webkit-overflow-scrolling:touch;}' +
         /* inner padding box so content never bleeds to edge */
@@ -388,70 +382,72 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         /* ---- top header bar ---- */
         '.voc-topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:relative;}' +
         '.voc-topbar-left{flex:1;min-width:0;}' +
-        '.voc-title{font-size:1.2rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
-        '.voc-subtitle{font-size:11px;color:#6b7280;}' +
+        '.voc-title{font-size:1.15rem;font-weight:700;letter-spacing:-.2px;color:#0e2a47;' +
+            'font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.voc-subtitle{font-size:11px;color:#5c6b80;}' +
         '.voc-topbar-right{display:flex;gap:6px;align-items:center;flex-shrink:0;}' +
         /* active tab badge */
-        '.voc-active-badge{font-size:11.5px;font-weight:600;color:#3b82f6;background:#eff6ff;' +
-            'border:1px solid #bfdbfe;padding:3px 9px;border-radius:20px;white-space:nowrap;cursor:default;}' +
+        '.voc-active-badge{font-size:11px;font-weight:700;letter-spacing:.3px;color:#15708a;background:#e2f2f5;' +
+            'border:1px solid rgba(21,112,138,.25);padding:3px 10px;border-radius:20px;white-space:nowrap;cursor:default;}' +
         /* icon buttons */
-        '.voc-icon-btn{width:34px;height:34px;border-radius:8px;border:1px solid #d1d5db;background:#fff;' +
-            'cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
-            'transition:background .15s,border-color .15s;}' +
-        '.voc-icon-btn:hover{background:#f0f9ff;border-color:#93c5fd;}' +
-        '.voc-icon-btn.voc-active{background:#eff6ff;border-color:#3b82f6;}' +
+        '.voc-icon-btn{width:34px;height:34px;border-radius:6px;border:1px solid #dde3ec;background:#ffffff;' +
+            'color:#5c6b80;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
+            'transition:background .15s,border-color .15s,color .15s;}' +
+        '.voc-icon-btn:hover{background:#f4f7fa;border-color:#c2cad6;color:#0e2a47;}' +
+        '.voc-icon-btn.voc-active{background:#e2f2f5;border-color:#15708a;color:#15708a;}' +
 
         /* ---- status bar ---- */
-        '.voc-status-bar{font-size:11px;color:#374151;background:#fff;padding:6px 10px;border-radius:6px;' +
-            'margin-bottom:11px;box-shadow:0 1px 3px rgba(0,0,0,.05);word-break:break-all;}' +
+        '.voc-status-bar{font-size:11px;color:#5c6b80;background:#ffffff;border:1px solid #dde3ec;padding:6px 10px;border-radius:6px;' +
+            'margin-bottom:11px;word-break:break-all;}' +
 
         /* ---- burger dropdown menu ---- */
         '.voc-burger-menu{position:absolute;top:42px;right:0;z-index:200;' +
-            'background:#fff;border:1px solid #e5e7eb;border-radius:10px;' +
-            'box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:230px;padding:6px 0;display:none;}' +
+            'background:#ffffff;border:1px solid #dde3ec;border-radius:8px;' +
+            'box-shadow:0 8px 24px rgba(14,42,71,.14);min-width:230px;padding:6px 0;display:none;}' +
         '.voc-burger-menu.voc-open{display:block;}' +
-        '.voc-menu-section{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;' +
-            'letter-spacing:.06em;padding:8px 14px 4px;}' +
+        '.voc-menu-section{font-size:9px;font-weight:700;color:#9aa6b6;text-transform:uppercase;' +
+            'letter-spacing:.6px;padding:8px 14px 4px;}' +
         '.voc-menu-item{display:flex;align-items:center;gap:9px;padding:9px 14px;font-size:13px;' +
-            'font-weight:500;color:#374151;cursor:pointer;transition:background .12s;}' +
-        '.voc-menu-item:hover{background:#f0f9ff;color:#2563eb;}' +
-        '.voc-menu-item.voc-menu-active{background:#eff6ff;color:#2563eb;font-weight:700;}' +
-        '.voc-menu-divider{border:none;border-top:1px solid #f3f4f6;margin:4px 0;}' +
+            'font-weight:500;color:#0e2a47;cursor:pointer;transition:background .12s,color .12s;}' +
+        '.voc-menu-item:hover{background:#e2f2f5;color:#15708a;}' +
+        '.voc-menu-item.voc-menu-active{background:#e2f2f5;color:#15708a;font-weight:700;box-shadow:inset 3px 0 0 #15708a;}' +
+        '.voc-menu-divider{border:none;border-top:1px solid #dde3ec;margin:4px 0;}' +
         '.voc-menu-icon{font-size:14px;width:18px;text-align:center;}' +
 
         /* ---- settings modal overlay ---- */
-        '.voc-modal-backdrop{position:absolute;inset:0;background:rgba(17,24,39,.35);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:50px;}' +
+        '.voc-modal-backdrop{position:absolute;inset:0;background:rgba(8,16,24,.4);z-index:300;display:none;align-items:flex-start;justify-content:center;padding-top:50px;}' +
         '.voc-modal-backdrop.voc-open{display:flex;}' +
-        '.voc-modal{background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);' +
+        '.voc-modal{background:#ffffff;border:1px solid #dde3ec;border-radius:8px;box-shadow:0 24px 70px rgba(8,16,24,.35);' +
             'width:90%;max-width:680px;max-height:82vh;overflow-y:auto;display:flex;flex-direction:column;}' +
         '.voc-modal-header{display:flex;align-items:center;justify-content:space-between;' +
-            'padding:14px 18px;border-bottom:1px solid #f3f4f6;position:sticky;top:0;background:#fff;z-index:1;}' +
-        '.voc-modal-title{font-size:15px;font-weight:700;color:#111827;}' +
-        '.voc-modal-close{width:30px;height:30px;border-radius:6px;border:1px solid #e5e7eb;' +
-            'background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}' +
-        '.voc-modal-close:hover{background:#fee2e2;border-color:#fca5a5;}' +
+            'padding:14px 18px;border-bottom:1px solid #dde3ec;position:sticky;top:0;background:#ffffff;z-index:1;}' +
+        '.voc-modal-title{font-size:15px;font-weight:700;color:#0e2a47;font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;}' +
+        '.voc-modal-close{width:30px;height:30px;border-radius:6px;border:1px solid #dde3ec;' +
+            'background:#ffffff;color:#5c6b80;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;' +
+            'transition:background .12s,border-color .12s,color .12s;}' +
+        '.voc-modal-close:hover{background:#f4f7fa;border-color:#c2cad6;color:#0e2a47;}' +
         '.voc-modal-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;}' +
         /* playback row inside modal */
         '.voc-pb-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}' +
         '.voc-pb-row .voc-cg{flex:1;min-width:140px;}' +
         /* modal apply button */
-        '.voc-modal-footer{padding:12px 18px;border-top:1px solid #f3f4f6;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#fff;}' +
+        '.voc-modal-footer{padding:12px 18px;border-top:1px solid #dde3ec;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#ffffff;}' +
 
         /* ---- shared form control group ---- */
         '.voc-cg{display:flex;flex-direction:column;gap:4px;}' +
-        '.voc-cg label{font-weight:600;font-size:11px;color:#4b5563;}' +
-        '.voc-cg select,.voc-cg input[type="text"]{padding:7px 10px;font-size:13px;border-radius:6px;' +
-            'border:1px solid #d1d5db;background:#fff;width:100%;outline:none;}' +
-        '.voc-cg select:focus,.voc-cg input[type="text"]:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15);}' +
+        '.voc-cg label{font-weight:600;font-size:11px;color:#5c6b80;}' +
+        '.voc-cg select,.voc-cg input[type="text"]{font:inherit;padding:7px 10px;font-size:13px;border-radius:6px;' +
+            'border:1px solid #dde3ec;background:#ffffff;color:#0e2a47;width:100%;outline:none;transition:border-color .12s;}' +
+        '.voc-cg select:focus,.voc-cg input[type="text"]:focus{border-color:#1fa9b8;box-shadow:0 0 0 2px rgba(31,169,184,.15);}' +
         '.voc-filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;}' +
 
         /* ---- buttons ---- */
-        '.voc-btn{padding:8px 14px;font-size:13px;font-weight:600;border-radius:6px;' +
-            'border:1px solid #d1d5db;background:#fff;cursor:pointer;white-space:nowrap;transition:all .15s;}' +
-        '.voc-btn:hover{background:#f9fafb;border-color:#9ca3af;}' +
-        '.voc-btn.voc-active{background:#fee2e2;color:#ef4444;border-color:#fca5a5;}' +
-        '.voc-btn-primary{background:#2563eb;color:#fff;border-color:#2563eb;}' +
-        '.voc-btn-primary:hover{background:#1d4ed8;border-color:#1d4ed8;}' +
+        '.voc-btn{font:inherit;padding:8px 14px;font-size:12.5px;font-weight:600;border-radius:6px;color:#0e2a47;' +
+            'border:1px solid #c2cad6;background:#ffffff;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,filter .12s;}' +
+        '.voc-btn:hover{background:#f4f7fa;}' +
+        '.voc-btn.voc-active{background:#f8e5e6;color:#c2424b;border-color:#e6b3b8;}' +
+        '.voc-btn-primary{background:#15708a;color:#fff;border-color:#15708a;}' +
+        '.voc-btn-primary:hover{filter:brightness(1.08);}' +
 
         /* ---- tab content panes ---- */
         '.voc-tab-content{display:none;}' +
@@ -459,41 +455,41 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         /* ---- KPI cards ---- */
         '.voc-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:13px;}' +
-        '.voc-kpi-card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;}' +
-        '.voc-kpi-card label{font-size:10.5px;font-weight:600;color:#4b5563;margin-bottom:2px;}' +
-        '.voc-kpi-val{font-size:18px;font-weight:700;color:#111827;margin-bottom:5px;}' +
-        '.voc-kpi-explanation{font-size:10px;color:#6b7280;border-top:1px dashed #e5e7eb;padding-top:4px;font-style:italic;line-height:1.3;}' +
+        '.voc-kpi-card{background:#ffffff;border:1px solid #dde3ec;padding:12px;border-radius:8px;display:flex;flex-direction:column;}' +
+        '.voc-kpi-card label{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#5c6b80;margin-bottom:2px;}' +
+        '.voc-kpi-val{font-size:19px;font-weight:700;letter-spacing:-.3px;color:#0e2a47;margin-bottom:5px;font-family:"Aptos Display","Aptos","Segoe UI",sans-serif;}' +
+        '.voc-kpi-explanation{font-size:10px;color:#9aa6b6;border-top:1px dashed #dde3ec;padding-top:4px;font-style:italic;line-height:1.3;}' +
 
         /* ---- vessel matrix ---- */
         '.voc-vessel-panel-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;}' +
         '@media(max-width:1024px){.voc-vessel-panel-grid{grid-template-columns:1fr;}}' +
-        '.voc-matrix-container{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,.05);overflow-x:auto;margin-bottom:14px;}' +
+        '.voc-matrix-container{background:#ffffff;border:1px solid #dde3ec;padding:14px;border-radius:8px;overflow-x:auto;margin-bottom:14px;}' +
         '.voc-matrix-container table{width:100%;border-collapse:collapse;min-width:850px;text-align:center;}' +
-        '.voc-matrix-container th,.voc-matrix-container td{padding:8px 5px;border:1px solid #e5e7eb;font-size:11.5px;}' +
-        '.voc-matrix-container th{background:#f9fafb;font-weight:600;color:#374151;}' +
+        '.voc-matrix-container th,.voc-matrix-container td{padding:8px 5px;border:1px solid #dde3ec;font-size:11.5px;}' +
+        '.voc-matrix-container th{background:#f4f7fa;font-weight:700;color:#5c6b80;font-size:10px;letter-spacing:.3px;text-transform:uppercase;}' +
         '.voc-vessel-row{cursor:pointer;}' +
-        '.voc-vessel-row:hover td{background:#f8fafc;}' +
-        '.voc-vessel-axis-cell{text-align:left;font-weight:bold;background:#f9fafb;min-width:180px;color:#111827;position:sticky;left:0;box-shadow:2px 0 5px -2px rgba(0,0,0,.1);}' +
-        '.voc-drilldown-row{background:#f8fafc;display:none;}' +
-        '.voc-drilldown-container{padding:10px;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:6px;margin:4px auto;width:98%;overflow-x:auto;}' +
+        '.voc-vessel-row:hover td{background:#f4f7fa;}' +
+        '.voc-vessel-axis-cell{text-align:left;font-weight:700;background:#f4f7fa;min-width:180px;color:#0e2a47;position:sticky;left:0;box-shadow:2px 0 5px -2px rgba(14,42,71,.1);}' +
+        '.voc-drilldown-row{background:#f4f7fa;display:none;}' +
+        '.voc-drilldown-container{padding:10px;text-align:left;background:#ffffff;border:1px solid #dde3ec;border-radius:6px;margin:4px auto;width:98%;overflow-x:auto;}' +
         '.voc-subtable{width:100%;border-collapse:collapse;min-width:700px;}' +
-        '.voc-subtable th{background:#f1f5f9;color:#475569;font-size:10.5px;padding:5px;}' +
-        '.voc-subtable td{padding:5px;font-size:10.5px;border:1px solid #e2e8f0;background:#fff;}' +
-        '.voc-berth-badge{display:inline-block;padding:2px 4px;font-size:10px;border-radius:4px;font-weight:600;margin-top:4px;background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;}' +
-        '.voc-delay-warning-tag{display:block;font-size:9px;color:#b91c1c;font-weight:bold;margin-top:4px;text-transform:uppercase;background:rgba(254,226,226,.6);padding:1px 2px;border-radius:3px;}' +
-        '.voc-cell-empty{background:#fcfcfd;color:#d1d5db;}' +
-        '.voc-cell-low{background:#dcfce7;color:#166534;}' +
-        '.voc-cell-med{background:#eff6ff;color:#1e40af;}' +
-        '.voc-cell-critical{background:#fee2e2;color:#991b1b;}' +
+        '.voc-subtable th{background:#f4f7fa;color:#5c6b80;font-size:10px;padding:5px;text-transform:uppercase;letter-spacing:.3px;}' +
+        '.voc-subtable td{padding:5px;font-size:10.5px;border:1px solid #dde3ec;background:#ffffff;color:#0e2a47;}' +
+        '.voc-berth-badge{display:inline-block;padding:2px 8px;font-size:10px;border-radius:10px;font-weight:700;margin-top:4px;background:#e2f2f5;color:#15708a;border:1px solid rgba(21,112,138,.2);}' +
+        '.voc-delay-warning-tag{display:block;font-size:9px;color:#c2424b;font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.2px;background:#f8e5e6;padding:1px 4px;border-radius:3px;}' +
+        '.voc-cell-empty{background:#f4f7fa;color:#9aa6b6;}' +
+        '.voc-cell-low{background:#e4f3ea;color:#2c8f4e;}' +
+        '.voc-cell-med{background:#f6edd8;color:#b9791a;}' +
+        '.voc-cell-critical{background:#f8e5e6;color:#c2424b;}' +
 
         /* ---- charts ---- */
         '.voc-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:8px;}' +
-        '.voc-chart-card{background:#fff;padding:14px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,.05);width:100%;overflow:hidden;display:flex;flex-direction:column;}' +
+        '.voc-chart-card{background:#ffffff;border:1px solid #dde3ec;padding:14px;border-radius:8px;width:100%;overflow:hidden;display:flex;flex-direction:column;}' +
         '.voc-chart-card.voc-span2{grid-column:1/-1;}' +
-        '.voc-chart-title{font-weight:600;font-size:13px;color:#374151;margin-bottom:2px;border-bottom:1px solid #e5e7eb;padding-bottom:5px;}' +
-        '.voc-chart-explanation{font-size:10.5px;color:#6b7280;font-style:italic;margin-bottom:10px;margin-top:2px;line-height:1.3;}' +
+        '.voc-chart-title{font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;color:#5c6b80;margin-bottom:2px;border-bottom:1px solid #dde3ec;padding-bottom:5px;}' +
+        '.voc-chart-explanation{font-size:10.5px;color:#9aa6b6;font-style:italic;margin-bottom:10px;margin-top:2px;line-height:1.3;}' +
         '.voc-grid-col{display:flex;flex-direction:column;gap:14px;}' +
-        '.voc-tip{font-size:11px;color:#6b7280;font-style:italic;display:block;margin-bottom:8px;}' +
+        '.voc-tip{font-size:11px;color:#5c6b80;font-style:italic;display:block;margin-bottom:8px;}' +
         '</style>';
 
     // ---- small helpers ----
@@ -617,9 +613,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var panes =
             '<div id="voc-tab-executive" class="voc-tab-content voc-tab-content-active">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#3b82f6', 'Total elapsed hours from port entry to open-sea departure.') +
-                    kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#10b981', 'Active TEU exchange vs total fleet capacity.') +
-                    kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#ef4444', 'Share of voyages reporting active disruption logs.') +
+                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#15708a', 'Total elapsed hours from port entry to open-sea departure.') +
+                    kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#2c8f4e', 'Active TEU exchange vs total fleet capacity.') +
+                    kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#c2424b', 'Share of voyages reporting active disruption logs.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
                     '<div class="voc-chart-card"><div class="voc-chart-title">Congestion Gaps by Carrier Line (Hours)</div><div class="voc-chart-explanation">Accumulated demurrage/idle hours by carrier.</div><div id="voc-exe-demurrage-chart"></div></div>' +
@@ -629,9 +625,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
             '<div id="voc-tab-vessels" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-vsl-active', 'Active Hulls In Port', '#2563eb', 'Vessels currently berthed or transiting.') +
-                    kpiCard('voc-kpi-vsl-plan', 'Pre-Arrival Pipeline', '#d97706', 'Vessels in planning with active ETA receipts.') +
-                    kpiCard('voc-kpi-vsl-anch', 'Avg Anchorage Wait', '#dc2626', 'Average wait at anchorage for pilot access.') +
+                    kpiCard('voc-kpi-vsl-active', 'Active Hulls In Port', '#15708a', 'Vessels currently berthed or transiting.') +
+                    kpiCard('voc-kpi-vsl-plan', 'Pre-Arrival Pipeline', '#b9791a', 'Vessels in planning with active ETA receipts.') +
+                    kpiCard('voc-kpi-vsl-anch', 'Avg Anchorage Wait', '#c2424b', 'Average wait at anchorage for pilot access.') +
                 '</div>' +
                 '<div class="voc-vessel-panel-grid">' +
                     '<div class="voc-matrix-container">' +
@@ -648,9 +644,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
             '<div id="voc-tab-terminals" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-term-imp', 'Total Imports Handled', '#059669', 'Cumulative discharge TEU up to selected timestamp.') +
-                    kpiCard('voc-kpi-term-exp', 'Total Exports Handled', '#0891b2', 'Cumulative load TEU processed outbound.') +
-                    kpiCard('voc-kpi-term-occupancy', 'Berth Occupancy Index', '#4f46e5', 'Percentage of berths currently occupied.') +
+                    kpiCard('voc-kpi-term-imp', 'Total Imports Handled', '#2c8f4e', 'Cumulative discharge TEU up to selected timestamp.') +
+                    kpiCard('voc-kpi-term-exp', 'Total Exports Handled', '#1fa9b8', 'Cumulative load TEU processed outbound.') +
+                    kpiCard('voc-kpi-term-occupancy', 'Berth Occupancy Index', '#5558b0', 'Percentage of berths currently occupied.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
                     '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Terminal \u2794 Berth Imports &amp; Exports</div><div class="voc-chart-explanation">Import vs Export TEU per berth node.</div><div id="voc-term-geo-bar"></div></div>' +
@@ -660,8 +656,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
             '<div id="voc-tab-operations" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-ops-cranes', 'Avg Cranes Assigned', '#7c3aed', 'Mean crane sets allocated per vessel cargo phase.') +
-                    kpiCard('voc-kpi-ops-speed', 'Mean Crane Velocity', '#2563eb', 'TEU/hr across cargo operations.') +
+                    kpiCard('voc-kpi-ops-cranes', 'Avg Cranes Assigned', '#5558b0', 'Mean crane sets allocated per vessel cargo phase.') +
+                    kpiCard('voc-kpi-ops-speed', 'Mean Crane Velocity', '#15708a', 'TEU/hr across cargo operations.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
                     '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Crane Density vs Handling Velocity</div><div class="voc-chart-explanation">Scatter: does more cranes = faster handling?</div><div id="voc-ops-efficiency-scatter"></div></div>' +
@@ -670,8 +666,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
             '<div id="voc-tab-environment" class="voc-tab-content">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-env-weather', 'Current Weather', '#4b5563', 'Atmospheric descriptor at current snapshot.') +
-                    kpiCard('voc-kpi-env-tide', 'Tide Water Level', '#06b6d4', 'Hydrographic level (m) \u2014 also drives the 3D tide marker.') +
+                    kpiCard('voc-kpi-env-weather', 'Current Weather', '#5c6b80', 'Atmospheric descriptor at current snapshot.') +
+                    kpiCard('voc-kpi-env-tide', 'Tide Water Level', '#1fa9b8', 'Hydrographic level (m) \u2014 also drives the 3D tide marker.') +
                 '</div>' +
                 '<div class="voc-charts-grid">' +
                     '<div class="voc-chart-card voc-span2"><div class="voc-chart-title">Tide Fluctuations vs Active Disruptions</div><div class="voc-chart-explanation">Cross-references water level against delay spike frequency.</div><div id="voc-env-tide-line"></div></div>' +
@@ -890,10 +886,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         safeRender(id, {
             series: [{ name: label, data: data }],
             chart: { type: 'bar', height: 200, toolbar: { show: false } },
-            colors: ['#3b82f6'],
+            colors: ['#15708a'],
             plotOptions: { bar: { dataLabels: { position: 'top' } } },
             xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '9px' } } },
-            dataLabels: { enabled: true, style: { fontSize: '10px', colors: ['#333'] }, offsetY: -18 }
+            dataLabels: { enabled: true, style: { fontSize: '10px', colors: ['#0e2a47'] }, offsetY: -18 }
         });
     }
 
@@ -904,10 +900,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 { name: 'Exports Throughput (TEU)', data: exportData }
             ],
             chart: { type: 'bar', height: 280, toolbar: { show: false } },
-            colors: ['#059669', '#0891b2'],
+            colors: ['#2c8f4e', '#1fa9b8'],
             plotOptions: { bar: { dataLabels: { position: 'top' }, columnWidth: '65%' } },
             xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '9px' } } },
-            dataLabels: { enabled: true, style: { fontSize: '9px', colors: ['#333'] }, offsetY: -16 },
+            dataLabels: { enabled: true, style: { fontSize: '9px', colors: ['#0e2a47'] }, offsetY: -16 },
             legend: { position: 'top', horizontalAlign: 'right' }
         });
     }
@@ -933,7 +929,7 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         safeRender(id, {
             series: [{ name: 'Tide Level (m)', type: 'line', data: lineData }, { name: 'Active Delays', type: 'column', data: barData }],
             chart: { height: 240, type: 'line', toolbar: { show: false } },
-            colors: ['#06b6d4', '#ef4444'],
+            colors: ['#1fa9b8', '#c2424b'],
             stroke: { width: [3, 0] },
             xaxis: { categories: categories, labels: { show: false } },
             yaxis: [{ title: { text: 'Water Level (m)', style: { fontSize: '11px' } } }, { opposite: true, title: { text: 'Disruption Counts', style: { fontSize: '11px' } } }]
@@ -1204,9 +1200,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
                 var rowHtml = '<tr class="voc-vessel-row" data-key="' + esc(key) + '">' +
                     '<td class="voc-vessel-axis-cell">' +
-                        '\u25B6 ' + esc(meta.vesselId) + ' <span style="font-size:10px;font-weight:normal;color:#6b7280;">(' + esc(meta.voyageNo) + ')</span><br>' +
+                        '\u25B6 ' + esc(meta.vesselId) + ' <span style="font-size:10px;font-weight:normal;color:#5c6b80;">(' + esc(meta.voyageNo) + ')</span><br>' +
                         '<span class="voc-berth-badge">' + esc(meta.terminal) + '/' + esc(meta.berth) + '</span>' +
-                        '<span style="display:block;font-size:9.5px;color:#4b5563;font-weight:normal;margin-top:3px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">' +
+                        '<span style="display:block;font-size:9.5px;color:#5c6b80;font-weight:normal;margin-top:3px;background:#f4f7fa;padding:1px 4px;border-radius:3px;">' +
                             '\u23F1\uFE0F Upd: ' + esc(meta.latestSubstage) + ' (' + formattedTime + ')' +
                         '</span>' +
                     '</td>';
