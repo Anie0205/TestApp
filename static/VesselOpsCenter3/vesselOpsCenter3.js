@@ -85,6 +85,12 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
     // queue release, inbound transit, berthing maneuver, or outbound departure).
     // A pilot unavailability window adds directly to the wait in these stages.
     var PILOT_DEPENDENT_STAGES = ['WAITING', 'INBOUND', 'BERTHING', 'DEPARTURE'];
+    // Vessels already at the terminal doing arrival formalities, clearance, cargo
+    // work, or servicing aren't blocked by the outage yet, but the extra berth
+    // congestion it causes ripples onto them too — modelled as a fraction of the
+    // outage duration rather than the full amount.
+    var CASCADE_STAGES = ['ARRIVAL', 'CLEARANCE', 'CARGO', 'SERVICE'];
+    var CASCADE_RIPPLE_FACTOR = 0.5;
 
     // ---------------------------------------------------------------------
     // APP STATE
@@ -450,6 +456,15 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '.voc-whatif-controls-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}' +
         '.voc-whatif-controls-row .voc-cg{flex:1;min-width:160px;}' +
         '.voc-whatif-empty{padding:22px;text-align:center;color:#9aa6b6;font-style:italic;border:1px dashed #dde3ec;border-radius:8px;background:#ffffff;}' +
+        '.voc-whatif-presets{display:flex;gap:6px;}' +
+        '.voc-preset-btn{padding:6px 11px;font-size:11.5px;}' +
+        '.voc-preset-btn.voc-active{background:#e2f2f5;color:#15708a;border-color:#15708a;font-weight:700;}' +
+        '.voc-whatif-summary{background:#e2f2f5;border:1px solid rgba(21,112,138,.25);border-left:4px solid #15708a;' +
+            'border-radius:6px;padding:12px 14px;font-size:13px;line-height:1.5;color:#0e2a47;margin-bottom:14px;}' +
+        '.voc-whatif-summary strong{color:#15708a;}' +
+        '.voc-impact-type-badge{display:inline-block;padding:2px 8px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;border-radius:10px;}' +
+        '.voc-impact-type-badge.voc-type-direct{background:#f8e5e6;color:#c2424b;}' +
+        '.voc-impact-type-badge.voc-type-cascade{background:#f6edd8;color:#b9791a;}' +
         '.voc-whatif-flag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;padding:1px 6px;border-radius:3px;margin-left:6px;}' +
         '.voc-whatif-flag.voc-flag-low{background:#e4f3ea;color:#2c8f4e;}' +
         '.voc-whatif-flag.voc-flag-med{background:#f6edd8;color:#b9791a;}' +
@@ -459,6 +474,8 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         '.voc-btn{font:inherit;padding:8px 14px;font-size:12.5px;font-weight:600;border-radius:6px;color:#0e2a47;' +
             'border:1px solid #c2cad6;background:#ffffff;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,filter .12s;}' +
         '.voc-btn:hover{background:#f4f7fa;}' +
+        '.voc-btn:disabled{opacity:.5;cursor:not-allowed;background:#ffffff;}' +
+        '.voc-btn:disabled:hover{background:#ffffff;}' +
         '.voc-btn.voc-active{background:#f8e5e6;color:#c2424b;border-color:#e6b3b8;}' +
         '.voc-btn-primary{background:#15708a;color:#fff;border-color:#15708a;}' +
         '.voc-btn-primary:hover{filter:brightness(1.08);}' +
@@ -701,28 +718,41 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                             '<input type="number" id="voc-whatif-hours" min="0" max="48" step="0.5" value="5">' +
                         '</div>' +
                         '<div class="voc-cg" style="flex:0 0 auto;">' +
+                            '<label>Quick Presets</label>' +
+                            '<div class="voc-whatif-presets">' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="1">1h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="3">3h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="6">6h</button>' +
+                                '<button type="button" class="voc-btn voc-preset-btn" data-hours="12">12h</button>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="voc-cg" style="flex:0 0 auto;">' +
                             '<label>&nbsp;</label>' +
                             '<button class="voc-btn voc-btn-primary" id="voc-whatif-run-btn">\u25B6 Run Simulation</button>' +
                         '</div>' +
                     '</div>' +
-                    '<span class="voc-tip" style="margin-top:10px;margin-bottom:0;">\uD83D\uDCA1 Simulates a pilot outage at the selected terminal, at the current snapshot in time. Vessels currently Waiting, Inbound, Berthing, or Departing at that terminal need an active pilot to move \u2014 each has the outage duration added directly to its current wait.</span>' +
+                    '<span class="voc-tip" style="margin-top:10px;margin-bottom:0;">\uD83D\uDCA1 Vessels currently Waiting, Inbound, Berthing, or Departing need an active pilot right now (Direct impact). Vessels already at the terminal doing Arrival/Clearance/Cargo/Service work aren\u2019t stuck without a pilot yet, but face knock-on berth congestion once their turn comes (Cascade impact).</span>' +
                 '</div>' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-whatif-impacted', 'Vessels Impacted', '#c2424b', 'Vessels at this terminal currently requiring pilot movement.') +
+                    kpiCard('voc-kpi-whatif-impacted', 'Vessels Impacted', '#c2424b', 'Direct + cascade vessels affected at this terminal.') +
                     kpiCard('voc-kpi-whatif-baseline', 'Avg Wait \u2014 Baseline', '#15708a', 'Average current-stage wait with normal pilot availability.') +
                     kpiCard('voc-kpi-whatif-simulated', 'Avg Wait \u2014 With Outage', '#c2424b', 'Average current-stage wait if the outage occurs now.') +
-                    kpiCard('voc-kpi-whatif-added', 'Added Vessel-Hours (Fleet)', '#b9791a', 'Total extra waiting hours injected across impacted vessels.') +
+                    kpiCard('voc-kpi-whatif-added', 'Added Vessel-Hours (Fleet)', '#b9791a', 'Total extra waiting hours injected across all affected vessels.') +
                 '</div>' +
-                '<div id="voc-whatif-empty" class="voc-whatif-empty" style="display:none;">No vessels are currently Waiting, Inbound, Berthing, or Departing at this terminal for the selected snapshot \u2014 a pilot outage right now would have no effect.</div>' +
+                '<div id="voc-whatif-empty" class="voc-whatif-empty" style="display:none;">No vessels at this terminal are Waiting, Inbound, Berthing, Departing, or mid-process for the selected snapshot \u2014 a pilot outage right now would have no effect.</div>' +
                 '<div id="voc-whatif-results">' +
+                    '<div id="voc-whatif-summary" class="voc-whatif-summary"></div>' +
                     '<div class="voc-chart-card" style="margin-bottom:14px;">' +
                         '<div class="voc-chart-title">Baseline vs Simulated Waiting Time (per Vessel)</div>' +
-                        '<div class="voc-chart-explanation">Compares each affected vessel\u2019s current wait against its projected wait if the pilot outage happens now.</div>' +
+                        '<div class="voc-chart-explanation">Compares each affected vessel\u2019s current wait against its projected wait if the pilot outage happens now. Sorted worst-impact first.</div>' +
                         '<div id="voc-whatif-chart"></div>' +
                     '</div>' +
                     '<div class="voc-matrix-container">' +
-                        '<span class="voc-tip">\uD83D\uDCA1 Detail view of every vessel affected by the simulated outage.</span>' +
-                        '<table><thead><tr><th style="text-align:left;">Vessel</th><th>Stage</th><th>Berth</th><th>Baseline Wait</th><th>+ Outage</th><th>Simulated Wait</th></tr></thead><tbody id="voc-whatif-table-body"></tbody></table>' +
+                        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+                            '<span class="voc-tip" style="margin-bottom:0;">\uD83D\uDCA1 Detail view of every vessel affected by the simulated outage.</span>' +
+                            '<button class="voc-btn" id="voc-whatif-export-btn">\u2B07\uFE0F Export CSV</button>' +
+                        '</div>' +
+                        '<table><thead><tr><th style="text-align:left;">Vessel</th><th>Stage</th><th>Berth</th><th>Impact Type</th><th>Baseline Wait</th><th>+ Added</th><th>Simulated Wait</th></tr></thead><tbody id="voc-whatif-table-body"></tbody></table>' +
                     '</div>' +
                 '</div>' +
             '</div>';
@@ -851,6 +881,14 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         document.getElementById('voc-whatif-terminal').addEventListener('change', renderActiveTab);
         document.getElementById('voc-whatif-hours').addEventListener('input', renderActiveTab);
         document.getElementById('voc-whatif-run-btn').addEventListener('click', renderActiveTab);
+        document.getElementById('voc-whatif-export-btn').addEventListener('click', exportWhatIfCsv);
+        var presetBtnList = document.querySelectorAll('.voc-preset-btn');
+        for (var pbi = 0; pbi < presetBtnList.length; pbi++) {
+            presetBtnList[pbi].addEventListener('click', function () {
+                document.getElementById('voc-whatif-hours').value = this.getAttribute('data-hours');
+                renderActiveTab();
+            });
+        }
 
         // ---- playback ----
         document.getElementById('voc-play-btn').addEventListener('click', togglePlayback);
@@ -1006,6 +1044,10 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         return 'voc-flag-critical';
     }
 
+    // Populated on every renderWhatIfTab() call so the Export CSV button can
+    // read the exact rows currently on screen without recomputing anything.
+    var lastWhatIfExport = { terminal: '', hours: 0, rows: [] };
+
     function renderWhatIfTab(metadata) {
         // ---- keep the terminal dropdown in sync with whatever terminals exist in this snapshot ----
         var termSelect = document.getElementById('voc-whatif-terminal');
@@ -1027,66 +1069,154 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var selectedTerminal = termSelect.value;
         var pilotHours = parseFloat(document.getElementById('voc-whatif-hours').value) || 0;
 
-        // ---- find vessels at this terminal that need an active pilot right now ----
-        var impacted = Object.keys(metadata).map(function (k) { return metadata[k]; }).filter(function (m) {
-            return m.terminal === selectedTerminal && m.hasArrived && !m.hasDeparted &&
-                PILOT_DEPENDENT_STAGES.indexOf(m.latestStage) !== -1;
-        });
+        // ---- sync the quick-preset buttons so the matching preset looks "selected" ----
+        var presetBtns = document.querySelectorAll('.voc-preset-btn');
+        for (var pi = 0; pi < presetBtns.length; pi++) {
+            var isMatch = parseFloat(presetBtns[pi].getAttribute('data-hours')) === pilotHours;
+            presetBtns[pi].classList.toggle('voc-active', isMatch);
+        }
+
+        var allMeta = Object.keys(metadata).map(function (k) { return metadata[k]; })
+            .filter(function (m) { return m.terminal === selectedTerminal && m.hasArrived && !m.hasDeparted; });
+
+        // ---- Direct impact: vessels that need an active pilot right now ----
+        var direct = allMeta.filter(function (m) { return PILOT_DEPENDENT_STAGES.indexOf(m.latestStage) !== -1; })
+            .map(function (m) {
+                var baseline = m.rowDurations[m.latestStage] || 0;
+                return { m: m, type: 'Direct', baseline: baseline, delta: pilotHours, simulated: baseline + pilotHours };
+            });
+
+        // ---- Cascade impact: vessels mid-process at the same terminal, delayed by knock-on berth congestion ----
+        var cascade = allMeta.filter(function (m) { return CASCADE_STAGES.indexOf(m.latestStage) !== -1; })
+            .map(function (m) {
+                var baseline = m.rowDurations[m.latestStage] || 0;
+                var delta = pilotHours * CASCADE_RIPPLE_FACTOR;
+                return { m: m, type: 'Cascade', baseline: baseline, delta: delta, simulated: baseline + delta };
+            });
+
+        var combined = direct.concat(cascade);
 
         var emptyEl = document.getElementById('voc-whatif-empty');
         var resultsEl = document.getElementById('voc-whatif-results');
+        var exportBtn = document.getElementById('voc-whatif-export-btn');
 
-        if (!selectedTerminal || impacted.length === 0) {
+        if (!selectedTerminal || combined.length === 0) {
             emptyEl.style.display = 'block';
             resultsEl.style.display = 'none';
+            if (exportBtn) { exportBtn.disabled = true; }
             document.getElementById('voc-kpi-whatif-impacted').textContent = '0';
             document.getElementById('voc-kpi-whatif-baseline').textContent = '-';
             document.getElementById('voc-kpi-whatif-simulated').textContent = '-';
             document.getElementById('voc-kpi-whatif-added').textContent = '0.0h';
+            lastWhatIfExport = { terminal: selectedTerminal, hours: pilotHours, rows: [] };
             return;
         }
 
         emptyEl.style.display = 'none';
         resultsEl.style.display = 'block';
+        if (exportBtn) { exportBtn.disabled = false; }
+
+        // worst-impact first, so the vessels that matter most show up at a glance
+        combined.sort(function (a, b) { return b.simulated - a.simulated; });
 
         var categories = [], baselineData = [], simulatedData = [];
-        var sumBaseline = 0, sumSimulated = 0;
+        var sumBaseline = 0, sumSimulated = 0, sumDelta = 0;
         var tableRows = '';
 
-        impacted.sort(function (a, b) { return b.rowDurations[b.latestStage] - a.rowDurations[a.latestStage]; });
-
-        impacted.forEach(function (m) {
-            var baseline = m.rowDurations[m.latestStage] || 0;
-            var simulated = baseline + pilotHours;
-            sumBaseline += baseline;
-            sumSimulated += simulated;
+        combined.forEach(function (row) {
+            var m = row.m;
+            sumBaseline += row.baseline;
+            sumSimulated += row.simulated;
+            sumDelta += row.delta;
 
             categories.push(m.vesselId);
-            baselineData.push(parseFloat(baseline.toFixed(1)));
-            simulatedData.push(parseFloat(simulated.toFixed(1)));
+            baselineData.push(parseFloat(row.baseline.toFixed(1)));
+            simulatedData.push(parseFloat(row.simulated.toFixed(1)));
+
+            var typeBadge = row.type === 'Direct' ?
+                '<span class="voc-impact-type-badge voc-type-direct">Direct</span>' :
+                '<span class="voc-impact-type-badge voc-type-cascade">Cascade</span>';
 
             tableRows += '<tr>' +
                 '<td style="text-align:left;">' + esc(m.vesselId) + ' <span style="color:#9aa6b6;">(' + esc(m.voyageNo) + ')</span></td>' +
                 '<td>' + esc(m.latestStage) + '</td>' +
                 '<td>' + esc(m.berth) + '</td>' +
-                '<td>' + baseline.toFixed(1) + 'h</td>' +
-                '<td>+' + pilotHours.toFixed(1) + 'h</td>' +
-                '<td><strong>' + simulated.toFixed(1) + 'h</strong><span class="voc-whatif-flag ' + waitFlagClass(simulated) + '">' +
-                    (simulated <= 4 ? 'Low' : simulated <= 24 ? 'Moderate' : 'Critical') + '</span></td>' +
+                '<td>' + typeBadge + '</td>' +
+                '<td>' + row.baseline.toFixed(1) + 'h</td>' +
+                '<td>+' + row.delta.toFixed(1) + 'h</td>' +
+                '<td><strong>' + row.simulated.toFixed(1) + 'h</strong><span class="voc-whatif-flag ' + waitFlagClass(row.simulated) + '">' +
+                    (row.simulated <= 4 ? 'Low' : row.simulated <= 24 ? 'Moderate' : 'Critical') + '</span></td>' +
                 '</tr>';
         });
 
-        document.getElementById('voc-kpi-whatif-impacted').textContent = String(impacted.length);
-        document.getElementById('voc-kpi-whatif-baseline').textContent = (sumBaseline / impacted.length).toFixed(1) + 'h';
-        document.getElementById('voc-kpi-whatif-simulated').textContent = (sumSimulated / impacted.length).toFixed(1) + 'h';
-        document.getElementById('voc-kpi-whatif-added').textContent = (pilotHours * impacted.length).toFixed(1) + 'h';
+        var avgBaseline = sumBaseline / combined.length;
+        var avgSimulated = sumSimulated / combined.length;
+
+        document.getElementById('voc-kpi-whatif-impacted').textContent = String(combined.length);
+        document.getElementById('voc-kpi-whatif-baseline').textContent = avgBaseline.toFixed(1) + 'h';
+        document.getElementById('voc-kpi-whatif-simulated').textContent = avgSimulated.toFixed(1) + 'h';
+        document.getElementById('voc-kpi-whatif-added').textContent = sumDelta.toFixed(1) + 'h';
 
         document.getElementById('voc-whatif-table-body').innerHTML = tableRows;
+
+        // ---- plain-language summary ----
+        var directCount = direct.length, cascadeCount = cascade.length;
+        var summaryParts = ['If pilots are unavailable for <strong>' + pilotHours.toFixed(1) + 'h</strong> at <strong>' + esc(selectedTerminal) + '</strong> starting now:'];
+        if (directCount > 0) {
+            summaryParts.push(directCount + ' vessel' + (directCount === 1 ? '' : 's') + ' currently needing a pilot will wait <strong>' + pilotHours.toFixed(1) + 'h longer</strong> each.');
+        }
+        if (cascadeCount > 0) {
+            summaryParts.push(cascadeCount + ' more vessel' + (cascadeCount === 1 ? '' : 's') + ' already at the terminal will see a knock-on wait of about <strong>' + (pilotHours * CASCADE_RIPPLE_FACTOR).toFixed(1) + 'h</strong> from the extra berth congestion.');
+        }
+        summaryParts.push('Average wait across all ' + combined.length + ' affected vessels rises from <strong>' + avgBaseline.toFixed(1) + 'h to ' + avgSimulated.toFixed(1) + 'h</strong>, adding <strong>' + sumDelta.toFixed(1) + ' vessel-hours</strong> of delay in total.');
+        document.getElementById('voc-whatif-summary').innerHTML = summaryParts.join(' ');
 
         renderClusteredBarChart('voc-whatif-chart', categories, [
             { name: 'Baseline Wait (h)', data: baselineData },
             { name: 'With Pilot Outage (h)', data: simulatedData }
         ], ['#15708a', '#c2424b']);
+
+        // ---- stash the rows currently on screen for CSV export ----
+        lastWhatIfExport = {
+            terminal: selectedTerminal,
+            hours: pilotHours,
+            rows: combined.map(function (row) {
+                return {
+                    vesselId: row.m.vesselId, voyageNo: row.m.voyageNo, terminal: selectedTerminal,
+                    berth: row.m.berth, stage: row.m.latestStage, type: row.type,
+                    baseline: row.baseline, delta: row.delta, simulated: row.simulated
+                };
+            })
+        };
+    }
+
+    function csvEscape(val) {
+        var s = String(val === undefined || val === null ? '' : val);
+        if (/[",\n]/.test(s)) { s = '"' + s.replace(/"/g, '""') + '"'; }
+        return s;
+    }
+
+    function exportWhatIfCsv() {
+        if (!lastWhatIfExport.rows.length) { return; }
+        var header = ['Vessel ID', 'Voyage No', 'Terminal', 'Berth', 'Stage', 'Impact Type', 'Baseline Wait (h)', 'Added Hours', 'Simulated Wait (h)'];
+        var lines = [header.map(csvEscape).join(',')];
+        lastWhatIfExport.rows.forEach(function (r) {
+            lines.push([
+                r.vesselId, r.voyageNo, r.terminal, r.berth, r.stage, r.type,
+                r.baseline.toFixed(1), r.delta.toFixed(1), r.simulated.toFixed(1)
+            ].map(csvEscape).join(','));
+        });
+        var csvContent = lines.join('\n');
+
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'pilot_outage_simulation_' + lastWhatIfExport.terminal + '_' + lastWhatIfExport.hours + 'h.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 
     // ---------------------------------------------------------------------
