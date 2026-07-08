@@ -645,7 +645,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var panes =
             '<div id="voc-tab-executive" class="voc-tab-content voc-tab-content-active">' +
                 '<div class="voc-kpi-row">' +
-                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#15708a', 'Total elapsed hours from port entry to open-sea departure.') +
+                    kpiCard('voc-kpi-exe-tat', 'Avg Turnaround Time (TAT)', '#15708a', 'MoPSW/Sagar Aankalan: departure from reporting station minus arrival at reporting station.') +
+                    kpiCard('voc-kpi-exe-preberth', 'Avg Pre-Berthing Waiting Time', '#b9791a', 'MoPSW/UNCTAD: berthing (ALL_FAST) minus arrival at reporting station/anchorage.') +
+                    kpiCard('voc-kpi-exe-presail', 'Avg Pre-Sailing Delay', '#5558b0', 'Departure from berth (UNBERTHED) minus cargo completion time.') +
                     kpiCard('voc-kpi-exe-cap', 'Capacity Utilization Load', '#2c8f4e', 'Active TEU exchange vs total fleet capacity.') +
                     kpiCard('voc-kpi-exe-delpct', 'Delayed Voyage Ratio', '#c2424b', 'Share of voyages reporting active disruption logs.') +
                 '</div>' +
@@ -1299,6 +1301,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
         var sumAnchorageWait = 0, countAnchorage = 0;
         var sumCranes = 0, countCranes = 0, totalCargoHours = 0;
         var countDelayedVoyages = 0, totalVoyages = 0;
+        // Official MoPSW/UNCTAD/Sagar Aankalan KPI accumulators, computed from real
+        // milestone timestamps rather than proxy multipliers.
+        var sumRealTAT = 0, countRealTAT = 0;
+        var sumPreBerthWait = 0, countPreBerthWait = 0;
+        var sumPreSailingDelay = 0, countPreSailingDelay = 0;
 
         var envWeather = 'CLEAR', envTide = 0.0;
 
@@ -1325,7 +1332,11 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                     cranes: r.cranes_assigned || 0, terminal: '-', berth: '-',
                     stageDelays: {}, substagesList: [], hasArrived: false, hasDeparted: false,
                     totalRowHours: 0, latestEventTime: parseEventDate(r.event_time), latestSubstage: '-',
-                    latestRow: r
+                    latestRow: r,
+                    // Milestone timestamps used to compute the official MoPSW/UNCTAD/Sagar
+                    // Aankalan KPI formulas directly from real event data (not proxies).
+                    tsArrival: null, tsAnchorage: null, tsBerthed: null,
+                    tsCargoComplete: null, tsUnberthed: null, tsDeparted: null
                 };
             }
 
@@ -1368,6 +1379,17 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
                 cranes: r.cranes_assigned || '-', weather: r.weather || '-', delay: r.delay_reason || '-'
             });
 
+            // ---- capture KPI milestone timestamps (MoPSW / UNCTAD / Sagar Aankalan formulas) ----
+            if (r.substage === 'PORT_LIMIT_ARRIVAL' && !meta.tsArrival) { meta.tsArrival = currentEventDate; }
+            if (r.substage === 'ANCHORAGE_ENTERED' && !meta.tsAnchorage) { meta.tsAnchorage = currentEventDate; }
+            if (r.substage === 'ALL_FAST' && !meta.tsBerthed) { meta.tsBerthed = currentEventDate; }
+            if (r.substage === 'CARGO_COMPLETED' || r.substage === 'DISCHARGE_COMPLETED' || r.substage === 'LOAD_COMPLETED') {
+                if (!meta.tsCargoComplete || currentEventDate.getTime() > meta.tsCargoComplete.getTime()) { meta.tsCargoComplete = currentEventDate; }
+            }
+            if (r.substage === 'UNBERTHED' && !meta.tsUnberthed) { meta.tsUnberthed = currentEventDate; }
+            if (r.substage === 'CHANNEL_EXIT') { meta.tsDeparted = currentEventDate; }
+            else if (r.substage === 'SAILED' && !meta.tsDeparted) { meta.tsDeparted = currentEventDate; }
+
             if (r.stage === 'CARGO' && r.cranes_assigned > 0) {
                 sumCranes += r.cranes_assigned;
                 countCranes++;
@@ -1404,6 +1426,25 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
                 if (Object.keys(meta.stageDelays).length > 0) { countDelayedVoyages++; }
                 if (meta.anchorageWait > 0) { sumAnchorageWait += meta.anchorageWait; countAnchorage++; }
+
+                // ---- Pre-Berthing Waiting Time: berthing (ALL_FAST) minus arrival at reporting station/anchorage ----
+                var preBerthStart = meta.tsArrival || meta.tsAnchorage;
+                if (preBerthStart && meta.tsBerthed) {
+                    var preBerthHrs = (meta.tsBerthed.getTime() - preBerthStart.getTime()) / (1000 * 60 * 60);
+                    if (preBerthHrs >= 0) { sumPreBerthWait += preBerthHrs; countPreBerthWait++; }
+                }
+
+                // ---- Avg Vessel TAT: departure from reporting station minus arrival at reporting station ----
+                if (meta.tsArrival && meta.tsDeparted) {
+                    var tatHrs = (meta.tsDeparted.getTime() - meta.tsArrival.getTime()) / (1000 * 60 * 60);
+                    if (tatHrs >= 0) { sumRealTAT += tatHrs; countRealTAT++; }
+                }
+
+                // ---- Pre-Sailing Delay: departure from berth minus cargo completion ----
+                if (meta.tsCargoComplete && meta.tsUnberthed) {
+                    var preSailHrs = (meta.tsUnberthed.getTime() - meta.tsCargoComplete.getTime()) / (1000 * 60 * 60);
+                    if (preSailHrs >= 0) { sumPreSailingDelay += preSailHrs; countPreSailingDelay++; }
+                }
 
                 vesselClassMap[meta.vesselClass] = (vesselClassMap[meta.vesselClass] || 0) + 1;
                 vesselStageMap[latest.stage] = (vesselStageMap[latest.stage] || 0) + 1;
@@ -1453,7 +1494,9 @@ function (UWA, Promise, String, WAFData, PlatformAPI) {
 
         // ---- Per-tab DOM rendering ----
         if (app.currentTab === 'executive') {
-            document.getElementById('voc-kpi-exe-tat').textContent = totalVoyages > 0 ? (totalCargoHours / totalVoyages * 1.8).toFixed(1) + 'h' : '0.0h';
+            document.getElementById('voc-kpi-exe-tat').textContent = countRealTAT > 0 ? (sumRealTAT / countRealTAT).toFixed(1) + 'h' : '0.0h';
+            document.getElementById('voc-kpi-exe-preberth').textContent = countPreBerthWait > 0 ? (sumPreBerthWait / countPreBerthWait).toFixed(1) + 'h' : '0.0h';
+            document.getElementById('voc-kpi-exe-presail').textContent = countPreSailingDelay > 0 ? (sumPreSailingDelay / countPreSailingDelay).toFixed(1) + 'h' : '0.0h';
             document.getElementById('voc-kpi-exe-cap').textContent = cumulativeCapacity > 0 ? ((totalImports + totalExports) / cumulativeCapacity * 100).toFixed(1) + '%' : '0.0%';
             document.getElementById('voc-kpi-exe-delpct').textContent = totalVoyages > 0 ? (countDelayedVoyages / totalVoyages * 100).toFixed(1) + '%' : '0.0%';
 
