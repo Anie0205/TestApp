@@ -1,0 +1,21 @@
+{
+  "source_reference": "TestApp-main (2).zip -> static/usecase2/*.csv schema",
+  "years": [
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "yearly_files_per_year": [
+    "berth_crane_operations.csv",
+    "container_master.csv",
+    "customs_events.csv",
+    "digital_twin_events.csv"
+  ],
+  "ml_files": [
+    "ml/jnpa_ai_training_dataset_2022_2026.csv",
+    "ml/train_xgboost_insights.py",
+    "ml/yearly_kpi_summary_2022_2026.csv"
+  ]
+}
