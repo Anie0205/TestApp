@@ -176,18 +176,34 @@ define('xCityJNPAUseCase1App', [
 
     function recommendations(rows) {
         var recos = [];
-        var eta = avg(rows.map(function(r) { return r.eta_deviation_min; }));
-        var pre = avg(rows.map(function(r) { return r.pre_berthing_delay_min; }));
         var service = avg(rows.map(function(r) { return r.service_time_min; }));
         var pressure = avg(rows.map(function(r) { return r.berth_pressure_index; }));
         var conflict = avg(rows.map(function(r) { return r.berth_conflict_flag; })) * 100;
 
-        if (pre > 95) recos.push('Increase berth-window coordination and reduce pilot/tug contention during clustered arrival windows.');
-        if (pressure > 1.12) recos.push('Advance berth forecasting and pre-rank alternate feasible berths for high-pressure windows.');
-        if (conflict > 20) recos.push('Use AI conflict scores to trigger proactive berth reassignment before overlap risk rises.');
-        if (service > 760) recos.push('Improve crane allocation and downstream yard/gate evacuation readiness to shorten service duration.');
-        if (eta > 40) recos.push('Apply arrival reliability monitoring by shipping line and tighten ETA confidence scoring.');
-        if (!recos.length) recos.push('Marine operating state remains stable. Maintain current berth sequencing and resource readiness.');
+        // Grab the exact current state of the sliders
+        var yardM = state.scenario.yardMultiplier;
+        var gateM = state.scenario.gateMultiplier;
+        var etaS = state.scenario.etaShift;
+
+        // 1. Yard-Driven AI Suggestions (Reacts to the Yard x slider)
+        if (yardM >= 1.3) recos.push('🚨 CRITICAL YARD DENSITY: Evacuate aged import containers to off-dock CFS immediately. Suspend early gate-in for exports to prevent gridlock.');
+        else if (yardM > 1.1) recos.push('⚠️ Elevated Yard Stress: Increase RTG crane deployment in heavily stacked import blocks to maintain delivery speeds.');
+
+        // 2. Gate-Driven AI Suggestions (Reacts to the Gate x slider)
+        if (gateM >= 1.3) recos.push('🚨 GATE GRIDLOCK: Strictly enforce truck appointment windows (TAS) and throttle inbound traffic to clear terminal backlogs.');
+        else if (gateM > 1.1) recos.push('⚠️ Gate Congestion: Open contingency gate lanes and deploy additional manpower for manual document verification.');
+
+        // 3. ETA/Vessel Bunching Suggestions (Reacts to the ETA shift slider)
+        if (etaS >= 3) recos.push('🚢 VESSEL BUNCHING DETECTED: Communicate with incoming vessels to reduce steaming speed (Virtual Arrival protocol) to avoid massive anchoring delays.');
+        else if (etaS <= -3) recos.push('🚢 EARLY ARRIVALS: Vessels arriving ahead of schedule. Check downstream yard readiness to handle premature discharge surges.');
+
+        // 4. Berth / Outcome Suggestions (Reacts to the resulting AI calculations)
+        if (pressure > 1.25 || conflict > 30) recos.push('⚓ HIGH BERTH CONFLICT: Primary berths oversold. AI recommends proactively shifting scheduled vessels to alternate terminals (e.g., BMCT/GTI) before overlap occurs.');
+        if (service > 850) recos.push('🏗️ PROLONGED SERVICE TIME: Allocate tandem-lift or additional quay cranes to mainline vessels to accelerate turnaround and free up the berth.');
+
+        // 5. Baseline / Healthy state
+        if (!recos.length) recos.push('✅ AI Models indicate stable port operations. Current resource allocation and yard fluidity are optimal.');
+        
         return recos;
     }
 
