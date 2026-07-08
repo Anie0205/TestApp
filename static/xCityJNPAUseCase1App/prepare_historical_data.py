@@ -1,38 +1,83 @@
 import pandas as pd
+from pathlib import Path
 
-# 1. Load the new 5-year dataset
-df = pd.read_csv("jnpa_ai_historical_5year_package/ml/jnpa_ai_training_dataset_2022_2026.csv")
+def main():
+    base_dir = Path("jnpa_ai_historical_5year_package/historical_data")
+    years = ["2022", "2023", "2024", "2025", "2026"]
+    
+    all_years_data = []
+    print("Starting Data Lake Extraction...")
 
-# 2. Aggregate from Container-level back to Vessel-level
-vessel_df = df.groupby('vessel_call_id').agg({
-    'terminal': 'first',
-    'year': 'first',
-    'month': 'first',
-    'container_count_on_vessel': 'max',
-    'berth_hours': 'mean',
-    'crane_moves_per_hour': 'mean',
-    'pre_berthing_delay_hr': 'mean',
-    'vessel_turnaround_hr': 'mean',
-    'yard_utilization_pct': 'mean'
-}).reset_index()
+    for year in years:
+        year_path = base_dir / year
+        print(f"\nProcessing Year: {year}...")
+        
+        try:
+            # 1. Load and clean headers
+            containers = pd.read_csv(year_path / "container_master.csv")
+            containers.columns = containers.columns.str.strip()
+            
+            cranes = pd.read_csv(year_path / "berth_crane_operations.csv")
+            cranes.columns = cranes.columns.str.strip()
 
-# 3. Rename columns to match your existing JavaScript UI
-vessel_df.rename(columns={
-    'vessel_call_id': 'vessel_id',
-    'terminal': 'terminal_code',
-    'pre_berthing_delay_hr': 'pre_berthing_delay_min', 
-    'vessel_turnaround_hr': 'vessel_turnaround_min'
-}, inplace=True)
+            # CRITICAL FIX: Force Pandas to keep ONLY the columns we actually need.
+            # This prevents it from accidentally creating 'terminal_x' and 'terminal_y' during the merge.
+            containers_clean = containers[['vessel_call_id', 'terminal']]
+            cranes_clean = cranes[['vessel_call_id', 'berth_hours', 'crane_moves_per_hour']]
 
-# 4. Convert hours to minutes so your JS charts don't break
-vessel_df['pre_berthing_delay_min'] = vessel_df['pre_berthing_delay_min'] * 60
-vessel_df['vessel_turnaround_min'] = vessel_df['vessel_turnaround_min'] * 60
+            # 2. Count containers per vessel AND grab the terminal name
+            vessel_volumes = containers_clean.groupby(['vessel_call_id', 'terminal']).size().reset_index(name='total_container_volume')
 
-# 5. Add fallback columns for your JS Dropdowns so they don't show "undefined"
-vessel_df['candidate_berth'] = vessel_df['terminal_code'] + "01" 
-vessel_df['shipping_line'] = "Historical" 
-vessel_df['vessel_name'] = vessel_df['vessel_id']
+            # 3. Join the Volumes/Terminal data with the Crane Operations
+            vessel_master = pd.merge(vessel_volumes, cranes_clean, on='vessel_call_id', how='inner')
+            
+            # 4. Add the year from the folder structure
+            vessel_master['year'] = int(year)
+            
+            all_years_data.append(vessel_master)
+            print(f"  -> {year} successful! Merged {len(vessel_master)} vessel records.")
 
-# 6. Export directly to the JSON file your widget is already looking for!
-vessel_df.to_json('usecase1_predictions.json', orient='records')
-print(f"Successfully exported {len(vessel_df)} aggregated vessels to JSON!")
+        except FileNotFoundError as e:
+            print(f"  -> ERROR: Missing a file for {year}. Skipping.")
+            continue
+        except KeyError as e:
+            print(f"  -> ERROR: Column mismatch in {year}: {e}. Check your raw CSVs!")
+            continue
+
+    if not all_years_data:
+        print("\nNo data found! Check your folder paths.")
+        return
+
+    # 5. Combine all years
+    full_history_df = pd.concat(all_years_data, ignore_index=True)
+
+    print("\nAggregating into comprehensive macro view...")
+    
+    # 6. Aggregate to the Macro-Level (Year and Terminal)
+    macro_df = full_history_df.groupby(['year', 'terminal']).agg({
+        'vessel_call_id': 'nunique',             # Total unique ships
+        'total_container_volume': 'sum',         # Total TEUs
+        'berth_hours': 'mean',                   # Average time at berth
+        'crane_moves_per_hour': 'mean'           # Crane productivity
+    }).reset_index()
+
+    # 7. Rename columns for the JavaScript Dashboard
+    macro_df.rename(columns={
+        'vessel_call_id': 'total_vessels_handled',
+        'berth_hours': 'avg_berth_hours',
+        'crane_moves_per_hour': 'avg_crane_productivity'
+    }, inplace=True)
+
+    # Clean up the numbers
+    macro_df = macro_df.round(2)
+
+    # 8. Export to JSON
+    output_filename = 'comprehensive_macro_view.json'
+    macro_df.to_json(output_filename, orient='records')
+    
+    print("===================================================")
+    print(f"SUCCESS! Exported {len(macro_df)} macro records to: {output_filename}")
+    print("===================================================")
+
+if __name__ == "__main__":
+    main()
