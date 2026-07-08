@@ -186,23 +186,23 @@ define('xCityJNPAUseCase1App', [
         var etaS = state.scenario.etaShift;
 
         // 1. Yard-Driven AI Suggestions (Reacts to the Yard x slider)
-        if (yardM >= 1.3) recos.push('🚨 CRITICAL YARD DENSITY: Evacuate aged import containers to off-dock CFS immediately. Suspend early gate-in for exports to prevent gridlock.');
-        else if (yardM > 1.1) recos.push('⚠️ Elevated Yard Stress: Increase RTG crane deployment in heavily stacked import blocks to maintain delivery speeds.');
+        if (yardM >= 1.3) recos.push('CRITICAL YARD DENSITY: Evacuate aged import containers to off-dock CFS immediately. Suspend early gate-in for exports to prevent gridlock.');
+        else if (yardM > 1.1) recos.push('Elevated Yard Stress: Increase RTG crane deployment in heavily stacked import blocks to maintain delivery speeds.');
 
         // 2. Gate-Driven AI Suggestions (Reacts to the Gate x slider)
-        if (gateM >= 1.3) recos.push('🚨 GATE GRIDLOCK: Strictly enforce truck appointment windows (TAS) and throttle inbound traffic to clear terminal backlogs.');
-        else if (gateM > 1.1) recos.push('⚠️ Gate Congestion: Open contingency gate lanes and deploy additional manpower for manual document verification.');
+        if (gateM >= 1.3) recos.push('GATE GRIDLOCK: Strictly enforce truck appointment windows (TAS) and throttle inbound traffic to clear terminal backlogs.');
+        else if (gateM > 1.1) recos.push('Gate Congestion: Open contingency gate lanes and deploy additional manpower for manual document verification.');
 
         // 3. ETA/Vessel Bunching Suggestions (Reacts to the ETA shift slider)
-        if (etaS >= 3) recos.push('🚢 VESSEL BUNCHING DETECTED: Communicate with incoming vessels to reduce steaming speed (Virtual Arrival protocol) to avoid massive anchoring delays.');
-        else if (etaS <= -3) recos.push('🚢 EARLY ARRIVALS: Vessels arriving ahead of schedule. Check downstream yard readiness to handle premature discharge surges.');
+        if (etaS >= 3) recos.push('VESSEL BUNCHING DETECTED: Communicate with incoming vessels to reduce steaming speed (Virtual Arrival protocol) to avoid massive anchoring delays.');
+        else if (etaS <= -3) recos.push('EARLY ARRIVALS: Vessels arriving ahead of schedule. Check downstream yard readiness to handle premature discharge surges.');
 
         // 4. Berth / Outcome Suggestions (Reacts to the resulting AI calculations)
-        if (pressure > 1.25 || conflict > 30) recos.push('⚓ HIGH BERTH CONFLICT: Primary berths oversold. AI recommends proactively shifting scheduled vessels to alternate terminals (e.g., BMCT/GTI) before overlap occurs.');
-        if (service > 850) recos.push('🏗️ PROLONGED SERVICE TIME: Allocate tandem-lift or additional quay cranes to mainline vessels to accelerate turnaround and free up the berth.');
+        if (pressure > 1.25 || conflict > 30) recos.push('HIGH BERTH CONFLICT: Primary berths oversold. AI recommends proactively shifting scheduled vessels to alternate terminals (e.g., BMCT/GTI) before overlap occurs.');
+        if (service > 850) recos.push('PROLONGED SERVICE TIME: Allocate tandem-lift or additional quay cranes to mainline vessels to accelerate turnaround and free up the berth.');
 
         // 5. Baseline / Healthy state
-        if (!recos.length) recos.push('✅ AI Models indicate stable port operations. Current resource allocation and yard fluidity are optimal.');
+        if (!recos.length) recos.push('AI Models indicate stable port operations. Current resource allocation and yard fluidity are optimal.');
         
         return recos;
     }
