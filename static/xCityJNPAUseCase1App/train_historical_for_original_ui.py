@@ -78,6 +78,11 @@ def main():
     final_df['channel_congestion_index'] = 0.2
     final_df['crane_allocation_count'] = 3
     
+    # --- ADD THESE TWO LINES TO FIX THE SLIDERS ---
+    final_df['yard_congestion_index'] = (dash_df['yard_pred'] / 100.0).round(2).values
+    final_df['gate_congestion_index'] = 0.45 
+    # ----------------------------------------------
+    
     output_name = "usecase1_predictions.json"
     final_df.to_json(output_name, orient="records")
     print(f"SUCCESS! Exported '{output_name}'")
